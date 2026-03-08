@@ -1,4 +1,4 @@
-import { readdirSync, existsSync, statSync } from "node:fs";
+import { readdirSync, existsSync, statSync, readFileSync } from "node:fs";
 import { join, basename } from "node:path";
 import type { Component } from "@mariozechner/pi-tui";
 import { visibleWidth } from "@mariozechner/pi-tui";
@@ -364,9 +364,28 @@ export function discoverLoadedCounts(): LoadedCounts {
     join(cwd, "extensions"),
     join(cwd, ".pi", "extensions"),
   ];
-  
+
   const countedExtensions = new Set<string>();
-  
+
+  // Count npm packages listed in settings.json (e.g. "npm:pi-web-access").
+  // These are never present on the local filesystem dirs below, so without
+  // this they would always be reported as 0 extensions loaded.
+  const settingsPath = join(homeDir, ".pi", "agent", "settings.json");
+  if (existsSync(settingsPath)) {
+    try {
+      const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+      if (Array.isArray(settings.packages)) {
+        for (const pkg of settings.packages) {
+          const name = typeof pkg === "string" ? pkg.replace(/^npm:/, "") : String(pkg);
+          if (!countedExtensions.has(name)) {
+            countedExtensions.add(name);
+            extensions++;
+          }
+        }
+      }
+    } catch {}
+  }
+
   for (const dir of extensionDirs) {
     if (existsSync(dir)) {
       try {
