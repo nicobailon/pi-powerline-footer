@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ReadonlyFooterDataProvider, Theme } from "@mariozechner/pi-coding-agent";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
 import { visibleWidth } from "@mariozechner/pi-tui";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 import type { ColorScheme, SegmentContext, StatusLinePreset, StatusLineSegmentId } from "./types.js";
@@ -248,6 +248,11 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     const settings = readSettings();
     showLastPrompt = settings.showLastPrompt !== false;
 
+    // Restore persisted preset from settings.json
+    if (typeof settings.powerline === "string" && settings.powerline in PRESETS) {
+      config.preset = settings.powerline as StatusLinePreset;
+    }
+
     // Store thinking level getter if available
     if (typeof ctx.getThinkingLevel === 'function') {
       getThinkingLevelFn = () => ctx.getThinkingLevel();
@@ -433,6 +438,15 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           currentEditor = null;
           // Clear layout cache
           lastLayoutResult = null;
+          config.preset = "default";
+          // Clear persisted preset
+          const homeDir = process.env.HOME || process.env.USERPROFILE || "";
+          const settingsPath = join(homeDir, ".pi", "agent", "settings.json");
+          try {
+            const existing = existsSync(settingsPath) ? JSON.parse(readFileSync(settingsPath, "utf-8")) : {};
+            delete existing.powerline;
+            writeFileSync(settingsPath, JSON.stringify(existing, null, 2) + "\n");
+          } catch {}
           ctx.ui.notify("Defaults restored", "info");
         }
         return;
@@ -447,6 +461,14 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         if (enabled) {
           setupCustomEditor(ctx);
         }
+        // Persist preset to settings.json
+        const homeDir = process.env.HOME || process.env.USERPROFILE || "";
+        const settingsPath = join(homeDir, ".pi", "agent", "settings.json");
+        try {
+          const existing = existsSync(settingsPath) ? JSON.parse(readFileSync(settingsPath, "utf-8")) : {};
+          existing.powerline = preset;
+          writeFileSync(settingsPath, JSON.stringify(existing, null, 2) + "\n");
+        } catch {}
         ctx.ui.notify(`Preset set to: ${preset}`, "info");
         return;
       }
