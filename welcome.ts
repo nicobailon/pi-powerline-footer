@@ -367,20 +367,37 @@ export function discoverLoadedCounts(): LoadedCounts {
 
   const countedExtensions = new Set<string>();
 
-  // Count npm packages listed in settings.json (e.g. "npm:pi-web-access").
-  // These are never present on the local filesystem dirs below, so without
-  // this they would always be reported as 0 extensions loaded.
   const settingsPath = join(homeDir, ".pi", "agent", "settings.json");
   if (existsSync(settingsPath)) {
     try {
-      const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
-      if (Array.isArray(settings.packages)) {
-        for (const pkg of settings.packages) {
-          const name = typeof pkg === "string" ? pkg.replace(/^npm:/, "") : String(pkg);
-          if (!countedExtensions.has(name)) {
-            countedExtensions.add(name);
-            extensions++;
+      const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+      let packages: unknown = null;
+      if (typeof settings === "object" && settings !== null && !Array.isArray(settings)) {
+        packages = (settings as { packages?: unknown }).packages;
+      }
+
+      if (Array.isArray(packages)) {
+        for (const pkg of packages) {
+          let source: unknown = null;
+          if (typeof pkg === "string") {
+            source = pkg;
+          } else if (typeof pkg === "object" && pkg !== null && !Array.isArray(pkg)) {
+            source = (pkg as { source?: unknown }).source;
           }
+
+          if (typeof source !== "string" || !source.startsWith("npm:")) {
+            continue;
+          }
+
+          const body = source.slice(4);
+          const versionIndex = body.lastIndexOf("@");
+          const name = versionIndex > 0 ? body.slice(0, versionIndex) : body;
+          if (!name || countedExtensions.has(name)) {
+            continue;
+          }
+
+          countedExtensions.add(name);
+          extensions++;
         }
       }
     } catch {}
