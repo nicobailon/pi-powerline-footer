@@ -1,8 +1,8 @@
 import type { ExtensionAPI, ReadonlyFooterDataProvider, Theme } from "@mariozechner/pi-coding-agent";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
 import { visibleWidth } from "@mariozechner/pi-tui";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { join, dirname } from "node:path";
 
 import type { ColorScheme, SegmentContext, StatusLinePreset, StatusLineSegmentId } from "./types.js";
 import { getPreset, PRESETS } from "./presets.js";
@@ -102,15 +102,67 @@ function trackPromptHistory(editor: any): void {
   snapshotPromptHistory(editor);
 }
 
-function readSettings(): Record<string, unknown> {
+function getSettingsPath(): string {
   const homeDir = process.env.HOME || process.env.USERPROFILE || "";
-  const settingsPath = join(homeDir, ".pi", "agent", "settings.json");
+  return join(homeDir, ".pi", "agent", "settings.json");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readSettings(): Record<string, unknown> {
+  const settingsPath = getSettingsPath();
   try {
-    if (existsSync(settingsPath)) {
-      return JSON.parse(readFileSync(settingsPath, "utf-8"));
+    if (!existsSync(settingsPath)) {
+      return {};
     }
-  } catch {}
-  return {};
+
+    const parsed = JSON.parse(readFileSync(settingsPath, "utf-8"));
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writePowerlinePresetSetting(preset: StatusLinePreset): boolean {
+  const settingsPath = getSettingsPath();
+  let settings: Record<string, unknown> = {};
+
+  if (existsSync(settingsPath)) {
+    try {
+      const parsed = JSON.parse(readFileSync(settingsPath, "utf-8"));
+      if (!isRecord(parsed)) {
+        return false;
+      }
+      settings = parsed;
+    } catch {
+      return false;
+    }
+  }
+
+  settings.powerline = preset;
+
+  try {
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isValidPreset(value: unknown): value is StatusLinePreset {
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(PRESETS, value);
+}
+
+function normalizePreset(value: unknown): StatusLinePreset | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const preset = value.trim().toLowerCase();
+  return isValidPreset(preset) ? preset : null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -247,11 +299,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
     const settings = readSettings();
     showLastPrompt = settings.showLastPrompt !== false;
-
-    // Restore persisted preset from settings.json
-    if (typeof settings.powerline === "string" && settings.powerline in PRESETS) {
-      config.preset = settings.powerline as StatusLinePreset;
-    }
+    config.preset = normalizePreset(settings.powerline) ?? "default";
 
     // Store thinking level getter if available
     if (typeof ctx.getThinkingLevel === 'function') {
@@ -418,7 +466,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       // Update context reference (command ctx may have more methods)
       currentCtx = ctx;
       
-      if (!args) {
+      if (!args?.trim()) {
         // Toggle
         enabled = !enabled;
         if (enabled) {
@@ -438,38 +486,24 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           currentEditor = null;
           // Clear layout cache
           lastLayoutResult = null;
-          config.preset = "default";
-          // Clear persisted preset
-          const homeDir = process.env.HOME || process.env.USERPROFILE || "";
-          const settingsPath = join(homeDir, ".pi", "agent", "settings.json");
-          try {
-            const existing = existsSync(settingsPath) ? JSON.parse(readFileSync(settingsPath, "utf-8")) : {};
-            delete existing.powerline;
-            writeFileSync(settingsPath, JSON.stringify(existing, null, 2) + "\n");
-          } catch {}
-          ctx.ui.notify("Defaults restored", "info");
+          ctx.ui.notify("Powerline disabled", "info");
         }
         return;
       }
 
-      // Check if args is a preset name
-      const preset = args.trim().toLowerCase() as StatusLinePreset;
-      if (preset in PRESETS) {
+      const preset = normalizePreset(args);
+      if (preset) {
         config.preset = preset;
-        // Invalidate layout cache since preset changed
         lastLayoutResult = null;
         if (enabled) {
           setupCustomEditor(ctx);
         }
-        // Persist preset to settings.json
-        const homeDir = process.env.HOME || process.env.USERPROFILE || "";
-        const settingsPath = join(homeDir, ".pi", "agent", "settings.json");
-        try {
-          const existing = existsSync(settingsPath) ? JSON.parse(readFileSync(settingsPath, "utf-8")) : {};
-          existing.powerline = preset;
-          writeFileSync(settingsPath, JSON.stringify(existing, null, 2) + "\n");
-        } catch {}
-        ctx.ui.notify(`Preset set to: ${preset}`, "info");
+
+        if (writePowerlinePresetSetting(preset)) {
+          ctx.ui.notify(`Preset set to: ${preset}`, "info");
+        } else {
+          ctx.ui.notify(`Preset set to: ${preset} (not persisted; check settings.json)`, "warning");
+        }
         return;
       }
 

@@ -51,17 +51,8 @@ Activates automatically. Toggle with `/powerline`, switch presets with `/powerli
 
 **Environment:** `POWERLINE_NERD_FONTS=1` to force Nerd Fonts, `=0` for ASCII.
 
-### Persisting Preset
-
-Your preset choice is automatically saved to `~/.pi/agent/settings.json` and restored on startup. You can also set it manually:
-
-```json
-{
-  "powerline": "compact"
-}
-```
-
-Run `/powerline` (no args) to reset to defaults and clear the persisted setting.
+Preset selection is saved to `~/.pi/agent/settings.json` under `powerline` and restored on startup.
+Run `/powerline default` to switch back to the default preset.
 
 ## Editor Stash
 
