@@ -1,3 +1,7 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
 export interface IconSet {
   pi: string;
   model: string;
@@ -132,6 +136,48 @@ export const ASCII_SEPARATORS: SeparatorChars = {
   dot: ".",
 };
 
+// --- Theme icon overrides (loaded from theme.json "icons" key) ---
+
+let iconOverrideCache: Partial<IconSet> | null = null;
+let iconOverrideCacheTime = 0;
+const ICON_CACHE_TTL = 5000;
+
+function getThemePath(): string {
+  const extDir = dirname(fileURLToPath(import.meta.url));
+  return join(extDir, "theme.json");
+}
+
+function loadIconOverrides(): Partial<IconSet> {
+  const now = Date.now();
+  if (iconOverrideCache && now - iconOverrideCacheTime < ICON_CACHE_TTL) {
+    return iconOverrideCache;
+  }
+
+  const themePath = getThemePath();
+  try {
+    if (existsSync(themePath)) {
+      const parsed = JSON.parse(readFileSync(themePath, "utf-8"));
+      if (parsed && typeof parsed === "object" && parsed.icons && typeof parsed.icons === "object") {
+        const overrides: Partial<IconSet> = {};
+        for (const [key, val] of Object.entries(parsed.icons)) {
+          if (key in ASCII_ICONS && typeof val === "string") {
+            (overrides as any)[key] = val;
+          }
+        }
+        iconOverrideCache = overrides;
+        iconOverrideCacheTime = now;
+        return overrides;
+      }
+    }
+  } catch {
+    // ignore parse errors
+  }
+
+  iconOverrideCache = {};
+  iconOverrideCacheTime = now;
+  return {};
+}
+
 // Detect Nerd Font support (check TERM or specific env var)
 export function hasNerdFonts(): boolean {
   // User can set this env var to force Nerd Fonts
@@ -148,7 +194,10 @@ export function hasNerdFonts(): boolean {
 }
 
 export function getIcons(): IconSet {
-  return hasNerdFonts() ? NERD_ICONS : ASCII_ICONS;
+  const base = hasNerdFonts() ? NERD_ICONS : ASCII_ICONS;
+  const overrides = loadIconOverrides();
+  if (Object.keys(overrides).length === 0) return base;
+  return { ...base, ...overrides };
 }
 
 export function getSeparatorChars(): SeparatorChars {
