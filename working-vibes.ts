@@ -3,10 +3,14 @@
 // Uses module-level state (matching powerline-footer pattern).
 
 import { complete, type Context } from "@mariozechner/pi-ai";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { getAgentDir, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { homedir } from "node:os";
+import { join } from "node:path";
+import {
+  patchPowerlineSetting,
+  readPowerlineSettings,
+  readSettings,
+} from "./settings.js";
 
 type VibeMode = "generate" | "file";
 
@@ -54,7 +58,20 @@ interface VibeGenContext {
 // Module-level State
 // ═══════════════════════════════════════════════════════════════════════════
 
-let config: VibeConfig = loadConfig();
+function getDefaultConfig(): VibeConfig {
+  return {
+    theme: null,
+    mode: "generate",
+    modelSpec: DEFAULT_MODEL,
+    fallback: "Working",
+    timeout: 3000,
+    refreshInterval: 30000,
+    promptTemplate: DEFAULT_PROMPT,
+    maxLength: 65,
+  };
+}
+
+let config: VibeConfig = getDefaultConfig();
 let extensionCtx: ExtensionContext | null = null;
 let currentGeneration: AbortController | null = null;
 let isStreaming = false;
@@ -74,140 +91,47 @@ let recentVibes: string[] = [];
 // Configuration Management
 // ═══════════════════════════════════════════════════════════════════════════
 
-function getSettingsPath(): string {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
-  return join(homeDir, ".pi", "agent", "settings.json");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function readSettingsForLoad(): Record<string, unknown> {
-  const settingsPath = getSettingsPath();
-
-  try {
-    if (!existsSync(settingsPath)) {
-      return {};
-    }
-
-    const parsed = JSON.parse(readFileSync(settingsPath, "utf-8"));
-    if (!isRecord(parsed)) {
-      console.debug(`[working-vibes] Ignoring non-object settings at ${settingsPath}`);
-      return {};
-    }
-
-    return parsed;
-  } catch (error) {
-    console.debug(`[working-vibes] Failed to load settings from ${settingsPath}:`, error);
-    return {};
-  }
-}
-
-function readSettingsForWrite(scope: string): Record<string, unknown> | null {
-  const settingsPath = getSettingsPath();
-
-  if (!existsSync(settingsPath)) {
-    return {};
-  }
-
-  try {
-    const parsed = JSON.parse(readFileSync(settingsPath, "utf-8"));
-    if (!isRecord(parsed)) {
-      console.debug(`[working-vibes] Refusing to write ${scope}: settings at ${settingsPath} is not an object`);
-      return null;
-    }
-
-    return parsed;
-  } catch (error) {
-    console.debug(`[working-vibes] Failed to parse settings while writing ${scope} at ${settingsPath}:`, error);
-    return null;
-  }
-}
-
-function persistSettings(settings: Record<string, unknown>, scope: string): boolean {
-  const settingsPath = getSettingsPath();
-
-  try {
-    mkdirSync(dirname(settingsPath), { recursive: true });
-    writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
-    return true;
-  } catch (error) {
-    console.debug(`[working-vibes] Failed to persist ${scope} to ${settingsPath}:`, error);
-    return false;
-  }
-}
-
 function loadConfig(): VibeConfig {
-  const settings = readSettingsForLoad();
-
-  // Handle "off" in settings.json (same as null/disabled)
-  const rawTheme = typeof settings.workingVibe === "string" ? settings.workingVibe : null;
+  const rawSettings = readSettings("working-vibes");
+  const settings = readPowerlineSettings(rawSettings);
+  const rawTheme = typeof settings.vibe?.theme === "string" ? settings.vibe.theme : null;
   const theme = rawTheme?.toLowerCase() === "off" ? null : rawTheme;
-
-  // Validate mode setting
-  const rawMode = settings.workingVibeMode;
+  const rawMode = settings.vibe?.mode;
   const mode: VibeMode = rawMode === "file" || rawMode === "generate" ? rawMode : "generate";
 
   const refreshSeconds =
-    typeof settings.workingVibeRefreshInterval === "number" && Number.isFinite(settings.workingVibeRefreshInterval)
-      ? Math.max(0, settings.workingVibeRefreshInterval)
+    typeof settings.vibe?.refreshInterval === "number" && Number.isFinite(settings.vibe.refreshInterval)
+      ? Math.max(0, settings.vibe.refreshInterval)
       : 30;
 
   const maxLength =
-    typeof settings.workingVibeMaxLength === "number" && Number.isFinite(settings.workingVibeMaxLength)
-      ? Math.max(4, Math.floor(settings.workingVibeMaxLength))
+    typeof settings.vibe?.maxLength === "number" && Number.isFinite(settings.vibe.maxLength)
+      ? Math.max(4, Math.floor(settings.vibe.maxLength))
       : 65;
 
   return {
     theme,
     mode,
-    modelSpec: typeof settings.workingVibeModel === "string" ? settings.workingVibeModel : DEFAULT_MODEL,
-    fallback: typeof settings.workingVibeFallback === "string" ? settings.workingVibeFallback : "Working",
+    modelSpec: typeof settings.vibe?.model === "string" ? settings.vibe.model : DEFAULT_MODEL,
+    fallback: typeof settings.vibe?.fallback === "string" ? settings.vibe.fallback : "Working",
     timeout: 3000,
     refreshInterval: refreshSeconds * 1000,
-    promptTemplate: typeof settings.workingVibePrompt === "string" ? settings.workingVibePrompt : DEFAULT_PROMPT,
+    promptTemplate: typeof settings.vibe?.prompt === "string" ? settings.vibe.prompt : DEFAULT_PROMPT,
     maxLength,
   };
 }
 
-function saveConfig(): boolean {
-  const settings = readSettingsForWrite("workingVibe");
-  if (!settings) {
-    return false;
-  }
-
-  if (config.theme === null) {
-    delete settings.workingVibe;
-  } else {
-    settings.workingVibe = config.theme;
-  }
-
-  return persistSettings(settings, "workingVibe");
+function patchVibeSetting(scope: string, patch: Record<string, unknown>): boolean {
+  return patchPowerlineSetting({ vibe: patch }, "working-vibes", scope);
 }
 
-function saveModelConfig(): boolean {
-  const settings = readSettingsForWrite("workingVibeModel");
-  if (!settings) {
-    return false;
-  }
-
-  if (config.modelSpec === DEFAULT_MODEL) {
-    delete settings.workingVibeModel;
-  } else {
-    settings.workingVibeModel = config.modelSpec;
-  }
-
-  return persistSettings(settings, "workingVibeModel");
-}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // File-Based Vibe Management
 // ═══════════════════════════════════════════════════════════════════════════
 
 function getVibesDir(): string {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
-  return join(homeDir, ".pi", "agent", "vibes");
+  return join(getAgentDir(), "vibes");
 }
 
 function toVibeFileSlug(theme: string): string {
@@ -383,7 +307,7 @@ async function generateVibe(
   
   // Get auth
   const auth = await extensionCtx.modelRegistry.getApiKeyAndHeaders(model);
-  if (!auth.ok) {
+  if (auth.ok === false) {
     console.debug(`[working-vibes] Auth failed for ${provider}: ${auth.error}`);
     return `${config.fallback}...`;
   }
@@ -482,7 +406,9 @@ export function getVibeTheme(): string | null {
 export function setVibeTheme(theme: string | null): boolean {
   config = { ...config, theme };
   recentVibes = [];  // Clear recent vibes on theme change
-  return saveConfig();
+  return patchVibeSetting("workingVibe", {
+    theme: config.theme ?? undefined,
+  });
 }
 
 export function getVibeModel(): string {
@@ -491,7 +417,9 @@ export function getVibeModel(): string {
 
 export function setVibeModel(modelSpec: string): boolean {
   config = { ...config, modelSpec };
-  return saveModelConfig();
+  return patchVibeSetting("workingVibeModel", {
+    model: config.modelSpec === DEFAULT_MODEL ? undefined : config.modelSpec,
+  });
 }
 
 export function onVibeBeforeAgentStart(
@@ -569,22 +497,9 @@ export function getVibeMode(): VibeMode {
 
 export function setVibeMode(mode: VibeMode): boolean {
   config = { ...config, mode };
-  return saveModeConfig();
-}
-
-function saveModeConfig(): boolean {
-  const settings = readSettingsForWrite("workingVibeMode");
-  if (!settings) {
-    return false;
-  }
-
-  if (config.mode === "generate") {
-    delete settings.workingVibeMode;
-  } else {
-    settings.workingVibeMode = config.mode;
-  }
-
-  return persistSettings(settings, "workingVibeMode");
+  return patchVibeSetting("workingVibeMode", {
+    mode: config.mode === "generate" ? undefined : config.mode,
+  });
 }
 
 export function hasVibeFile(theme: string): boolean {
@@ -630,7 +545,7 @@ export async function generateVibesBatch(
   
   // Get auth
   const auth = await extensionCtx.modelRegistry.getApiKeyAndHeaders(model);
-  if (!auth.ok) {
+  if (auth.ok === false) {
     return { success: false, count: 0, filePath, error: auth.error };
   }
   

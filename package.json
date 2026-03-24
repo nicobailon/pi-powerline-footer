@@ -3,6 +3,17 @@
   "version": "0.4.11",
   "description": "Powerline-style status bar extension for pi coding agent",
   "type": "module",
+  "scripts": {
+    "test": "vitest --run"
+  },
+  "devDependencies": {
+    "@mariozechner/pi-ai": "^0.66.1",
+    "@mariozechner/pi-coding-agent": "^0.66.1",
+    "@mariozechner/pi-tui": "^0.66.1",
+    "@types/node": "^24.5.2",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  },
   "files": [
     "*.ts",
     "*.md",

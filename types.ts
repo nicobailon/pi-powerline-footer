@@ -78,6 +78,24 @@ export interface StatusLineSegmentOptions {
   time?: { format?: "12h" | "24h"; showSeconds?: boolean };
 }
 
+export interface PowerlineVibeSettings {
+  theme?: string;
+  mode?: "generate" | "file";
+  model?: string;
+  fallback?: string;
+  refreshInterval?: number;
+  prompt?: string;
+  maxLength?: number;
+}
+
+export interface PowerlineSettings {
+  preset?: StatusLinePreset;
+  showLastPrompt?: boolean;
+  shortcuts?: Record<string, unknown>;
+  vibe?: PowerlineVibeSettings;
+  custom?: Record<string, unknown>;
+}
+
 // Preset definition
 export interface PresetDef {
   leftSegments: StatusLineSegmentId[];
