@@ -381,9 +381,13 @@ async function generateVibe(
     return `${config.fallback}...`;
   }
   
-  // Get API key
-  const apiKey = await extensionCtx.modelRegistry.getApiKey(model);
-  if (!apiKey) {
+  // Get request auth
+  const auth = await extensionCtx.modelRegistry.getApiKeyAndHeaders(model);
+  if (!auth.ok) {
+    console.debug(`[working-vibes] Auth lookup failed for ${config.modelSpec}: ${auth.error}`);
+    return `${config.fallback}...`;
+  }
+  if (!auth.apiKey) {
     console.debug(`[working-vibes] No API key for provider: ${provider}`);
     return `${config.fallback}...`;
   }
@@ -398,7 +402,11 @@ async function generateVibe(
   };
   
   // Call model with timeout
-  const response = await complete(model, aiContext, { apiKey, signal });
+  const response = await complete(model, aiContext, {
+    apiKey: auth.apiKey,
+    headers: auth.headers,
+    signal,
+  });
   
   // Extract and parse response
   const textContent = response.content.find(c => c.type === "text");
@@ -628,9 +636,12 @@ export async function generateVibesBatch(
     return { success: false, count: 0, filePath, error: `Model not found: ${config.modelSpec}` };
   }
   
-  // Get API key
-  const apiKey = await extensionCtx.modelRegistry.getApiKey(model);
-  if (!apiKey) {
+  // Get request auth
+  const auth = await extensionCtx.modelRegistry.getApiKeyAndHeaders(model);
+  if (!auth.ok) {
+    return { success: false, count: 0, filePath, error: auth.error };
+  }
+  if (!auth.apiKey) {
     return { success: false, count: 0, filePath, error: `No API key for provider: ${provider}` };
   }
   
@@ -650,7 +661,11 @@ export async function generateVibesBatch(
   try {
     // Use longer timeout for batch generation (30 seconds)
     const signal = AbortSignal.timeout(30000);
-    const response = await complete(model, aiContext, { apiKey, signal });
+    const response = await complete(model, aiContext, {
+      apiKey: auth.apiKey,
+      headers: auth.headers,
+      signal,
+    });
     
     const textContent = response.content.find(c => c.type === "text");
     if (!textContent?.text) {
