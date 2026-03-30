@@ -450,6 +450,11 @@ function buildContentFromParts(
   return " " + parts.join(` ${sepAnsi}${sep}${ansi.reset} `) + ansi.reset + " ";
 }
 
+// Shared grapheme segmenter instance — used to iterate by visual character
+// instead of by code point, so emoji sequences like ⚠️ (U+26A0 + U+FE0F)
+// are measured as a single unit with correct terminal width.
+const graphemeSegmenter = new Intl.Segmenter("en", { granularity: "grapheme" });
+
 function truncateWithEllipsisByWidth(text: string, maxWidth: number): string {
   if (maxWidth <= 0) return "";
   if (visibleWidth(text) <= maxWidth) return text;
@@ -459,11 +464,14 @@ function truncateWithEllipsisByWidth(text: string, maxWidth: number): string {
   let truncated = "";
   let truncatedWidth = 0;
 
-  for (const char of text) {
-    const charWidth = visibleWidth(char);
-    if (truncatedWidth + charWidth > targetWidth) break;
-    truncated += char;
-    truncatedWidth += charWidth;
+  // Iterate by grapheme cluster, not by code point.
+  // This ensures multi-codepoint emoji (e.g. ⚠️, 🇺🇸, 👨‍👩‍👧‍👦) are
+  // measured as a single unit with their correct terminal column width.
+  for (const { segment } of graphemeSegmenter.segment(text)) {
+    const segmentWidth = visibleWidth(segment);
+    if (truncatedWidth + segmentWidth > targetWidth) break;
+    truncated += segment;
+    truncatedWidth += segmentWidth;
   }
 
   return truncated.trimEnd() + "…";
