@@ -382,9 +382,9 @@ async function generateVibe(
   }
   
   // Get auth
-  const auth = await extensionCtx.modelRegistry.getApiKeyAndHeaders(model);
-  if (!auth.ok) {
-    console.debug(`[working-vibes] Auth failed for ${provider}: ${auth.error}`);
+  const apiKey = await extensionCtx.modelRegistry.getApiKey(model);
+  if (!apiKey) {
+    console.debug(`[working-vibes] Auth failed for ${provider}: no API key`);
     return `${config.fallback}...`;
   }
   
@@ -398,7 +398,7 @@ async function generateVibe(
   };
   
   // Call model with timeout
-  const response = await complete(model, aiContext, { apiKey: auth.apiKey, headers: auth.headers, signal });
+  const response = await complete(model, aiContext, { apiKey, signal });
   
   // Extract and parse response
   const textContent = response.content.find(c => c.type === "text");
@@ -629,9 +629,9 @@ export async function generateVibesBatch(
   }
   
   // Get auth
-  const auth = await extensionCtx.modelRegistry.getApiKeyAndHeaders(model);
-  if (!auth.ok) {
-    return { success: false, count: 0, filePath, error: auth.error };
+  const apiKey = await extensionCtx.modelRegistry.getApiKey(model);
+  if (!apiKey) {
+    return { success: false, count: 0, filePath, error: `No API key for ${provider}` };
   }
   
   // Build batch prompt
@@ -650,7 +650,7 @@ export async function generateVibesBatch(
   try {
     // Use longer timeout for batch generation (30 seconds)
     const signal = AbortSignal.timeout(30000);
-    const response = await complete(model, aiContext, { apiKey: auth.apiKey, headers: auth.headers, signal });
+    const response = await complete(model, aiContext, { apiKey, signal });
     
     const textContent = response.content.find(c => c.type === "text");
     if (!textContent?.text) {
