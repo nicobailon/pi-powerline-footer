@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.4.9] - 2026-04-03
+
+### Added
+- **Recent project prompts in prompt history** — `/stash-history` and `ctrl+alt+h` now let you choose between saved stashed prompts and recent user-submitted prompts from pi sessions in the current project folder.
+
+### Fixed
+- **Session transition cleanup in prompt history UI** — Unified stash and welcome cleanup under `session_start` reason handling so replacement starts reset session-local state without relying on removed post-transition extension events.
+
 ## [0.4.8] - 2026-03-27
 
 ### Fixed

@@ -71,12 +71,17 @@ The `📋 stash` indicator appears in the powerline bar (on presets with `extens
 
 ### Stash history
 
-Open stash history with either:
+Open prompt history with either:
 
 - `ctrl+alt+h`
 - `/stash-history`
 
-History keeps up to 12 recent stashed prompts (newest first). Selecting an entry inserts it into the editor. If the editor already has text, you can choose `Replace`, `Append`, or `Cancel`.
+Prompt history now has two sources:
+
+- stashed prompts — up to 12 recent stashed prompts (newest first)
+- recent project prompts — up to 50 recent user-submitted prompts pulled from pi sessions in the current project folder
+
+Selecting an entry inserts it into the editor. If the editor already has text, you can choose `Replace`, `Append`, or `Cancel`.
 
 ### Editor clipboard shortcuts
 

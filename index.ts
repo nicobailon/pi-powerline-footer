@@ -6,7 +6,7 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
 import { type SelectItem, SelectList, truncateToWidth, visibleWidth, Input, fuzzyFilter } from "@mariozechner/pi-tui";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 
@@ -70,6 +70,7 @@ interface PowerlineShortcuts {
 type PowerlineShortcutKey = keyof PowerlineShortcuts;
 
 const STASH_HISTORY_LIMIT = 12;
+const PROJECT_PROMPT_HISTORY_LIMIT = 50;
 const STASH_PREVIEW_WIDTH = 72;
 const DEFAULT_SHORTCUTS: PowerlineShortcuts = {
   stashHistory: "ctrl+alt+h",
@@ -162,6 +163,105 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function getStashHistoryPath(): string {
   const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
   return join(homeDir, ".pi", "agent", "powerline-footer", "stash-history.json");
+}
+
+function getSessionsPath(): string {
+  const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
+  return join(homeDir, ".pi", "agent", "sessions");
+}
+
+function getProjectSessionsPath(cwd: string): string {
+  const projectKey = cwd
+    .replace(/^[/\\]+|[/\\]+$/g, "")
+    .replace(/[\\/]+/g, "-");
+
+  return join(getSessionsPath(), `--${projectKey}--`);
+}
+
+function getPromptHistoryText(content: unknown): string {
+  if (typeof content === "string") {
+    return content.replace(/\s+/g, " ").trim();
+  }
+
+  if (!Array.isArray(content)) {
+    return "";
+  }
+
+  const parts: string[] = [];
+  for (const block of content) {
+    if (!isRecord(block) || block.type !== "text" || typeof block.text !== "string") {
+      continue;
+    }
+    parts.push(block.text);
+  }
+
+  return parts.join("\n").replace(/\s+/g, " ").trim();
+}
+
+function readRecentProjectPrompts(cwd: string, limit: number): string[] {
+  const sessionsPath = getProjectSessionsPath(cwd);
+  if (!existsSync(sessionsPath)) {
+    return [];
+  }
+
+  const promptEntries: { text: string; timestamp: number }[] = [];
+  const fileNames = readdirSync(sessionsPath)
+    .filter((fileName) => fileName.endsWith(".jsonl"));
+
+  for (const fileName of fileNames) {
+    const filePath = join(sessionsPath, fileName);
+    const lines = readFileSync(filePath, "utf-8").split("\n");
+
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i];
+      if (!line || !line.includes('"type":"message"') || !line.includes('"role":"user"')) {
+        continue;
+      }
+
+      let entry: unknown;
+      try {
+        entry = JSON.parse(line);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`Failed to parse session file ${filePath}: ${message}`);
+      }
+
+      if (!isRecord(entry) || entry.type !== "message" || !isRecord(entry.message) || entry.message.role !== "user") {
+        continue;
+      }
+
+      const text = getPromptHistoryText(entry.message.content);
+      if (!hasNonWhitespaceText(text)) {
+        continue;
+      }
+
+      const timestamp = typeof entry.message.timestamp === "number"
+        ? entry.message.timestamp
+        : typeof entry.timestamp === "string"
+          ? Date.parse(entry.timestamp)
+          : 0;
+
+      promptEntries.push({ text, timestamp: Number.isFinite(timestamp) ? timestamp : 0 });
+    }
+  }
+
+  promptEntries.sort((a, b) => b.timestamp - a.timestamp);
+
+  const prompts: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of promptEntries) {
+    if (seen.has(entry.text)) {
+      continue;
+    }
+
+    seen.add(entry.text);
+    prompts.push(entry.text);
+    if (prompts.length >= limit) {
+      return prompts;
+    }
+  }
+
+  return prompts;
 }
 
 function normalizeStashHistoryEntries(value: unknown): string[] {
@@ -663,11 +763,12 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   }
 
   // Track session start
-  pi.on("session_start", async (_event, ctx) => {
+  pi.on("session_start", async (event, ctx) => {
     sessionStartTime = Date.now();
     currentCtx = ctx;
     lastUserPrompt = "";
     isStreaming = false;
+    stashedEditorText = null;
 
     const settings = readSettings();
     showLastPrompt = settings.showLastPrompt !== false;
@@ -677,16 +778,24 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     getThinkingLevelFn = typeof ctx.getThinkingLevel === "function"
       ? () => ctx.getThinkingLevel()
       : null;
+
+    if (ctx.hasUI) {
+      ctx.ui.setStatus("stash", undefined);
+    }
     
     // Initialize vibe manager (needs modelRegistry from ctx)
     initVibeManager(ctx);
     
     if (enabled && ctx.hasUI) {
       setupCustomEditor(ctx);
-      if (settings.quietStartup === true) {
-        setupWelcomeHeader(ctx);
+      if (event.reason === "startup") {
+        if (settings.quietStartup === true) {
+          setupWelcomeHeader(ctx);
+        } else {
+          setupWelcomeOverlay(ctx);
+        }
       } else {
-        setupWelcomeOverlay(ctx);
+        dismissWelcome(ctx);
       }
     }
 
@@ -844,39 +953,109 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     return historyItems[i] ?? null;
   }
 
-  async function insertSelectedStash(ctx: any, selected: string): Promise<void> {
+  async function selectProjectPromptFromHistory(ctx: any, prompts: string[]): Promise<string | null> {
+    const items: SelectItem[] = prompts.map((entry, index) => ({
+      value: String(index),
+      label: `#${index + 1} ${buildStashPreview(entry, STASH_PREVIEW_WIDTH)}`,
+    }));
+
+    const selected = await showSelectOverlay(
+      ctx, "Recent project prompts", "↑↓ navigate • enter insert • esc cancel",
+      items, Math.min(items.length, 10));
+    if (!selected) return null;
+
+    const i = Number.parseInt(selected.value, 10);
+    return prompts[i] ?? null;
+  }
+
+  async function selectPromptHistorySource(
+    ctx: any,
+    stashCount: number,
+    projectPromptCount: number,
+  ): Promise<"stash" | "project" | null> {
+    const items: SelectItem[] = [];
+
+    if (stashCount > 0) {
+      items.push({
+        value: "stash",
+        label: "Stashed prompts",
+        description: `${stashCount} saved`,
+      });
+    }
+
+    if (projectPromptCount > 0) {
+      items.push({
+        value: "project",
+        label: "Recent project prompts",
+        description: `${projectPromptCount} recent`,
+      });
+    }
+
+    if (items.length === 0) {
+      return null;
+    }
+
+    if (items.length === 1) {
+      return items[0]?.value === "project" ? "project" : "stash";
+    }
+
+    const selected = await showSelectOverlay(
+      ctx, "Prompt history", "↑↓ navigate • enter open • esc cancel",
+      items, items.length);
+    if (!selected) return null;
+
+    return selected.value === "project" ? "project" : "stash";
+  }
+
+  async function insertSelectedPromptHistoryEntry(ctx: any, selected: string): Promise<void> {
     const currentText = getCurrentEditorText(ctx, currentEditor);
     if (!hasNonWhitespaceText(currentText)) {
       ctx.ui.setEditorText(selected);
-      ctx.ui.notify("Inserted stashed prompt", "info");
+      ctx.ui.notify("Inserted prompt", "info");
       return;
     }
 
-    const action = await ctx.ui.select("Insert stashed prompt", ["Replace", "Append", "Cancel"]);
+    const action = await ctx.ui.select("Insert prompt", ["Replace", "Append", "Cancel"]);
 
     if (action === "Replace") {
       ctx.ui.setEditorText(selected);
-      ctx.ui.notify("Replaced editor with stashed prompt", "info");
+      ctx.ui.notify("Replaced editor with prompt", "info");
       return;
     }
 
     if (action === "Append") {
       const separator = currentText.endsWith("\n") || selected.startsWith("\n") ? "" : "\n";
       ctx.ui.setEditorText(`${currentText}${separator}${selected}`);
-      ctx.ui.notify("Appended stashed prompt", "info");
+      ctx.ui.notify("Appended prompt", "info");
     }
   }
 
   async function openStashHistory(ctx: any): Promise<void> {
-    if (stashedPromptHistory.length === 0) {
-      ctx.ui.notify("No stashed prompt history yet", "info");
+    let projectPrompts: string[] = [];
+
+    try {
+      projectPrompts = readRecentProjectPrompts(ctx.cwd, PROJECT_PROMPT_HISTORY_LIMIT);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      ctx.ui.notify(`Failed to load project prompts: ${message}`, "warning");
+    }
+
+    if (stashedPromptHistory.length === 0 && projectPrompts.length === 0) {
+      ctx.ui.notify("No prompt history yet", "info");
       return;
     }
 
-    const selected = await selectStashedPromptFromHistory(ctx);
+    const source = await selectPromptHistorySource(ctx, stashedPromptHistory.length, projectPrompts.length);
+    if (!source) {
+      return;
+    }
+
+    const selected = source === "project"
+      ? await selectProjectPromptFromHistory(ctx, projectPrompts)
+      : await selectStashedPromptFromHistory(ctx);
     if (!selected) return;
 
-    await insertSelectedStash(ctx, selected);
+    await insertSelectedPromptHistoryEntry(ctx, selected);
   }
 
   async function switchToProfile(ctx: any, profiles: ProfileConfig[], index: number): Promise<boolean> {
@@ -1111,23 +1290,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     }
   });
 
-  pi.on("session_switch", async (_event, ctx) => {
-    sessionStartTime = Date.now();
-    currentCtx = ctx;
-    getThinkingLevelFn = typeof ctx.getThinkingLevel === "function"
-      ? () => ctx.getThinkingLevel()
-      : null;
-    lastUserPrompt = "";
-    isStreaming = false;
-    stashedEditorText = null;
-    stashedPromptHistory = readPersistedStashHistory();
-    if (ctx.hasUI) {
-      ctx.ui.setStatus("stash", undefined);
-    }
-    dismissWelcome(ctx);
-    reloadAndSyncActiveProfile(ctx);
-  });
-
   // Command to toggle/configure
   pi.registerCommand("powerline", {
     description: "Configure powerline status (toggle, preset)",
@@ -1186,7 +1348,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   });
 
   pi.registerCommand("stash-history", {
-    description: "Open stashed prompt history picker",
+    description: "Open prompt history picker",
     handler: async (_args, ctx) => {
       if (!ctx.hasUI) return;
       if (!enabled) {
@@ -1238,7 +1400,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   });
 
   pi.registerShortcut(resolvedShortcuts.stashHistory, {
-    description: "Open stash history picker",
+    description: "Open prompt history picker",
     handler: async (ctx) => {
       if (!enabled || !ctx.hasUI) return;
       await openStashHistory(ctx);
