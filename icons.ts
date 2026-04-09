@@ -18,6 +18,72 @@ export interface IconSet {
   warning: string;
 }
 
+// User icon overrides from theme.json
+type PartialIconSet = Partial<IconSet>;
+
+// Cache for user icon overrides
+let userIconCache: PartialIconSet | null = null;
+let userIconCacheTime = 0;
+const ICON_CACHE_TTL = 5000; // 5 seconds
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sanitizeUserIconOverrides(value: unknown): PartialIconSet {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  const sanitized: PartialIconSet = {};
+  const validKeys = Object.keys(NERD_ICONS) as Array<keyof IconSet>;
+
+  for (const key of validKeys) {
+    const rawIcon = value[key];
+    if (typeof rawIcon === "string" && rawIcon.length > 0) {
+      sanitized[key] = rawIcon;
+    }
+  }
+
+  return sanitized;
+}
+
+function loadUserIconOverrides(): PartialIconSet {
+  const now = Date.now();
+  if (userIconCache && now - userIconCacheTime < ICON_CACHE_TTL) {
+    return userIconCache;
+  }
+
+  try {
+    // Inline require for synchronous loading
+    const { fileURLToPath } = require("node:url");
+    const { dirname, join } = require("node:path");
+    const { existsSync, readFileSync } = require("node:fs");
+    
+    const themePath = join(dirname(fileURLToPath(import.meta.url)), "theme.json");
+
+    if (existsSync(themePath)) {
+      const content = readFileSync(themePath, "utf-8");
+      const parsed = JSON.parse(content);
+      const icons = isRecord(parsed) ? parsed.icons : undefined;
+      userIconCache = sanitizeUserIconOverrides(icons);
+      userIconCacheTime = now;
+      return userIconCache;
+    }
+  } catch {
+    // Silently fail - no icon overrides
+  }
+
+  userIconCache = {};
+  userIconCacheTime = now;
+  return userIconCache;
+}
+
+// Merge icon sets with user overrides
+function mergeIcons(base: IconSet, overrides: PartialIconSet): IconSet {
+  return { ...base, ...overrides };
+}
+
 // Separator characters
 export const SEP_DOT = " · ";
 
@@ -148,7 +214,9 @@ export function hasNerdFonts(): boolean {
 }
 
 export function getIcons(): IconSet {
-  return hasNerdFonts() ? NERD_ICONS : ASCII_ICONS;
+  const baseIcons = hasNerdFonts() ? NERD_ICONS : ASCII_ICONS;
+  const userOverrides = loadUserIconOverrides();
+  return mergeIcons(baseIcons, userOverrides);
 }
 
 export function getSeparatorChars(): SeparatorChars {
