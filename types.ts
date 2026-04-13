@@ -71,8 +71,10 @@ export type StatusLinePreset =
 export interface StatusLineSegmentOptions {
   model?: { showThinkingLevel?: boolean };
   path?: { 
-    mode?: "basename" | "abbreviated" | "full";
+    mode?: "basename" | "abbreviated" | "full" | "custom";
     maxLength?: number;
+    /** Shell command whose stdout is used as the path display (only for mode: "custom"). */
+    command?: string;
   };
   git?: { showBranch?: boolean; showStaged?: boolean; showUnstaged?: boolean; showUntracked?: boolean };
   time?: { format?: "12h" | "24h"; showSeconds?: boolean };

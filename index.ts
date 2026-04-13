@@ -10,7 +10,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 
-import type { ColorScheme, SegmentContext, StatusLinePreset, StatusLineSegmentId } from "./types.js";
+import type { ColorScheme, SegmentContext, StatusLinePreset, StatusLineSegmentId, StatusLineSegmentOptions } from "./types.js";
 import { getPreset, PRESETS } from "./presets.js";
 import { getSeparator } from "./separators.js";
 import { renderSegment } from "./segments.js";
@@ -626,12 +626,76 @@ function computeResponsiveLayout(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// User segment options from settings.json
+// ═══════════════════════════════════════════════════════════════════════════
+
+function parseUserSegmentOptions(settings: Record<string, unknown>): StatusLineSegmentOptions {
+  const raw = settings.powerlineSegmentOptions;
+  if (!isRecord(raw)) return {};
+
+  const opts: StatusLineSegmentOptions = {};
+
+  if (isRecord(raw.path)) {
+    const p: StatusLineSegmentOptions["path"] = {};
+    if (typeof raw.path.mode === "string") {
+      const m = raw.path.mode as string;
+      if (m === "basename" || m === "abbreviated" || m === "full" || m === "custom") {
+        p.mode = m;
+      }
+    }
+    if (typeof raw.path.maxLength === "number") p.maxLength = raw.path.maxLength;
+    if (typeof raw.path.command === "string") p.command = raw.path.command;
+    opts.path = p;
+  }
+
+  if (isRecord(raw.model)) {
+    const m: StatusLineSegmentOptions["model"] = {};
+    if (typeof raw.model.showThinkingLevel === "boolean") m.showThinkingLevel = raw.model.showThinkingLevel;
+    opts.model = m;
+  }
+
+  if (isRecord(raw.git)) {
+    const g: StatusLineSegmentOptions["git"] = {};
+    if (typeof raw.git.showBranch === "boolean") g.showBranch = raw.git.showBranch;
+    if (typeof raw.git.showStaged === "boolean") g.showStaged = raw.git.showStaged;
+    if (typeof raw.git.showUnstaged === "boolean") g.showUnstaged = raw.git.showUnstaged;
+    if (typeof raw.git.showUntracked === "boolean") g.showUntracked = raw.git.showUntracked;
+    opts.git = g;
+  }
+
+  if (isRecord(raw.time)) {
+    const t: StatusLineSegmentOptions["time"] = {};
+    if (raw.time.format === "12h" || raw.time.format === "24h") t.format = raw.time.format;
+    if (typeof raw.time.showSeconds === "boolean") t.showSeconds = raw.time.showSeconds;
+    opts.time = t;
+  }
+
+  return opts;
+}
+
+/** Merge preset options with user overrides (user wins per-segment, shallow merge per key). */
+function mergeSegmentOptions(
+  preset: StatusLineSegmentOptions,
+  user: StatusLineSegmentOptions,
+): StatusLineSegmentOptions {
+  if (!user || Object.keys(user).length === 0) return preset;
+
+  return {
+    model: user.model ? { ...preset.model, ...user.model } : preset.model,
+    path: user.path ? { ...preset.path, ...user.path } : preset.path,
+    git: user.git ? { ...preset.git, ...user.git } : preset.git,
+    time: user.time ? { ...preset.time, ...user.time } : preset.time,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Extension
 // ═══════════════════════════════════════════════════════════════════════════
 
 export default function powerlineFooter(pi: ExtensionAPI) {
   const startupSettings = readSettings();
   const resolvedShortcuts = resolveShortcutConfig(startupSettings);
+  let userSegmentOptions = parseUserSegmentOptions(startupSettings);
 
   let enabled = true;
   let sessionStartTime = Date.now();
@@ -729,6 +793,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     const settings = readSettings();
     showLastPrompt = settings.showLastPrompt !== false;
     config.preset = normalizePreset(settings.powerline) ?? "default";
+    userSegmentOptions = parseUserSegmentOptions(settings);
     stashedPromptHistory = readPersistedStashHistory();
 
     getThinkingLevelFn = typeof ctx.getThinkingLevel === "function"
@@ -1351,7 +1416,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       sessionStartTime,
       git: gitStatus,
       extensionStatuses: footerDataRef?.getExtensionStatuses() ?? new Map(),
-      options: presetDef.segmentOptions ?? {},
+      options: mergeSegmentOptions(presetDef.segmentOptions ?? {}, userSegmentOptions),
       theme,
       colors,
     };

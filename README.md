@@ -195,8 +195,32 @@ The path segment supports three modes:
 | `basename` | `powerline-footer` | Just the directory name (default) |
 | `abbreviated` | `…/extensions/powerline-footer` | Full path with home abbreviated and length limit |
 | `full` | `~/.pi/agent/extensions/powerline-footer` | Complete path with home abbreviated |
+| `custom` | `my-tree//my-project` | Output of a shell command (see below) |
 
 Configure via preset options: `path: { mode: "full" }`
+
+### Custom path command
+
+When `mode` is `"custom"`, the `command` option specifies a shell command whose stdout
+becomes the displayed path. The command runs in the current working directory. Output is
+cached for 5 seconds and falls back to `basename` on error or empty output.
+
+Configure it in `~/.pi/agent/settings.json` under `powerlineSegmentOptions`:
+
+```json
+{
+  "powerlineSegmentOptions": {
+    "path": {
+      "mode": "custom",
+      "command": "my-path-formatter"
+    }
+  }
+}
+```
+
+For example, in a monorepo with multiple git worktrees, a command that prints
+`<tree>/<project>` gives you instant context on which worktree you're in without
+eating your whole status bar.
 
 ## Segments
 

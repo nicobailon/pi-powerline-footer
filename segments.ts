@@ -1,9 +1,56 @@
 import { hostname as osHostname } from "node:os";
 import { basename } from "node:path";
+import { execSync } from "node:child_process";
 import { visibleWidth } from "@mariozechner/pi-tui";
 import type { RenderedSegment, SegmentContext, SemanticColor, StatusLineSegment, StatusLineSegmentId } from "./types.js";
 import { fg, rainbow, applyColor } from "./theme.js";
 import { getIcons, SEP_DOT, getThinkingText } from "./icons.js";
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Custom path command cache
+// ═══════════════════════════════════════════════════════════════════════════
+
+let customPathCache: { cwd: string; command: string; result: string; timestamp: number } | null = null;
+const CUSTOM_PATH_TTL_MS = 5000;
+
+function getCustomPath(command: string): string {
+  const cwd = process.cwd();
+  const now = Date.now();
+
+  if (
+    customPathCache &&
+    customPathCache.cwd === cwd &&
+    customPathCache.command === command &&
+    now - customPathCache.timestamp < CUSTOM_PATH_TTL_MS
+  ) {
+    return customPathCache.result;
+  }
+
+  try {
+    const result = execSync(command, {
+      cwd,
+      timeout: 2000,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+
+    // Only cache non-empty results; fall back to basename on empty output
+    const value = result || basename(cwd) || cwd;
+    customPathCache = { cwd, command, result: value, timestamp: now };
+    return value;
+  } catch {
+    // Command failed: fall back to basename, cache the fallback so we
+    // don't keep re-running a broken command every render.
+    const fallback = basename(cwd) || cwd;
+    customPathCache = { cwd, command, result: fallback, timestamp: now };
+    return fallback;
+  }
+}
+
+/** Invalidate the custom path cache (e.g. after a directory change). */
+export function invalidateCustomPathCache(): void {
+  customPathCache = null;
+}
 
 // Helper to apply semantic color from context
 function color(ctx: SegmentContext, semantic: SemanticColor, text: string): string {
@@ -89,7 +136,9 @@ const pathSegment: StatusLineSegment = {
     let pwd = process.cwd();
     const home = process.env.HOME || process.env.USERPROFILE;
 
-    if (mode === "basename") {
+    if (mode === "custom" && opts.command) {
+      pwd = getCustomPath(opts.command);
+    } else if (mode === "basename") {
       // Just the last directory component (cross-platform)
       pwd = basename(pwd) || pwd;
     } else {
