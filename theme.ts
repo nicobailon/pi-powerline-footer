@@ -21,6 +21,11 @@ const DEFAULT_COLORS: Required<ColorScheme> = {
   gitDirty: "warning",
   gitClean: "success",
   thinking: "muted",
+  thinkingMinimal: "#a78baf",  // Purple-gray
+  thinkingLow: "#6699ff",      // Blue
+  thinkingMedium: "#00d7d7",   // Teal
+  thinkingHigh: "#b294bb",     // Purple
+  thinkingXhigh: "#d183e8",   // Bright purple
   context: "dim",
   contextWarn: "warning",
   contextError: "error",
@@ -54,6 +59,7 @@ function sanitizeUserThemeOverrides(value: unknown): ColorScheme {
   const sanitized: ColorScheme = {};
   for (const [key, rawColor] of Object.entries(value)) {
     if (!Object.prototype.hasOwnProperty.call(DEFAULT_COLORS, key)) {
+      console.debug(`[powerline-theme] Unknown color key: ${key}, skipping`);
       continue;
     }
     if (typeof rawColor !== "string") {

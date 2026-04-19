@@ -191,7 +191,18 @@ const thinkingSegment: StatusLineSegment = {
       return { content: rainbow(content), visible: true };
     }
 
-    // Use thinking color for lower levels
+    // Use per-level thinking colors
+    if (level === "minimal") {
+      return { content: color(ctx, "thinkingMinimal", content), visible: true };
+    }
+    if (level === "low") {
+      return { content: color(ctx, "thinkingLow", content), visible: true };
+    }
+    if (level === "medium") {
+      return { content: color(ctx, "thinkingMedium", content), visible: true };
+    }
+
+    // Fallback for "off" or unknown levels
     return { content: color(ctx, "thinking", content), visible: true };
   },
 };
