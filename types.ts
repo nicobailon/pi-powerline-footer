@@ -18,7 +18,11 @@ export type SemanticColor =
   | "cost"
   | "tokens"
   | "separator"
-  | "border";
+  | "border"
+  | "chromeBar"
+  | "chromeBg"
+  | "chromeText"
+  | "chromePrompt";
 
 // Color scheme mapping semantic names to actual colors
 export type ColorScheme = Partial<Record<SemanticColor, ColorValue>>;
@@ -68,6 +72,8 @@ export type StatusLinePreset =
   | "nerd"
   | "ascii"
   | "custom";
+
+export type EditorChromeKind = "open" | "rounded" | "ohmy";
 
 // Per-segment options
 export interface StatusLineSegmentOptions {

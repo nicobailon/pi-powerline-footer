@@ -28,7 +28,11 @@ const DEFAULT_COLORS: Required<ColorScheme> = {
   cost: "text",
   tokens: "muted",
   separator: "dim",
-  border: "borderMuted",
+  border: "#808080", // Matches prior chrome separator gray closely
+  chromeBar: "#5f87ff", // Bright blue left accent for open chrome
+  chromeBg: "#303030", // Dark gray open chrome background
+  chromeText: "#ffffff", // White text inside open chrome
+  chromePrompt: "#c8c8c8", // Matches prior prompt glyph color
 };
 
 // Rainbow colors for high thinking levels
@@ -141,20 +145,32 @@ function hexToAnsi(hex: string): string {
   return `\x1b[38;2;${r};${g};${b}m`;
 }
 
-/**
- * Apply a color to text using the pi theme or custom hex
- */
-export function applyColor(
+function hexToBgAnsi(hex: string): string {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `\x1b[48;2;${r};${g};${b}m`;
+}
+
+function fgAnsiToBgAnsi(code: string): string {
+  return code
+    .replace("\x1b[38;2;", "\x1b[48;2;")
+    .replace("\x1b[38;5;", "\x1b[48;5;");
+}
+
+function getAnsiForColor(
   theme: Theme,
   color: ColorValue,
-  text: string
+  mode: "fg" | "bg",
 ): string {
   if (isHexColor(color)) {
-    return `${hexToAnsi(color)}${text}\x1b[0m`;
+    return mode === "fg" ? hexToAnsi(color) : hexToBgAnsi(color);
   }
 
   try {
-    return theme.fg(color as ThemeColor, text);
+    const fgAnsi = theme.getFgAnsi(color as ThemeColor);
+    return mode === "fg" ? fgAnsi : fgAnsiToBgAnsi(fgAnsi);
   } catch (error) {
     const key = String(color);
     if (!warnedInvalidThemeColors.has(key)) {
@@ -164,8 +180,21 @@ export function applyColor(
       }
       console.debug(`[powerline-theme] Invalid theme color "${key}"; falling back to "text".`, error);
     }
-    return theme.fg("text", text);
+
+    const fallback = theme.getFgAnsi("text");
+    return mode === "fg" ? fallback : fgAnsiToBgAnsi(fallback);
   }
+}
+
+/**
+ * Apply a color to text using the pi theme or custom hex
+ */
+export function applyColor(
+  theme: Theme,
+  color: ColorValue,
+  text: string
+): string {
+  return `${getAnsiForColor(theme, color, "fg")}${text}\x1b[0m`;
 }
 
 /**
@@ -179,6 +208,16 @@ export function fg(
 ): string {
   const color = resolveColor(semantic, presetColors);
   return applyColor(theme, color, text);
+}
+
+export function getSemanticAnsi(
+  theme: Theme,
+  semantic: SemanticColor,
+  mode: "fg" | "bg",
+  presetColors?: ColorScheme,
+): string {
+  const color = resolveColor(semantic, presetColors);
+  return getAnsiForColor(theme, color, mode);
 }
 
 /**

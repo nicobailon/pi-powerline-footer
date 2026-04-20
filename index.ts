@@ -10,7 +10,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 
-import type { ColorScheme, SegmentContext, StatusLinePreset, StatusLineSegmentId } from "./types.js";
+import type { ColorScheme, EditorChromeKind, SegmentContext, StatusLinePreset, StatusLineSegmentId } from "./types.js";
 import { BashTranscriptStore } from "./bash-mode/transcript.ts";
 import {
   BashCompletionEngine,
@@ -29,7 +29,8 @@ import { renderSegment } from "./segments.js";
 import { getGitStatus, invalidateGitStatus, invalidateGitBranch } from "./git-status.js";
 import { ansi, getFgAnsiCode } from "./colors.js";
 import { WelcomeComponent, WelcomeHeader, discoverLoadedCounts, getRecentSessions } from "./welcome.js";
-import { getDefaultColors } from "./theme.js";
+import { fg, getDefaultColors, getSemanticAnsi } from "./theme.js";
+import { renderEditorChrome } from "./editor-chrome.js";
 import { 
   initVibeManager, 
   onVibeBeforeAgentStart, 
@@ -53,10 +54,12 @@ import {
 
 interface PowerlineConfig {
   preset: StatusLinePreset;
+  editorChrome: EditorChromeKind;
 }
 
 let config: PowerlineConfig = {
   preset: "default",
+  editorChrome: "open",
 };
 
 const CUSTOM_COMPACTION_STATUS_KEY = "compact-policy";
@@ -451,6 +454,23 @@ function normalizePreset(value: unknown): StatusLinePreset | null {
 
   const preset = value.trim().toLowerCase();
   return isValidPreset(preset) ? preset : null;
+}
+
+function normalizeEditorChrome(value: unknown): EditorChromeKind | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const chrome = value.trim().toLowerCase();
+  if (chrome === "open" || chrome === "rounded" || chrome === "ohmy") {
+    return chrome;
+  }
+
+  if (chrome === "ohmypi") {
+    return "ohmy";
+  }
+
+  return null;
 }
 
 function hasNonWhitespaceText(text: string): boolean {
@@ -891,6 +911,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     bashModeSettings = parseBashModeSettings(settings);
     showLastPrompt = settings.showLastPrompt !== false;
     config.preset = normalizePreset(settings.powerline) ?? "default";
+    config.editorChrome = normalizeEditorChrome(settings.powerlineEditorChrome) ?? "open";
     stashedPromptHistory = readPersistedStashHistory();
     bashModeActive = false;
     bashTranscript = new BashTranscriptStore(bashModeSettings);
@@ -1709,46 +1730,22 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           return originalRender(width);
         }
 
-        const bc = (s: string) => `${getFgAnsiCode("sep")}${s}${ansi.reset}`;
-        const promptGlyph = bashModeActive ? "$" : ">";
-        const prompt = `${ansi.getFgAnsi(200, 200, 200)}${promptGlyph}${ansi.reset}`;
-        const promptPrefix = ` ${prompt} `;
-        const contPrefix = "   ";
-        const contentWidth = Math.max(1, width - 3);
-        const lines = originalRender(contentWidth);
+        const bc = (s: string) => fg(ctx.ui.theme, "border", s);
+        const pc = (s: string) => fg(ctx.ui.theme, "chromePrompt", s);
+        const topContent = currentCtx ? getResponsiveLayout(width, ctx.ui.theme).topContent : null;
 
-        if (lines.length === 0 || !currentCtx) return lines;
-
-        let bottomBorderIndex = lines.length - 1;
-        for (let i = lines.length - 1; i >= 1; i--) {
-          const stripped = lines[i]?.replace(/\x1b\[[0-9;]*m/g, "") || "";
-          if (stripped.length > 0 && /^─{3,}/.test(stripped)) {
-            bottomBorderIndex = i;
-            break;
-          }
-        }
-
-        const result: string[] = [];
-        const layout = getResponsiveLayout(width, ctx.ui.theme);
-        result.push(layout.topContent);
-        result.push(" " + bc("─".repeat(width - 2)));
-
-        for (let i = 1; i < bottomBorderIndex; i++) {
-          const prefix = i === 1 ? promptPrefix : contPrefix;
-          result.push(`${prefix}${lines[i] || ""}`);
-        }
-
-        if (bottomBorderIndex === 1) {
-          result.push(`${promptPrefix}${" ".repeat(contentWidth)}`);
-        }
-
-        result.push(" " + bc("─".repeat(width - 2)));
-
-        for (let i = bottomBorderIndex + 1; i < lines.length; i++) {
-          result.push(lines[i] || "");
-        }
-
-        return result;
+        return renderEditorChrome({
+          width,
+          kind: config.editorChrome,
+          topContent,
+          bashModeActive,
+          originalRender,
+          borderAnsi: bc,
+          promptAnsi: pc,
+          openBarAnsi: getSemanticAnsi(ctx.ui.theme, "chromeBar", "fg"),
+          openBgAnsi: getSemanticAnsi(ctx.ui.theme, "chromeBg", "bg"),
+          openTextAnsi: getSemanticAnsi(ctx.ui.theme, "chromeText", "fg"),
+        });
       };
 
       return editor;
