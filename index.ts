@@ -829,14 +829,14 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       requestRender();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      ctx.ui.notify(`Failed to run shell command: ${message}`, "error");
+      if (ctx) ctx.ui.notify(`Failed to run shell command: ${message}`, "error");
     }
   };
 
   const setBashModeActive = async (value: boolean, ctx: any): Promise<void> => {
     if (value === bashModeActive) return;
     if (!value && shellSession?.state.running) {
-      ctx.ui.notify("Wait for the current shell command to finish before leaving bash mode", "warning");
+      if (ctx) ctx.ui.notify("Wait for the current shell command to finish before leaving bash mode", "warning");
       return;
     }
 
@@ -847,14 +847,14 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         currentEditor?.dismissBashModeUi?.();
         currentEditor?.refreshGhostSuggestion?.();
         requestRender();
-        ctx.ui.notify(`Bash mode enabled (${session.state.shellName})`, "info");
+        if (ctx) ctx.ui.notify(`Bash mode enabled (${session.state.shellName})`, "info");
       } catch (error) {
         shellSession?.dispose();
         shellSession = null;
         bashModeActive = false;
         requestRender();
         const message = error instanceof Error ? error.message : String(error);
-        ctx.ui.notify(`Failed to start shell session: ${message}`, "error");
+        if (ctx) ctx.ui.notify(`Failed to start shell session: ${message}`, "error");
       }
       return;
     }
@@ -862,7 +862,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     bashModeActive = value;
     currentEditor?.dismissBashModeUi?.();
     requestRender();
-    ctx.ui.notify("Bash mode disabled", "info");
+    if (ctx) ctx.ui.notify("Bash mode disabled", "info");
   };
 
   function overlaySelectListTheme(theme: Theme) {
@@ -978,6 +978,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   pi.on("session_shutdown", async () => {
     shellSession?.dispose();
     shellSession = null;
+    currentCtx = null;
   });
 
   // Check if a bash command might change git branch
@@ -1090,7 +1091,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     }
     if (welcomeHeaderActive) {
       welcomeHeaderActive = false;
-      ctx.ui.setHeader(undefined);
+      if (ctx) ctx.ui.setHeader(undefined);
     }
   }
 
@@ -1694,14 +1695,18 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         isBashModeActive: () => bashModeActive,
         isShellRunning: () => shellSession?.state.running ?? false,
         onExitBashMode: () => {
-          void setBashModeActive(false, ctx);
+          if (currentCtx) void setBashModeActive(false, currentCtx);
         },
-        onSubmitCommand: (command) => void runShellCommand(command, ctx),
+        onSubmitCommand: (command) => {
+          if (currentCtx) void runShellCommand(command, currentCtx);
+        },
         onInterrupt: () => {
           shellSession?.interrupt();
-          ctx.ui.notify("Sent interrupt to shell", "info");
+          if (currentCtx) currentCtx.ui.notify("Sent interrupt to shell", "info");
         },
-        onNotify: (message, level = "info") => ctx.ui.notify(message, level),
+        onNotify: (message, level = "info") => {
+          if (currentCtx) currentCtx.ui.notify(message, level);
+        },
         getHistoryEntries: (prefix) => getShellHistoryEntries(prefix),
         resolveGhostSuggestion: async (text, signal) => {
           const oneOffBash = getOneOffBashCommandContext(text);
@@ -1756,13 +1761,13 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         if (!autocompleteFixed && !getInstalledAutocompleteProvider()) {
           autocompleteFixed = true;
           snapshotPromptHistory(editor);
-          ctx.ui.setEditorComponent(editorFactory);
+          currentCtx.ui.setEditorComponent(editorFactory);
           currentEditor?.handleInput(data);
           return;
         }
 
         attachAutocompleteProvider();
-        setTimeout(() => dismissWelcome(ctx), 0);
+        setTimeout(() => dismissWelcome(currentCtx), 0);
         originalHandleInput(data);
       };
 
@@ -1792,7 +1797,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         }
 
         const result: string[] = [];
-        const layout = getResponsiveLayout(width, ctx.ui.theme);
+        const layout = getResponsiveLayout(width, currentCtx.ui.theme);
         result.push(layout.topContent);
         result.push(" " + bc("─".repeat(width - 2)));
 
@@ -1856,26 +1861,27 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         dispose() {},
         invalidate() {},
         render(width: number): string[] {
-          if (!bashModeActive) return [];
+          if (!bashModeActive || !currentCtx) return [];
 
           const snapshot = bashTranscript.getSnapshot();
           if (snapshot.commands.length === 0) return [];
 
+          const theme = currentCtx.ui.theme;
           const lines: string[] = [];
           if (snapshot.truncatedCommands > 0) {
-            lines.push(` ${ctx.ui.theme.fg("dim", `… ${snapshot.truncatedCommands} earlier command${snapshot.truncatedCommands === 1 ? "" : "s"} truncated`)}`);
+            lines.push(` ${theme.fg("dim", `… ${snapshot.truncatedCommands} earlier command${snapshot.truncatedCommands === 1 ? "" : "s"} truncated`)}`);
           }
 
           const recentCommands = snapshot.commands.slice(-4);
           for (const command of recentCommands) {
             const promptGlyph = (shellSession?.state.shellName ?? "shell") === "fish" ? ">" : "$";
             const status = command.exitCode === null
-              ? ctx.ui.theme.fg("accent", "running")
+              ? theme.fg("accent", "running")
               : command.exitCode === 0
-                ? ctx.ui.theme.fg("success", "ok")
-                : ctx.ui.theme.fg("error", `exit ${command.exitCode}`);
+                ? theme.fg("success", "ok")
+                : theme.fg("error", `exit ${command.exitCode}`);
             const commandLine = truncateToWidth(command.command.replace(/\s+/g, " ").trim(), Math.max(8, width - 8), "…");
-            lines.push(` ${ctx.ui.theme.fg("accent", promptGlyph)} ${commandLine} ${ctx.ui.theme.fg("dim", "(")}${status}${ctx.ui.theme.fg("dim", ")")}`);
+            lines.push(` ${theme.fg("accent", promptGlyph)} ${commandLine} ${theme.fg("dim", "(")}${status}${theme.fg("dim", ")")}`);
 
             const outputTail = command.output.slice(-6);
             for (const outputLine of outputTail) {
@@ -1976,17 +1982,17 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       }
       
       // Check if session already has activity (handles p "command" case)
-      const sessionEvents = ctx.sessionManager?.getBranch?.() ?? [];
+      const sessionEvents = currentCtx?.sessionManager?.getBranch?.() ?? [];
       const hasActivity = sessionEvents.some((e: any) => 
         (e.type === "message" && e.message?.role === "assistant") ||
         e.type === "tool_call" ||
         e.type === "tool_result"
       );
-      if (hasActivity) {
+      if (hasActivity || !currentCtx) {
         return;
       }
       
-      ctx.ui.custom(
+      currentCtx.ui.custom(
         (tui: any, _theme: any, _keybindings: any, done: (result: void) => void) => {
           const welcome = new WelcomeComponent(
             modelName,
