@@ -1582,6 +1582,94 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     },
   });
 
+  /**
+   * Estimate token count for a single message using chars/4 heuristic.
+   * Mirrors the core's estimateTokens() from compaction.ts.
+   */
+  function estimateMessageTokens(msg: any): number {
+    let chars = 0;
+
+    switch (msg.role) {
+      case "user": {
+        const content = msg.content;
+        if (typeof content === "string") {
+          chars = content.length;
+        } else if (Array.isArray(content)) {
+          for (const block of content) {
+            if (block?.type === "text" && block.text) {
+              chars += block.text.length;
+            }
+          }
+        }
+        return Math.ceil(chars / 4);
+      }
+      case "assistant": {
+        const content = msg.content;
+        if (Array.isArray(content)) {
+          for (const block of content) {
+            if (block?.type === "text") {
+              chars += block.text?.length ?? 0;
+            } else if (block?.type === "thinking") {
+              chars += block.thinking?.length ?? 0;
+            } else if (block?.type === "toolCall") {
+              chars += block.name?.length ?? 0;
+              chars += JSON.stringify(block.arguments ?? {}).length;
+            }
+          }
+        }
+        return Math.ceil(chars / 4);
+      }
+      case "toolResult": {
+        // Tool result messages have content (string) or result (string)
+        chars = (msg.content ?? msg.result ?? "").length;
+        return Math.ceil(chars / 4);
+      }
+      case "compactionSummary": {
+        // Compaction summary messages have a summary string
+        chars = msg.summary?.length ?? 0;
+        return Math.ceil(chars / 4);
+      }
+      case "branchSummary": {
+        // Branch summary messages have a summary string
+        chars = msg.summary?.length ?? 0;
+        return Math.ceil(chars / 4);
+      }
+      case "bashExecution": {
+        // Bash execution: command + output
+        chars = msg.command?.length ?? 0;
+        chars += msg.output?.length ?? 0;
+        return Math.ceil(chars / 4);
+      }
+      case "custom": {
+        const content = msg.content;
+        if (typeof content === "string") {
+          chars = content.length;
+        } else if (Array.isArray(content)) {
+          for (const block of content) {
+            if (block?.type === "text" && block.text) {
+              chars += block.text.length;
+            }
+          }
+        }
+        return Math.ceil(chars / 4);
+      }
+      default:
+        return 0;
+    }
+  }
+
+  /**
+   * Estimate total tokens from a messages array using chars/4 heuristic.
+   * Used as fallback when getContextUsage() returns null tokens (post-compaction gap).
+   */
+  function estimateTokensFromMessages(messages: any[]): number {
+    let total = 0;
+    for (const msg of messages) {
+      total += estimateMessageTokens(msg);
+    }
+    return total;
+  }
+
   function buildSegmentContext(ctx: any, theme: Theme): SegmentContext {
     const presetDef = getPreset(config.preset);
     const colors: ColorScheme = presetDef.colors ?? getDefaultColors();
@@ -1628,17 +1716,40 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     const contextWindow = contextUsage
       ? contextUsage.contextWindow
       : (ctx.model?.contextWindow ?? 0);
-    const tokensInContext = contextUsage?.tokens ?? null;
-    const contextPercent = contextUsage
-      ? contextUsage.percent
-      : (lastAssistant && contextWindow > 0
-          ? ((lastAssistant.usage.input + lastAssistant.usage.output +
-              lastAssistant.usage.cacheRead + lastAssistant.usage.cacheWrite) / contextWindow) * 100
-          : 0);
-    // Note: ternary (not ??) for contextPercent — when contextUsage exists but
-    // percent is null (post-compaction gap), we must preserve null to show "?"
-    // in the segment. The fallback only applies when contextUsage is null
-    // (older Pi versions lacking getContextUsage).
+
+    // Determine tokens in context: prefer getContextUsage() result, then estimate
+    // from buildSessionContext() on post-compaction gap, then fall back to
+    // last-assistant calculation for older Pi versions.
+    let tokensInContext: number | null;
+    let contextPercent: number | null;
+
+    if (contextUsage?.tokens !== null) {
+      // Normal case: use getContextUsage() result directly
+      tokensInContext = contextUsage.tokens;
+      contextPercent = contextUsage.percent;
+    } else if (contextUsage) {
+      // Post-compaction gap: getContextUsage() exists but tokens are null.
+      // Try to estimate from the current session context messages.
+      const sessionCtx = ctx.sessionManager?.buildSessionContext?.();
+      if (sessionCtx && Array.isArray(sessionCtx.messages)) {
+        tokensInContext = estimateTokensFromMessages(sessionCtx.messages);
+        contextPercent = contextWindow > 0
+          ? (tokensInContext / contextWindow) * 100
+          : null;
+      } else {
+        // buildSessionContext unavailable — show unknown
+        tokensInContext = null;
+        contextPercent = null;
+      }
+    } else {
+      // Older Pi version lacking getContextUsage(): fall back to
+      // last-assistant calculation.
+      tokensInContext = null;
+      contextPercent = lastAssistant && contextWindow > 0
+        ? ((lastAssistant.usage.input + lastAssistant.usage.output +
+            lastAssistant.usage.cacheRead + lastAssistant.usage.cacheWrite) / contextWindow) * 100
+        : 0;
+    }
 
     // Get git status (cached)
     const gitBranch = footerDataRef?.getGitBranch() ?? null;
