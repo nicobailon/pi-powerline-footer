@@ -290,16 +290,26 @@ const contextPctSegment: StatusLineSegment = {
 
     const icons = getIcons();
     const pct = ctx.contextPercent;
+    const tokens = ctx.tokensInContext;
     const window = ctx.contextWindow;
 
     const autoIcon = ctx.autoCompactEnabled && icons.auto ? ` ${icons.auto}` : "";
-    const text = `${pct.toFixed(1)}%/${formatTokens(window)}${autoIcon}`;
+
+    // Show: pct - currentTokens/window (e.g. "19.1% - 12.6k/66k")
+    // During post-compaction gap, pct and tokens are null -> show "? - ?/66k"
+    const pctStr = pct !== null
+      ? `${pct.toFixed(1)}%`
+      : "?";
+    const tokensStr = tokens !== null
+      ? ` - ${formatTokens(tokens)}`
+      : " - ?";
+    const text = `${pctStr}${tokensStr}/${formatTokens(window)}${autoIcon}`;
 
     // Icon outside color, text inside - use semantic colors for thresholds
     let content: string;
-    if (pct > 90) {
+    if (pct !== null && pct > 90) {
       content = withIcon(icons.context, color(ctx, "contextError", text));
-    } else if (pct > 70) {
+    } else if (pct !== null && pct > 70) {
       content = withIcon(icons.context, color(ctx, "contextWarn", text));
     } else {
       content = withIcon(icons.context, color(ctx, "context", text));

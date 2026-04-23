@@ -1260,6 +1260,12 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     requestRender();
   });
 
+  // Force re-render after compaction so the footer shows accurate context usage
+  pi.on("session_compact", async (_event, ctx) => {
+    currentCtx = ctx;
+    requestRender();
+  });
+
   // Command to toggle/configure
   pi.registerCommand("powerline", {
     description: "Configure powerline status (toggle, preset)",
@@ -1612,13 +1618,27 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       lastAssistant = m;
     }
 
-    // Calculate context percentage (total tokens used in last turn)
-    const contextTokens = lastAssistant
-      ? lastAssistant.usage.input + lastAssistant.usage.output +
-        lastAssistant.usage.cacheRead + lastAssistant.usage.cacheWrite
-      : 0;
-    const contextWindow = ctx.model?.contextWindow || 0;
-    const contextPercent = contextWindow > 0 ? (contextTokens / contextWindow) * 100 : 0;
+    // Calculate context usage using the core's getContextUsage() which handles
+    // compaction boundaries correctly. Falls back to last-assistant calculation
+    // if getContextUsage is unavailable (older Pi versions).
+    const contextUsage = typeof ctx.getContextUsage === "function"
+      ? (ctx.getContextUsage() ?? null)
+      : null;
+
+    const contextWindow = contextUsage
+      ? contextUsage.contextWindow
+      : (ctx.model?.contextWindow ?? 0);
+    const tokensInContext = contextUsage?.tokens ?? null;
+    const contextPercent = contextUsage
+      ? contextUsage.percent
+      : (lastAssistant
+          ? ((lastAssistant.usage.input + lastAssistant.usage.output +
+              lastAssistant.usage.cacheRead + lastAssistant.usage.cacheWrite) / contextWindow) * 100
+          : 0);
+    // Note: ternary (not ??) for contextPercent — when contextUsage exists but
+    // percent is null (post-compaction gap), we must preserve null to show "?"
+    // in the segment. The fallback only applies when contextUsage is null
+    // (older Pi versions lacking getContextUsage).
 
     // Get git status (cached)
     const gitBranch = footerDataRef?.getGitBranch() ?? null;
@@ -1640,6 +1660,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       sessionId: ctx.sessionManager?.getSessionId?.(),
       usageStats: { input, output, cacheRead, cacheWrite, cost },
       contextPercent,
+      tokensInContext,
       contextWindow,
       autoCompactEnabled: ctx.settingsManager?.getCompactionSettings?.()?.enabled ?? true,
       customCompactionEnabled: customCompactionEnabled || extensionStatuses.has(CUSTOM_COMPACTION_STATUS_KEY),
