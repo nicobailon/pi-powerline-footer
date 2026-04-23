@@ -1631,7 +1631,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     const tokensInContext = contextUsage?.tokens ?? null;
     const contextPercent = contextUsage
       ? contextUsage.percent
-      : (lastAssistant
+      : (lastAssistant && contextWindow > 0
           ? ((lastAssistant.usage.input + lastAssistant.usage.output +
               lastAssistant.usage.cacheRead + lastAssistant.usage.cacheWrite) / contextWindow) * 100
           : 0);

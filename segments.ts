@@ -287,6 +287,7 @@ const contextPctSegment: StatusLineSegment = {
   id: "context_pct",
   render(ctx) {
     if (ctx.customCompactionEnabled) return { content: "", visible: false };
+    if (!ctx.contextWindow) return { content: "", visible: false };
 
     const icons = getIcons();
     const pct = ctx.contextPercent;
