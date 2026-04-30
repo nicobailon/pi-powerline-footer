@@ -1,4 +1,4 @@
-import type { ColorScheme, PresetDef, StatusLinePreset } from "./types.ts";
+import type { BuiltinStatusLinePreset, ColorScheme, PresetDef } from "./types.ts";
 import { getDefaultColors } from "./theme.ts";
 
 // Get base colors from theme.ts (single source of truth)
@@ -21,7 +21,7 @@ const NERD_COLORS: ColorScheme = {
   cost: "warning",
 };
 
-export const PRESETS: Record<StatusLinePreset, PresetDef> = {
+export const PRESETS: Record<BuiltinStatusLinePreset, PresetDef> = {
   default: {
     leftSegments: ["model", "thinking", "shell_mode", "path", "git", "context_pct", "cache_read", "cost"],
     rightSegments: [],
@@ -94,16 +94,8 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
       git: { showBranch: true, showStaged: true, showUnstaged: true, showUntracked: true },
     },
   },
-
-  custom: {
-    leftSegments: ["model", "shell_mode", "path", "git"],
-    rightSegments: ["token_total", "cost", "context_pct"],
-    separator: "powerline-thin",
-    colors: DEFAULT_COLORS,
-    segmentOptions: {},
-  },
 };
 
-export function getPreset(name: StatusLinePreset): PresetDef {
+export function getPreset(name: BuiltinStatusLinePreset): PresetDef {
   return PRESETS[name] ?? PRESETS.default;
 }

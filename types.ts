@@ -65,14 +65,15 @@ export type StatusLineSeparatorStyle =
   | "star";
 
 // Preset names
-export type StatusLinePreset =
+export type BuiltinStatusLinePreset =
   | "default"
   | "minimal"
   | "compact"
   | "full"
   | "nerd"
-  | "ascii"
-  | "custom";
+  | "ascii";
+
+export type StatusLinePreset = BuiltinStatusLinePreset | "custom";
 
 // Per-segment options
 export interface StatusLineSegmentOptions {
@@ -106,15 +107,17 @@ export interface CustomStatusItem {
 
 // Preset definition
 export interface PresetDef {
-  leftSegments: BuiltinStatusLineSegmentId[];
-  rightSegments: BuiltinStatusLineSegmentId[];
+  leftSegments: StatusLineSegmentId[];
+  rightSegments: StatusLineSegmentId[];
   /** Secondary row segments (shown in footer, above sub bar) */
-  secondarySegments?: BuiltinStatusLineSegmentId[];
+  secondarySegments?: StatusLineSegmentId[];
   separator: StatusLineSeparatorStyle;
   segmentOptions?: StatusLineSegmentOptions;
   /** Color scheme for this preset */
   colors?: ColorScheme;
 }
+
+export type CustomPresetConfig = Partial<Pick<PresetDef, "leftSegments" | "rightSegments" | "secondarySegments" | "separator">>;
 
 // Separator definition
 export interface SeparatorDef {

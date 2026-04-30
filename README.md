@@ -123,6 +123,30 @@ You can promote any extension status key into its own dedicated powerline item. 
 - `hideWhenMissing` (optional): hide item when no status is present (default `true`)
 - `excludeFromExtensionStatuses` (optional): omit this key from the aggregate `extension_statuses` segment (default `true`)
 
+### Custom preset layout
+
+Use `"preset": "custom"` to define explicit rows instead of appending `customItems` by position:
+
+```json
+{
+  "powerline": {
+    "preset": "custom",
+    "custom": {
+      "separator": "powerline-thin",
+      "leftSegments": ["custom:model_display", "path", "git"],
+      "rightSegments": ["custom:context_gauge"],
+      "secondarySegments": []
+    },
+    "customItems": [
+      { "id": "model_display" },
+      { "id": "context_gauge" }
+    ]
+  }
+}
+```
+
+`leftSegments`, `rightSegments`, and `secondarySegments` accept the built-in segment ids below plus `custom:<id>` entries for configured custom items. With `preset: "custom"`, custom item `position` is ignored. Configure built-in segment options with the top-level `powerline.path`, `powerline.git`, `powerline.model`, and `powerline.time` settings.
+
 If you still prefer the older string preset config shape, `"powerline": "default"` continues to work. String preset shorthand keeps `welcome` enabled and uses the default shortcut/cost/model display settings.
 
 ### Demo settings
@@ -371,6 +395,8 @@ Use `"off"` to disable extension-owned git polling entirely and only show the br
 ## Segments
 
 `model` · `thinking` · `shell_mode` · `path` · `git` · `subagents` · `token_in` · `token_out` · `token_total` · `cost` · `context_pct` · `context_total` · `time_spent` · `time` · `session` · `hostname` · `cache_read` · `cache_write`
+
+Custom preset layouts can also use `custom:<id>` entries for configured custom items.
 
 ## Separators
 

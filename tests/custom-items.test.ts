@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, normalizeExtensionStatusValue, parsePowerlineConfig, mergeSegmentOptions, mergeSegmentsWithCustomItems, nextPowerlineSettingWithOptions, nextPowerlineSettingWithPreset, normalizeCompactExtensionStatus } from "../powerline-config.ts";
+import { collectHiddenExtensionStatusKeys, customPresetFromConfig, getNotificationExtensionStatuses, normalizeExtensionStatusValue, parsePowerlineConfig, mergeSegmentOptions, mergeSegmentsWithCustomItems, nextPowerlineSettingWithOptions, nextPowerlineSettingWithPreset, normalizeCompactExtensionStatus } from "../powerline-config.ts";
 
 test("parsePowerlineConfig supports object config with custom items", () => {
   const config = parsePowerlineConfig(
@@ -95,6 +95,44 @@ test("mergeSegmentOptions lets user config override preset segment defaults", ()
       cost: { subscriptionDisplay: "reported-cost" },
     },
   );
+});
+
+test("parsePowerlineConfig supports custom preset layout", () => {
+  const config = parsePowerlineConfig(
+    {
+      preset: "custom",
+      custom: {
+        separator: "powerline-thin",
+        leftSegments: ["custom:model_display", "path", "git"],
+        rightSegments: ["custom:context_gauge"],
+        secondarySegments: [],
+      },
+      customItems: [{ id: "context_gauge" }],
+    },
+    ["default", "custom"],
+  );
+
+  assert.equal(config.preset, "custom");
+  assert.deepEqual(config.custom?.leftSegments, ["custom:model_display", "path", "git"]);
+  assert.deepEqual(config.custom?.rightSegments, ["custom:context_gauge"]);
+  assert.deepEqual(config.custom?.secondarySegments, []);
+  assert.equal(config.custom?.separator, "powerline-thin");
+});
+
+test("customPresetFromConfig builds a config-defined preset", () => {
+  const colors = { model: "accent" } as const;
+  const config = parsePowerlineConfig(
+    { preset: "custom", custom: { leftSegments: ["custom:model_display"], rightSegments: [], separator: "powerline" } },
+    ["default", "custom"],
+  );
+  const resolved = customPresetFromConfig(config, colors);
+
+  assert.deepEqual(resolved.leftSegments, ["custom:model_display"]);
+  assert.deepEqual(resolved.rightSegments, []);
+  assert.deepEqual(resolved.secondarySegments, []);
+  assert.equal(resolved.separator, "powerline");
+  assert.deepEqual(resolved.segmentOptions, {});
+  assert.equal(resolved.colors, colors);
 });
 
 test("mergeSegmentsWithCustomItems appends custom segment ids by position", () => {

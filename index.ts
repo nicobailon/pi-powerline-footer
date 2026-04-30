@@ -9,7 +9,7 @@ import { isKeyRelease, type AutocompleteProvider, type SelectItem, SelectList, t
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 
-import type { ColorScheme, SegmentContext, StatusLinePreset, StatusLineSegmentId } from "./types.ts";
+import type { ColorScheme, PresetDef, SegmentContext, StatusLinePreset, StatusLineSegmentId } from "./types.ts";
 import type { PowerlineConfig } from "./powerline-config.ts";
 import { BashTranscriptStore } from "./bash-mode/transcript.ts";
 import {
@@ -25,7 +25,7 @@ import { matchHistoryEntries, readGlobalShellHistory, readProjectHistory, append
 import type { BashModeSettings } from "./bash-mode/types.ts";
 import { getPreset, PRESETS } from "./presets.ts";
 import { getAgentPath } from "./paths.ts";
-import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, mergeSegmentOptions, mergeSegmentsWithCustomItems, nextPowerlineSettingWithOptions, nextPowerlineSettingWithPreset, parsePowerlineConfig } from "./powerline-config.ts";
+import { collectHiddenExtensionStatusKeys, customPresetFromConfig, getNotificationExtensionStatuses, mergeSegmentOptions, mergeSegmentsWithCustomItems, nextPowerlineSettingWithOptions, nextPowerlineSettingWithPreset, parsePowerlineConfig } from "./powerline-config.ts";
 import { getSeparator } from "./separators.ts";
 import { renderSegment } from "./segments.ts";
 import { getGitStatus, invalidateGitStatus, invalidateGitBranch } from "./git-status.ts";
@@ -639,10 +639,10 @@ function writePowerlineOptionSetting(
   ));
 }
 
-const PRESET_NAMES = Object.keys(PRESETS) as StatusLinePreset[];
+const PRESET_NAMES = [...Object.keys(PRESETS), "custom"] as StatusLinePreset[];
 
 function isValidPreset(value: unknown): value is StatusLinePreset {
-  return typeof value === "string" && Object.prototype.hasOwnProperty.call(PRESETS, value);
+  return typeof value === "string" && (value === "custom" || Object.prototype.hasOwnProperty.call(PRESETS, value));
 }
 
 function normalizePreset(value: unknown): StatusLinePreset | null {
@@ -652,6 +652,12 @@ function normalizePreset(value: unknown): StatusLinePreset | null {
 
   const preset = value.trim().toLowerCase();
   return isValidPreset(preset) ? preset : null;
+}
+
+function resolvePreset(config: PowerlineConfig): PresetDef {
+  return config.preset === "custom"
+    ? customPresetFromConfig(config, PRESETS.default.colors)
+    : getPreset(config.preset);
 }
 
 function hasNonWhitespaceText(text: string): boolean {
@@ -947,7 +953,7 @@ function renderSegmentWithWidth(
 /** Build content string from pre-rendered parts */
 function buildContentFromParts(
   parts: string[],
-  presetDef: ReturnType<typeof getPreset>
+  presetDef: PresetDef
 ): string {
   if (parts.length === 0) return "";
   const separatorDef = getSeparator(presetDef.separator);
@@ -963,16 +969,18 @@ function buildContentFromParts(
  */
 function computeResponsiveLayout(
   ctx: SegmentContext,
-  presetDef: ReturnType<typeof getPreset>,
+  presetDef: PresetDef,
   availableWidth: number
 ): { topContent: string; secondaryContent: string } {
   const separatorDef = getSeparator(presetDef.separator);
   const sepWidth = visibleWidth(separatorDef.left) + 2; // separator + spaces around it
   
   // Get all segments: primary first, then secondary
-  const mergedSegments = mergeSegmentsWithCustomItems(presetDef, config.customItems);
-  const primaryIds = [...mergedSegments.leftSegments, ...mergedSegments.rightSegments];
-  const secondaryIds = mergedSegments.secondarySegments;
+  const segments = config.preset === "custom"
+    ? presetDef
+    : mergeSegmentsWithCustomItems(presetDef, config.customItems);
+  const primaryIds = [...segments.leftSegments, ...segments.rightSegments];
+  const secondaryIds = segments.secondarySegments ?? [];
   const allSegmentIds = [...primaryIds, ...secondaryIds];
   
   // Render all segments and get their widths
@@ -1918,7 +1926,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       }
 
       // Show available presets
-      const presetList = Object.keys(PRESETS).join(", ");
+      const presetList = PRESET_NAMES.join(", ");
       ctx.ui.notify(`Available presets: ${presetList}`, "info");
     },
   });
@@ -2099,7 +2107,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   });
 
   function buildSegmentContext(ctx: any, theme: Theme): SegmentContext {
-    const presetDef = getPreset(config.preset);
+    const presetDef = resolvePreset(config);
     const colors: ColorScheme = presetDef.colors ?? getDefaultColors();
 
     // Build usage stats and get thinking level from session
@@ -2206,7 +2214,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       }
     }
 
-    const presetDef = getPreset(config.preset);
+    const presetDef = resolvePreset(config);
     let segmentCtx: SegmentContext;
     try {
       segmentCtx = buildSegmentContext(currentCtx, theme);
