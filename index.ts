@@ -28,6 +28,7 @@ import { getPreset, PRESETS } from "./presets.js";
 import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, mergeSegmentsWithCustomItems, nextPowerlineSettingWithPreset, parsePowerlineConfig } from "./powerline-config.js";
 import { getSeparator } from "./separators.js";
 import { renderSegment } from "./segments.js";
+import { initI18n, t } from "./i18n.js";
 import { getGitStatus, invalidateGitStatus, invalidateGitBranch } from "./git-status.js";
 import { ansi, getFgAnsiCode } from "./colors.js";
 import { WelcomeComponent, WelcomeHeader, discoverLoadedCounts, getRecentSessions } from "./welcome.js";
@@ -766,6 +767,7 @@ function computeResponsiveLayout(
 // ═══════════════════════════════════════════════════════════════════════════
 
 export default function powerlineFooter(pi: ExtensionAPI) {
+  initI18n(pi);
   const startupSettings = readSettings();
   config = parsePowerlineConfig(startupSettings.powerline, PRESET_NAMES);
   const resolvedShortcuts = resolveShortcutConfig(startupSettings);
@@ -858,14 +860,14 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       requestStatusRender();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      ctx.ui.notify(`Failed to run shell command: ${message}`, "error");
+      ctx.ui.notify(t("bash.failedRun", "Failed to run shell command: {message}", { message }), "error");
     }
   };
 
   const setBashModeActive = async (value: boolean, ctx: any): Promise<void> => {
     if (value === bashModeActive) return;
     if (!value && shellSession?.state.running) {
-      ctx.ui.notify("Wait for the current shell command to finish before leaving bash mode", "warning");
+      ctx.ui.notify(t("bash.waitBeforeExit", "Wait for the current shell command to finish before leaving bash mode"), "warning");
       return;
     }
 
@@ -876,14 +878,14 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         currentEditor?.dismissBashModeUi?.();
         currentEditor?.refreshGhostSuggestion?.();
         requestStatusRender();
-        ctx.ui.notify(`Bash mode enabled (${session.state.shellName})`, "info");
+        ctx.ui.notify(t("bash.enabled", "Bash mode enabled ({shell})", { shell: session.state.shellName }), "info");
       } catch (error) {
         shellSession?.dispose();
         shellSession = null;
         bashModeActive = false;
         requestStatusRender();
         const message = error instanceof Error ? error.message : String(error);
-        ctx.ui.notify(`Failed to start shell session: ${message}`, "error");
+        ctx.ui.notify(t("bash.failedStart", "Failed to start shell session: {message}", { message }), "error");
       }
       return;
     }
@@ -891,7 +893,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     bashModeActive = value;
     currentEditor?.dismissBashModeUi?.();
     requestStatusRender();
-    ctx.ui.notify("Bash mode disabled", "info");
+    ctx.ui.notify(t("bash.disabled", "Bash mode disabled"), "info");
   };
 
   function overlaySelectListTheme(theme: Theme) {
@@ -1166,7 +1168,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       return text;
     }
 
-    ctx.ui.notify("Editor is empty", "info");
+    ctx.ui.notify(t("stash.editorEmpty", "Editor is empty"), "info");
     return null;
   }
 
@@ -1244,7 +1246,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     const currentText = getCurrentEditorText(ctx, currentEditor);
     if (!hasNonWhitespaceText(currentText)) {
       ctx.ui.setEditorText(selected);
-      ctx.ui.notify("Inserted prompt", "info");
+      ctx.ui.notify(t("stash.inserted", "Inserted prompt"), "info");
       return;
     }
 
@@ -1252,14 +1254,14 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
     if (action === "Replace") {
       ctx.ui.setEditorText(selected);
-      ctx.ui.notify("Replaced editor with prompt", "info");
+      ctx.ui.notify(t("stash.replaced", "Replaced editor with prompt"), "info");
       return;
     }
 
     if (action === "Append") {
       const separator = currentText.endsWith("\n") || selected.startsWith("\n") ? "" : "\n";
       ctx.ui.setEditorText(`${currentText}${separator}${selected}`);
-      ctx.ui.notify("Appended prompt", "info");
+      ctx.ui.notify(t("stash.appended", "Appended prompt"), "info");
     }
   }
 
@@ -1269,14 +1271,14 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
     if (!hasNonWhitespaceText(rawText)) {
       if (!hasStash) {
-        ctx.ui.notify("Nothing to stash", "info");
+        ctx.ui.notify(t("stash.nothing", "Nothing to stash"), "info");
         return;
       }
 
       ctx.ui.setEditorText(stashedEditorText);
       stashedEditorText = null;
       ctx.ui.setStatus("stash", undefined);
-      ctx.ui.notify("Stash restored", "info");
+      ctx.ui.notify(t("stash.restored", "Stash restored"), "info");
       return;
     }
 
@@ -1284,7 +1286,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     addStashHistoryEntry(rawText);
     ctx.ui.setEditorText("");
     ctx.ui.setStatus("stash", "stash");
-    ctx.ui.notify(hasStash ? "Stash updated" : "Text stashed", "info");
+    ctx.ui.notify(hasStash ? t("stash.updated", "Stash updated") : t("stash.textStashed", "Text stashed"), "info");
   }
 
   async function openStashHistory(ctx: any): Promise<void> {
@@ -1294,11 +1296,11 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       projectPrompts = readRecentProjectPrompts(ctx.cwd, PROJECT_PROMPT_HISTORY_LIMIT);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      ctx.ui.notify(`Failed to load project prompts: ${message}`, "warning");
+      ctx.ui.notify(t("stash.failedLoadPrompts", "Failed to load project prompts: {message}", { message }), "warning");
     }
 
     if (stashedPromptHistory.length === 0 && projectPrompts.length === 0) {
-      ctx.ui.notify("No prompt history yet", "info");
+      ctx.ui.notify(t("stash.noHistory", "No prompt history yet"), "info");
       return;
     }
 
@@ -1325,9 +1327,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           ctx.ui.setEditorText(stashedEditorText);
           stashedEditorText = null;
           ctx.ui.setStatus("stash", undefined);
-          ctx.ui.notify("Stash restored", "info");
+          ctx.ui.notify(t("stash.restored", "Stash restored"), "info");
         } else {
-          ctx.ui.notify("Stash preserved — clear editor then Alt+S to restore", "info");
+          ctx.ui.notify(t("stash.preserved", "Stash preserved — clear editor then Alt+S to restore"), "info");
         }
       }
     }
@@ -1336,7 +1338,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   // Command to toggle/configure
   pi.registerCommand("powerline", {
-    description: "Configure powerline status (toggle, preset)",
+    description: t("powerline.description", "Configure powerline status (toggle, preset)"),
     handler: async (args, ctx) => {
       // Update context reference (command ctx may have more methods)
       currentCtx = ctx;
@@ -1346,7 +1348,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         enabled = !enabled;
         if (enabled) {
           setupCustomEditor(ctx);
-          ctx.ui.notify("Powerline enabled", "info");
+          ctx.ui.notify(t("powerline.enabled", "Powerline enabled"), "info");
         } else {
           shellSession?.dispose();
           shellSession = null;
@@ -1374,7 +1376,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           currentEditor = null;
           statusRenderScheduler.cancel();
           resetLayoutCache();
-          ctx.ui.notify("Powerline disabled", "info");
+          ctx.ui.notify(t("powerline.disabled", "Powerline disabled"), "info");
         }
         return;
       }
@@ -1388,16 +1390,16 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         }
 
         if (writePowerlinePresetSetting(preset, ctx.cwd)) {
-          ctx.ui.notify(`Preset set to: ${preset}`, "info");
+          ctx.ui.notify(t("powerline.preset", "Preset set to: {preset}", { preset }), "info");
         } else {
-          ctx.ui.notify(`Preset set to: ${preset} (not persisted; check settings.json)`, "warning");
+          ctx.ui.notify(t("powerline.presetNotPersisted", "Preset set to: {preset} (not persisted; check settings.json)", { preset }), "warning");
         }
         return;
       }
 
       // Show available presets
       const presetList = Object.keys(PRESETS).join(", ");
-      ctx.ui.notify(`Available presets: ${presetList}`, "info");
+      ctx.ui.notify(t("powerline.availablePresets", "Available presets: {presets}", { presets: presetList }), "info");
     },
   });
 
@@ -1406,7 +1408,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     handler: async (_args, ctx) => {
       if (!ctx.hasUI) return;
       if (!enabled) {
-        ctx.ui.notify("Powerline is disabled", "info");
+        ctx.ui.notify(t("powerline.disabledStatus", "Powerline is disabled"), "info");
         return;
       }
 
@@ -1430,7 +1432,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         await setBashModeActive(!bashModeActive, ctx);
         return;
       }
-      ctx.ui.notify("Usage: /bash-mode [on|off|toggle]", "warning");
+      ctx.ui.notify(t("bash.usage", "Usage: /bash-mode [on|off|toggle]"), "warning");
     },
   });
 
@@ -1446,13 +1448,13 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         } catch (error) {
           bashModeActive = false;
           const message = error instanceof Error ? error.message : String(error);
-          ctx.ui.notify(`Failed to restart shell session: ${message}`, "error");
+          ctx.ui.notify(t("bash.failedRestart", "Failed to restart shell session: {message}", { message }), "error");
           requestStatusRender();
           return;
         }
       }
       requestStatusRender();
-      ctx.ui.notify("Bash session reset", "info");
+      ctx.ui.notify(t("bash.reset", "Bash session reset"), "info");
     },
   });
 
@@ -1502,7 +1504,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
       copyTextToClipboard(ctx, text);
       ctx.ui.setEditorText("");
-      ctx.ui.notify("Cut editor text", "info");
+      ctx.ui.notify(t("editor.cut", "Cut editor text"), "info");
     },
   });
 
