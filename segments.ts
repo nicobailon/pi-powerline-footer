@@ -1,6 +1,6 @@
 import { hostname as osHostname } from "node:os";
 import { basename } from "node:path";
-import { visibleWidth } from "@mariozechner/pi-tui";
+import { truncateToWidth } from "@mariozechner/pi-tui";
 import type { BuiltinStatusLineSegmentId, RenderedSegment, SegmentContext, SemanticColor, StatusLineSegment, StatusLineSegmentId } from "./types.ts";
 import { normalizeCompactExtensionStatus, normalizeExtensionStatusValue } from "./powerline-config.ts";
 import { fg, rainbow, applyColor } from "./theme.ts";
@@ -34,6 +34,24 @@ function formatDuration(ms: number): string {
   if (hours > 0) return `${hours}h${minutes % 60}m`;
   if (minutes > 0) return `${minutes}m${seconds % 60}s`;
   return `${seconds}s`;
+}
+
+function sanitizeSegmentText(text: string): string {
+  return text
+    .replace(/[\r\n\t]/g, " ")
+    .replace(/[\x00-\x1f\x7f]/g, " ")
+    .replace(/ +/g, " ")
+    .trim();
+}
+
+function clampDisplayWidth(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(1, Math.floor(value))
+    : fallback;
+}
+
+function stripAnsiSgr(text: string): string {
+  return text.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -355,8 +373,14 @@ const sessionSegment: StatusLineSegment = {
   id: "session",
   render(ctx) {
     const icons = getIcons();
-    const sessionId = ctx.sessionId;
-    const display = sessionId?.slice(0, 8) || "new";
+    const opts = ctx.options.session ?? {};
+    const sessionName = ctx.sessionName ? sanitizeSegmentText(ctx.sessionName) : "";
+    const maxLength = clampDisplayWidth(opts.maxLength, sessionName ? 32 : 8);
+    const displayName = sessionName ? stripAnsiSgr(truncateToWidth(sessionName, maxLength, "…")) : "";
+    const displayId = opts.showIdWhenUnnamed === false ? "" : (ctx.sessionId?.slice(0, 8) || "new");
+    const display = displayName || displayId;
+
+    if (!display) return { content: "", visible: false };
 
     return { content: withIcon(icons.session, display), visible: true };
   },

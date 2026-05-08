@@ -23,7 +23,7 @@ const NERD_COLORS: ColorScheme = {
 
 export const PRESETS: Record<StatusLinePreset, PresetDef> = {
   default: {
-    leftSegments: ["model", "thinking", "shell_mode", "path", "git", "context_pct", "cache_read", "cost"],
+    leftSegments: ["model", "thinking", "shell_mode", "path", "git", "session", "context_pct", "cache_read", "cost"],
     rightSegments: [],
     secondarySegments: ["extension_statuses"],
     separator: "powerline-thin",
@@ -32,6 +32,7 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
       model: { showThinkingLevel: false },
       path: { mode: "basename" },
       git: { showBranch: true, showStaged: true, showUnstaged: true, showUntracked: true },
+      session: { showIdWhenUnnamed: false, maxLength: 32 },
     },
   },
 
@@ -58,7 +59,7 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
   },
 
   full: {
-    leftSegments: ["hostname", "model", "thinking", "shell_mode", "path", "git", "subagents"],
+    leftSegments: ["hostname", "model", "thinking", "shell_mode", "path", "git", "session", "subagents"],
     rightSegments: ["token_in", "token_out", "cache_read", "cost", "context_pct", "time_spent", "time", "extension_statuses"],
     separator: "powerline",
     colors: DEFAULT_COLORS,

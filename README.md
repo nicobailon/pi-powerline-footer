@@ -67,10 +67,10 @@ Use `"fixedEditor": true` to enable it again. Add `"mouseScroll": false` if you 
 
 | Preset | Description |
 |--------|-------------|
-| `default` | Model, thinking, path (basename), git, context, tokens, cost |
+| `default` | Model, thinking, path (basename), git, named session, context, tokens, cost |
 | `minimal` | Just path (basename), git, context |
 | `compact` | Model, git, cost, context |
-| `full` | Everything including hostname, time, abbreviated path |
+| `full` | Everything including hostname, session, time, abbreviated path |
 | `nerd` | Maximum detail for Nerd Font users |
 | `ascii` | Safe for any terminal |
 
@@ -322,6 +322,8 @@ Configure via preset options: `path: { mode: "full" }`
 ## Segments
 
 `model` · `thinking` · `shell_mode` · `path` · `git` · `subagents` · `token_in` · `token_out` · `token_total` · `cost` · `context_pct` · `context_total` · `time_spent` · `time` · `session` · `hostname` · `cache_read` · `cache_write`
+
+The `session` segment shows the session display name when one is set with `/name`; otherwise it falls back to the short session id unless the preset disables unnamed ids. Nerd Font mode uses a comments icon; ASCII mode shows the session text without an extra marker. The default preset shows named sessions only.
 
 ## Separators
 
