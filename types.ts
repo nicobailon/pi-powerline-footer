@@ -83,6 +83,7 @@ export interface StatusLineSegmentOptions {
   };
   git?: { showBranch?: boolean; showStaged?: boolean; showUnstaged?: boolean; showUntracked?: boolean };
   time?: { format?: "12h" | "24h"; showSeconds?: boolean };
+  session?: { showIdWhenUnnamed?: boolean; maxLength?: number };
 }
 
 export type CustomItemPosition = "left" | "right" | "secondary";
@@ -143,6 +144,7 @@ export interface SegmentContext {
   model: { id: string; name?: string; reasoning?: boolean; contextWindow?: number } | undefined;
   thinkingLevel: string;
   sessionId: string | undefined;
+  sessionName: string | undefined;
   
   // Computed
   usageStats: UsageStats;

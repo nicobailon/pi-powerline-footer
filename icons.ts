@@ -65,7 +65,7 @@ export const NERD_ICONS: IconSet = {
   input: "\uF090",      // nf-fa-sign_in (input arrow)
   output: "\uF08B",     // nf-fa-sign_out (output arrow)
   host: "\uF109",       // nf-fa-laptop (host)
-  session: "\uF550",    // nf-md-identifier (session id)
+  session: "\uF086",    // nf-fa-comments (session display name/id)
   auto: "\u{F0068}",    // nf-md-lightning_bolt (auto-compact)
   warning: "\uF071",    // nf-fa-warning
 };
@@ -86,7 +86,7 @@ export const ASCII_ICONS: IconSet = {
   input: "in:",
   output: "out:",
   host: "host",
-  session: "id",
+  session: "",
   auto: "AC",
   warning: "!",
 };

@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- **Session name segment** — The `session` segment now prefers Pi's `/name` display name, uses a comments icon in Nerd Font mode, the default preset shows named sessions without exposing unnamed session ids, and the full preset includes the session segment.
+
 ## [0.5.1] - 2026-05-02
 
 ### Fixed

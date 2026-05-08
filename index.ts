@@ -991,6 +991,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let layoutDirty = true;
   let forceNextLayoutRecompute = false;
   let lastEditorInputAt = 0;
+  let lastSessionName: string | undefined;
 
   const getShellPath = () => process.env.SHELL || "/bin/sh";
   const getShellCwd = () => shellSession?.state.cwd ?? currentCtx?.cwd ?? process.cwd();
@@ -1030,6 +1031,11 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     forceNextLayoutRecompute = true;
     statusRenderScheduler.cancel();
     statusRenderScheduler.schedule(0);
+  };
+
+  const getSessionDisplayName = (ctx: any): string | undefined => {
+    const value = ctx?.sessionManager?.getSessionName?.();
+    return typeof value === "string" && value.trim() ? value : undefined;
   };
 
   const installFooterStatusRepaintHook = (footerData: ReadonlyFooterDataProvider) => {
@@ -1270,6 +1276,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     footerDataRef = null;
     getThinkingLevelFn = null;
     currentThinkingLevel = null;
+    lastSessionName = undefined;
     liveAssistantUsage = null;
     tuiRef = null;
     currentEditor = null;
@@ -2109,6 +2116,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       model: ctx.model,
       thinkingLevel,
       sessionId: ctx.sessionManager?.getSessionId?.(),
+      sessionName: getSessionDisplayName(ctx),
       usageStats: { input, output, cacheRead, cacheWrite, cost },
       contextPercent,
       contextWindow,
@@ -2137,6 +2145,12 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   function getResponsiveLayout(width: number, theme: Theme): { topContent: string; secondaryContent: string } {
     const now = Date.now();
     const cacheTtl = isStreaming ? STREAMING_LAYOUT_CACHE_TTL_MS : LAYOUT_CACHE_TTL_MS;
+    const currentSessionName = getSessionDisplayName(currentCtx);
+    if (currentSessionName !== lastSessionName) {
+      lastSessionName = currentSessionName;
+      resetLayoutCache();
+      forceNextLayoutRecompute = true;
+    }
 
     if (lastLayoutResult && lastLayoutWidth === width) {
       const msSinceInput = now - lastEditorInputAt;
