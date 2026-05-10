@@ -65,6 +65,8 @@ You can also set it in `~/.pi/agent/settings.json` or project-local `.pi/setting
 
 Use `"fixedEditor": true` to enable it again. Add `"mouseScroll": false` if you want native terminal selection instead of fixed-editor mouse handling.
 
+When fixed editor is enabled, pi-powerline-footer temporarily enables Pi's hardware cursor so IME preedit text for Korean, Japanese, Chinese, and other composition-based input methods appears at the editor cursor. The previous hardware cursor setting is restored when fixed editor is disabled or the extension shuts down.
+
 | Preset | Description |
 |--------|-------------|
 | `default` | Model, thinking, path (basename), git, context, tokens, cost |

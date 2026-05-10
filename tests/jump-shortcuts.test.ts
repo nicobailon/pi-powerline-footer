@@ -147,6 +147,12 @@ test("extension status changes invalidate powerline status rendering", () => {
   assert.match(source, /restoreFooterStatusRepaintHook\?\.\(\);\n\s+restoreFooterStatusRepaintHook = null;/);
 });
 
+test("fixed editor enables the hardware cursor while installed for IME composition", () => {
+  assert.match(source, /let fixedEditorPreviousHardwareCursor: boolean \| null = null/);
+  assert.match(source, /const hardwareCursorEnabled = Boolean\(tui\.getShowHardwareCursor\(\)\);\n\s+if \(!hardwareCursorEnabled\) \{\n\s+fixedEditorPreviousHardwareCursor = hardwareCursorEnabled;\n\s+tui\.setShowHardwareCursor\(true\);\n\s+\}/);
+  assert.match(source, /if \(fixedEditorPreviousHardwareCursor !== null && typeof tuiRef\?\.setShowHardwareCursor === "function"\) \{\n\s+tuiRef\.setShowHardwareCursor\(fixedEditorPreviousHardwareCursor\);\n\s+\}\n\s+fixedEditorPreviousHardwareCursor = null;/);
+});
+
 test("fixed editor captures Pi status messages with the editor cluster", () => {
   assert.match(source, /let fixedStatusContainer: any = null/);
   assert.match(source, /const statusContainerCandidate = tuiChildren\[editorContainerMatch\.index - 2\] \?\? null/);

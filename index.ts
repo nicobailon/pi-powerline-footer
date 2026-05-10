@@ -966,6 +966,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let tuiRef: any = null;
   let restoreFooterStatusRepaintHook: (() => void) | null = null;
   let fixedEditorCompositor: TerminalSplitCompositor | null = null;
+  let fixedEditorPreviousHardwareCursor: boolean | null = null;
   let fixedStatusContainer: any = null;
   let fixedEditorContainer: any = null;
   let fixedWidgetContainerAbove: any = null;
@@ -2254,6 +2255,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         // Shutdown cleanup cannot surface useful terminal write failures.
       }
     }
+    if (fixedEditorPreviousHardwareCursor !== null && typeof tuiRef?.setShowHardwareCursor === "function") {
+      tuiRef.setShowHardwareCursor(fixedEditorPreviousHardwareCursor);
+    }
+    fixedEditorPreviousHardwareCursor = null;
     fixedEditorCompositor = null;
     fixedStatusContainer = null;
     fixedEditorContainer = null;
@@ -2283,6 +2288,14 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     const editorContainerMatch = findContainerWithChild(tui, currentEditor);
     if (!editorContainerMatch) {
       throw new Error("[powerline-footer] Fixed editor compositor could not find the editor container in TUI children");
+    }
+
+    if (typeof tui.getShowHardwareCursor === "function" && typeof tui.setShowHardwareCursor === "function") {
+      const hardwareCursorEnabled = Boolean(tui.getShowHardwareCursor());
+      if (!hardwareCursorEnabled) {
+        fixedEditorPreviousHardwareCursor = hardwareCursorEnabled;
+        tui.setShowHardwareCursor(true);
+      }
     }
 
     const tuiChildren = Array.isArray(tui.children) ? tui.children : [];
