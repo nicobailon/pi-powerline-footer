@@ -268,7 +268,7 @@ const costSegment: StatusLineSegment = {
       return { content: "", visible: false };
     }
 
-    const costDisplay = usingSubscription ? "(sub)" : `$${cost.toFixed(2)}`;
+    const costDisplay = usingSubscription ? "\u{F1ED}" : `$${cost.toFixed(2)}`;
     return { content: color(ctx, "cost", costDisplay), visible: true };
   },
 };
