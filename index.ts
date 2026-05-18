@@ -2136,32 +2136,42 @@ export default function powerlineFooter(pi: ExtensionAPI) {
    * The segment context scans session state, so keep it stable across render bursts.
    */
   function getResponsiveLayout(width: number, theme: Theme): { topContent: string; secondaryContent: string } {
-    const now = Date.now();
-    const cacheTtl = isStreaming ? STREAMING_LAYOUT_CACHE_TTL_MS : LAYOUT_CACHE_TTL_MS;
+    try {
+      const now = Date.now();
+      const cacheTtl = isStreaming ? STREAMING_LAYOUT_CACHE_TTL_MS : LAYOUT_CACHE_TTL_MS;
 
-    if (lastLayoutResult && lastLayoutWidth === width) {
-      const msSinceInput = now - lastEditorInputAt;
-      const typingRecently = msSinceInput < EDITOR_STATUS_DEFER_MS;
+      if (lastLayoutResult && lastLayoutWidth === width) {
+        const msSinceInput = now - lastEditorInputAt;
+        const typingRecently = msSinceInput < EDITOR_STATUS_DEFER_MS;
 
-      if (!forceNextLayoutRecompute && typingRecently && (layoutDirty || now - lastLayoutTimestamp >= cacheTtl)) {
-        return lastLayoutResult;
+        if (!forceNextLayoutRecompute && typingRecently && (layoutDirty || now - lastLayoutTimestamp >= cacheTtl)) {
+          return lastLayoutResult;
+        }
+
+        if (!layoutDirty && now - lastLayoutTimestamp < cacheTtl) {
+          return lastLayoutResult;
+        }
       }
-
-      if (!layoutDirty && now - lastLayoutTimestamp < cacheTtl) {
-        return lastLayoutResult;
-      }
+      
+      const presetDef = getPreset(config.preset);
+      const segmentCtx = buildSegmentContext(currentCtx, theme);
+      
+      lastLayoutWidth = width;
+      lastLayoutResult = computeResponsiveLayout(segmentCtx, presetDef, width);
+      lastLayoutTimestamp = now;
+      layoutDirty = false;
+      forceNextLayoutRecompute = false;
+      
+      return lastLayoutResult;
+    } catch {
+      // currentCtx may be stale after session replacement (e.g. compaction).
+      // Return empty layout to avoid crashing the process.
+      lastLayoutResult = null as any;
+      lastLayoutTimestamp = 0;
+      layoutDirty = false;
+      forceNextLayoutRecompute = false;
+      return { topContent: null as any, secondaryContent: null as any };
     }
-    
-    const presetDef = getPreset(config.preset);
-    const segmentCtx = buildSegmentContext(currentCtx, theme);
-    
-    lastLayoutWidth = width;
-    lastLayoutResult = computeResponsiveLayout(segmentCtx, presetDef, width);
-    lastLayoutTimestamp = now;
-    layoutDirty = false;
-    forceNextLayoutRecompute = false;
-    
-    return lastLayoutResult;
   }
 
   function renderPowerlineStatusLines(width: number): string[] {
@@ -2306,22 +2316,37 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       onCopySelection: (text) => copyTextToClipboard(ctx, text),
       getShowHardwareCursor: () => typeof tui.getShowHardwareCursor === "function" && tui.getShowHardwareCursor(),
       renderCluster: (width, terminalRows) => {
-        const theme = currentCtx?.ui?.theme ?? ctx.ui.theme;
-        const statusContainerLines = fixedStatusContainer
-          ? compositor.renderHidden(fixedStatusContainer, width).filter((line) => visibleWidth(line) > 0)
-          : [];
-        const aboveWidgetLines = fixedWidgetContainerAbove ? compositor.renderHidden(fixedWidgetContainerAbove, width) : [];
-        const belowWidgetLines = fixedWidgetContainerBelow ? compositor.renderHidden(fixedWidgetContainerBelow, width) : [];
-        return renderFixedEditorCluster({
-          width,
-          terminalRows,
-          statusLines: [...aboveWidgetLines, ...renderPowerlineStatusLines(width), ...statusContainerLines],
-          topLines: renderPowerlineTopLines(width, theme),
-          editorLines: fixedEditorContainer ? compositor.renderHidden(fixedEditorContainer, width) : [],
-          secondaryLines: [...renderPowerlineSecondaryLines(width, theme), ...belowWidgetLines],
-          transcriptLines: renderBashTranscriptLines(width, theme),
-          lastPromptLines: renderLastPromptLines(width),
-        });
+        try {
+          const theme = currentCtx?.ui?.theme ?? ctx.ui.theme;
+          const statusContainerLines = fixedStatusContainer
+            ? compositor.renderHidden(fixedStatusContainer, width).filter((line) => visibleWidth(line) > 0)
+            : [];
+          const aboveWidgetLines = fixedWidgetContainerAbove ? compositor.renderHidden(fixedWidgetContainerAbove, width) : [];
+          const belowWidgetLines = fixedWidgetContainerBelow ? compositor.renderHidden(fixedWidgetContainerBelow, width) : [];
+          return renderFixedEditorCluster({
+            width,
+            terminalRows,
+            statusLines: [...aboveWidgetLines, ...renderPowerlineStatusLines(width), ...statusContainerLines],
+            topLines: renderPowerlineTopLines(width, theme),
+            editorLines: fixedEditorContainer ? compositor.renderHidden(fixedEditorContainer, width) : [],
+            secondaryLines: [...renderPowerlineSecondaryLines(width, theme), ...belowWidgetLines],
+            transcriptLines: renderBashTranscriptLines(width, theme),
+            lastPromptLines: renderLastPromptLines(width),
+          });
+        } catch {
+          // currentCtx may be stale after session replacement (e.g. compaction).
+          // Render editor without powerline decorations to avoid crashing.
+          return renderFixedEditorCluster({
+            width,
+            terminalRows,
+            statusLines: [],
+            topLines: [],
+            editorLines: fixedEditorContainer ? compositor.renderHidden(fixedEditorContainer, width) : [],
+            secondaryLines: [],
+            transcriptLines: [],
+            lastPromptLines: [],
+          });
+        }
       },
     });
 

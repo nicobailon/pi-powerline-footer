@@ -12,7 +12,12 @@ export function createRenderScheduler(render: () => void, defaultDelayMs: number
 
       timer = setTimeout(() => {
         timer = null;
-        render();
+        try {
+          render();
+        } catch {
+          // Extension ctx may be stale after session replacement (e.g. compaction).
+          // Silently ignore to prevent crashing the process.
+        }
       }, delayMs);
     },
     cancel() {
