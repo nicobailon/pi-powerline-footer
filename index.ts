@@ -22,6 +22,7 @@ import {
 } from "./bash-mode/completion.ts";
 import { BashModeEditor } from "./bash-mode/editor.ts";
 import { ManagedShellSession } from "./bash-mode/shell-session.ts";
+import { refreshQuotas } from "./api-quotas.ts";
 import { matchHistoryEntries, readGlobalShellHistory, readProjectHistory, appendProjectHistory } from "./bash-mode/history.ts";
 import type { BashModeSettings } from "./bash-mode/types.ts";
 import { getPreset, PRESETS } from "./presets.ts";
@@ -884,64 +885,86 @@ function computeResponsiveLayout(
   const separatorDef = getSeparator(presetDef.separator);
   const sepWidth = visibleWidth(separatorDef.left) + 2; // separator + spaces around it
   
-  // Get all segments: primary first, then secondary
+  // Get all segments, split out right-aligned ones
   const mergedSegments = mergeSegmentsWithCustomItems(presetDef, config.customItems);
   const primaryIds = [...mergedSegments.leftSegments, ...mergedSegments.rightSegments];
   const secondaryIds = mergedSegments.secondarySegments;
-  const allSegmentIds = [...primaryIds, ...secondaryIds];
+  const rightAlignedIds = mergedSegments.rightAlignedSegments;
   
-  // Render all segments and get their widths
-  const renderedSegments: { content: string; width: number }[] = [];
-  for (const segId of allSegmentIds) {
+  // Left-side segments (non-right-aligned)
+  const leftSegmentIds = [...primaryIds, ...secondaryIds];
+  
+  // Render left-side segments
+  const renderedLeft: { content: string; width: number }[] = [];
+  for (const segId of leftSegmentIds) {
     const { content, width, visible } = renderSegmentWithWidth(segId, ctx);
-    if (visible) {
-      renderedSegments.push({ content, width });
-    }
+    if (visible) renderedLeft.push({ content, width });
   }
   
-  if (renderedSegments.length === 0) {
+  // Render right-aligned segments
+  const renderedRight: { content: string; width: number }[] = [];
+  for (const segId of rightAlignedIds) {
+    const { content, width, visible } = renderSegmentWithWidth(segId, ctx);
+    if (visible) renderedRight.push({ content, width });
+  }
+  
+  if (renderedLeft.length === 0 && renderedRight.length === 0) {
     return { topContent: "", secondaryContent: "" };
   }
   
-  // Calculate how many segments fit in top bar
-  // Account for: leading space (1) + trailing space (1) = 2 chars overhead
+  // Calculate how many left-side segments fit in top bar
   const baseOverhead = 2;
-  let currentWidth = baseOverhead;
-  let topSegments: string[] = [];
+  let leftWidth = baseOverhead;
+  let topLeftSegments: string[] = [];
   let overflowSegments: { content: string; width: number }[] = [];
   let overflow = false;
   
-  for (const seg of renderedSegments) {
-    const neededWidth = seg.width + (topSegments.length > 0 ? sepWidth : 0);
-    
-    if (!overflow && currentWidth + neededWidth <= availableWidth) {
-      topSegments.push(seg.content);
-      currentWidth += neededWidth;
+  for (const seg of renderedLeft) {
+    const neededWidth = seg.width + (topLeftSegments.length > 0 ? sepWidth : 0);
+    if (!overflow && leftWidth + neededWidth <= availableWidth) {
+      topLeftSegments.push(seg.content);
+      leftWidth += neededWidth;
     } else {
       overflow = true;
       overflowSegments.push(seg);
     }
   }
   
-  // Fit overflow segments into secondary row (same width constraint)
-  // Stop at first non-fitting segment to preserve ordering
-  let secondaryWidth = baseOverhead;
-  let secondarySegments: string[] = [];
+  // Build left-side content string
+  const leftContentStr = buildContentFromParts(topLeftSegments, presetDef);
   
-  for (const seg of overflowSegments) {
-    const neededWidth = seg.width + (secondarySegments.length > 0 ? sepWidth : 0);
-    if (secondaryWidth + neededWidth <= availableWidth) {
-      secondarySegments.push(seg.content);
-      secondaryWidth += neededWidth;
-    } else {
-      break;
-    }
+  // Build right-aligned content string
+  let rightContentStr = "";
+  if (renderedRight.length > 0) {
+    const sepAnsi = getFgAnsiCode("sep");
+    rightContentStr = " " + renderedRight.map(s => s.content).join(` ${sepAnsi}${separatorDef.left}${ansi.reset} `) + ansi.reset + " ";
   }
   
-  return {
-    topContent: buildContentFromParts(topSegments, presetDef),
-    secondaryContent: buildContentFromParts(secondarySegments, presetDef),
-  };
+  // Combine left and right
+  const leftVisible = visibleWidth(leftContentStr);
+  const rightVisible = visibleWidth(rightContentStr);
+  
+  if (rightContentStr && leftVisible + rightVisible <= availableWidth) {
+    // Both fit on one line — right-align the right part
+    const padLen = Math.max(0, availableWidth - leftVisible - rightVisible);
+    return {
+      topContent: leftContentStr + " ".repeat(padLen) + rightContentStr,
+      secondaryContent: buildContentFromParts(overflowSegments.map(s => s.content), presetDef),
+    };
+  } else if (rightContentStr) {
+    // Right content doesn't fit — overflow to secondary
+    const secondaryParts = [...overflowSegments.map(s => s.content), ...renderedRight.map(s => s.content)];
+    return {
+      topContent: leftContentStr,
+      secondaryContent: buildContentFromParts(secondaryParts, presetDef),
+    };
+  } else {
+    // No right-aligned content
+    return {
+      topContent: leftContentStr,
+      secondaryContent: buildContentFromParts(overflowSegments.map(s => s.content), presetDef),
+    };
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1232,6 +1255,11 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       ctx.ui.setStatus("stash", undefined);
     }
     
+    // Kick off API quota refresh (GLM + DeepSeek)
+    refreshQuotas().catch(() => {});
+    // Periodic refresh every 60s
+    const quotaInterval = setInterval(() => { refreshQuotas().catch(() => {}); }, 60_000);
+    
     // Initialize vibe manager (needs modelRegistry from ctx)
     initVibeManager(ctx);
     
@@ -1251,6 +1279,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", async () => {
+    clearInterval(quotaInterval);
     sessionGeneration++;
     dismissWelcomeOverlay?.();
     dismissWelcomeOverlay = null;

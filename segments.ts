@@ -5,6 +5,7 @@ import type { BuiltinStatusLineSegmentId, RenderedSegment, SegmentContext, Seman
 import { normalizeCompactExtensionStatus, normalizeExtensionStatusValue } from "./powerline-config.ts";
 import { fg, rainbow, applyColor } from "./theme.ts";
 import { getIcons, SEP_DOT, getThinkingText } from "./icons.ts";
+import { getQuotaData } from "./api-quotas.ts";
 
 function color(ctx: SegmentContext, semantic: SemanticColor, text: string): string {
   return fg(ctx.theme, semantic, text, ctx.colors);
@@ -282,17 +283,21 @@ const contextPctSegment: StatusLineSegment = {
     const pct = ctx.contextPercent;
     const window = ctx.contextWindow;
 
-    const autoIcon = ctx.autoCompactEnabled && icons.auto ? ` ${icons.auto}` : "";
-    const text = `${pct.toFixed(1)}%/${formatTokens(window)}${autoIcon}`;
+    // Progress bar (8 segments)
+    const barLen = 8;
+    const filled = Math.round(pct / 100 * barLen);
+    const bar = "\u2588".repeat(filled) + "\u2591".repeat(barLen - filled);
 
-    // Icon outside color, text inside - use semantic colors for thresholds
+    const text = `${bar} ${pct.toFixed(1)}%/${formatTokens(window)}`;
+
+    // Use semantic colors for thresholds
     let content: string;
     if (pct > 90) {
-      content = withIcon(icons.context, color(ctx, "contextError", text));
+      content = color(ctx, "contextError", text);
     } else if (pct > 70) {
-      content = withIcon(icons.context, color(ctx, "contextWarn", text));
+      content = color(ctx, "contextWarn", text);
     } else {
-      content = withIcon(icons.context, color(ctx, "context", text));
+      content = color(ctx, "context", text);
     }
 
     return { content, visible: true };
@@ -448,6 +453,36 @@ export const SEGMENTS: Record<BuiltinStatusLineSegmentId, StatusLineSegment> = {
   cache_read: cacheReadSegment,
   cache_write: cacheWriteSegment,
   extension_statuses: extensionStatusesSegment,
+  glm_quota: {
+    id: "glm_quota",
+    render(ctx) {
+      const quota = getQuotaData();
+      if (!quota.glm) return { content: "", visible: false };
+      const { fiveHrPct, sevenDayPct } = quota.glm;
+      const icons = getIcons();
+      const text = `${icons.model} GLM ${fiveHrPct}%·${sevenDayPct}%`;
+      // Color thresholds
+      const maxPct = Math.max(fiveHrPct, sevenDayPct);
+      let semantic: SemanticColor = "model";
+      if (maxPct >= 90) semantic = "contextError";
+      else if (maxPct >= 70) semantic = "contextWarn";
+      return { content: color(ctx, semantic, text), visible: true };
+    },
+  },
+  deepseek_balance: {
+    id: "deepseek_balance",
+    render(ctx) {
+      const quota = getQuotaData();
+      if (!quota.deepseek) return { content: "", visible: false };
+      const icons = getIcons();
+      const text = `${icons.cost} DS $${quota.deepseek.balance}`;
+      const bal = parseFloat(quota.deepseek.balance);
+      let semantic: SemanticColor = "cost";
+      if (bal < 1) semantic = "contextError";
+      else if (bal < 5) semantic = "contextWarn";
+      return { content: color(ctx, semantic, text), visible: true };
+    },
+  },
 };
 
 function renderCustomSegment(id: `custom:${string}`, ctx: SegmentContext): RenderedSegment {

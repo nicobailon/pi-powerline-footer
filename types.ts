@@ -46,7 +46,9 @@ export type BuiltinStatusLineSegmentId =
   | "cache_read"
   | "cache_write"
   | "thinking"
-  | "extension_statuses";
+  | "extension_statuses"
+  | "glm_quota"
+  | "deepseek_balance";
 
 // Segment identifiers (built-in + dynamically registered custom items)
 export type StatusLineSegmentId = BuiltinStatusLineSegmentId | `custom:${string}`;
@@ -103,6 +105,8 @@ export interface PresetDef {
   rightSegments: BuiltinStatusLineSegmentId[];
   /** Secondary row segments (shown in footer, above sub bar) */
   secondarySegments?: BuiltinStatusLineSegmentId[];
+  /** Segments right-aligned on the top bar */
+  rightAlignedSegments?: BuiltinStatusLineSegmentId[];
   separator: StatusLineSeparatorStyle;
   segmentOptions?: StatusLineSegmentOptions;
   /** Color scheme for this preset */
