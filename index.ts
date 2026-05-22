@@ -69,6 +69,7 @@ let config: PowerlineConfig = {
   customItems: [],
   mouseScroll: true,
   fixedEditor: true,
+  splitLayout: false,
 };
 
 const CUSTOM_COMPACTION_STATUS_KEY = "compact-policy";
@@ -627,7 +628,7 @@ function writePowerlinePresetSetting(preset: StatusLinePreset, cwd: string = pro
 
 function writePowerlineOptionSetting(
   cwd: string,
-  updates: Partial<Pick<PowerlineConfig, "mouseScroll" | "fixedEditor">>,
+  updates: Partial<Pick<PowerlineConfig, "mouseScroll" | "fixedEditor" | "splitLayout">>,
   currentPreset: StatusLinePreset,
 ): boolean {
   return writePowerlineSetting(cwd, (existingPowerlineSetting) => (
@@ -872,9 +873,13 @@ function buildContentFromParts(
 }
 
 /**
- * Split segment layout - prioritizes primary segments.
- * When terminal is too narrow, primary segments overflow down to secondary row.
- * When secondary row is full, remaining segments are skipped.
+ * Responsive segment fitter - handles multiple cases.
+ * When splitLayout is false: 
+ *   - All segments are candidates for primary row
+ *   - Overflow fills secondary row
+ * When splitLayout is true:
+ *   - Only primary segments are candidates for primary row  
+ *   - Secondary row prioritizes overflow before fitting secondary segments
  */
 function computeResponsiveLayout(
   ctx: SegmentContext,
@@ -907,31 +912,38 @@ function computeResponsiveLayout(
     }
   }
   
+  // Determine primary row candidates based on layout mode
+  const primaryRowCandidates = config.splitLayout 
+    ? renderedPrimarySegments 
+    : [...renderedPrimarySegments, ...renderedSecondarySegments];
+  
   // Calculate how many segments fit in primary row
   // Account for: leading space (1) + trailing space (1) = 2 chars overhead
   const baseOverhead = 2;
   let currentWidth = baseOverhead;
   let topSegments: string[] = [];
-  let overflowPrimarySegments: { content: string; width: number }[] = [];
+  let overflowSegments: { content: string; width: number }[] = [];
+  let overflow = false;
   
-  for (const seg of renderedPrimarySegments) {
+  for (const seg of primaryRowCandidates) {
     const neededWidth = seg.width + (topSegments.length > 0 ? sepWidth : 0);
     
-    if (currentWidth + neededWidth <= availableWidth) {
+    if (!overflow && currentWidth + neededWidth <= availableWidth) {
       topSegments.push(seg.content);
       currentWidth += neededWidth;
     } else {
-      overflowPrimarySegments.push(seg);
+      overflow = true;
+      overflowSegments.push(seg);
     }
   }
   
-  // Fit remaining segments into secondary row (same width constraint)
-  // Stop at first non-fitting segment to preserve ordering
-  const secondaryRowCandidates: { content: string; width: number }[] = [
-    ...overflowPrimarySegments,
-    ...renderedSecondarySegments
-  ];
+  // Determine secondary row candidates based on layout mode
+  const secondaryRowCandidates = config.splitLayout
+    ? [...overflowSegments, ...renderedSecondarySegments]
+    : overflowSegments;
   
+  // Fit eligible candidates into secondary row (same width constraint)
+  // Stop at first non-fitting segment to preserve ordering
   let secondaryWidth = baseOverhead;
   let secondarySegments: string[] = [];
   
@@ -1793,6 +1805,21 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           ctx.ui.notify(`Powerline fixed editor ${config.fixedEditor ? "enabled" : "disabled"}`, "info");
         } else {
           ctx.ui.notify(`Powerline fixed editor ${config.fixedEditor ? "enabled" : "disabled"} (not persisted; check settings.json)`, "warning");
+        }
+        return;
+      }
+
+      // Add split layout toggle command
+      const splitLayoutMatch = /^split-layout(?:\s+(on|off|toggle))?$/.exec(normalizedArgs);
+      if (splitLayoutMatch) {
+        const mode = splitLayoutMatch[1] ?? "toggle";
+        config.splitLayout = mode === "toggle" ? !config.splitLayout : mode === "on";
+        resetLayoutCache();
+        
+        if (writePowerlineOptionSetting(ctx.cwd, { splitLayout: config.splitLayout }, config.preset)) {
+          ctx.ui.notify(`Powerline split layout ${config.splitLayout ? "enabled" : "disabled"}`, "info");
+        } else {
+          ctx.ui.notify(`Powerline split layout ${config.splitLayout ? "enabled" : "disabled"} (not persisted; check settings.json)`, "warning");
         }
         return;
       }
