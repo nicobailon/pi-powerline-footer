@@ -301,9 +301,13 @@ export function buildFixedClusterPaint(
     buffer += sanitizeLine(cluster.lines[i] ?? "", width);
   }
 
-  if (cluster.cursor && showHardwareCursor) {
+  if (cluster.cursor) {
+    // Keep the real terminal cursor parked at the logical editor cursor even
+    // when it is visually hidden. macOS IME candidate windows anchor to the
+    // terminal cursor position, so skipping the move when PI_HARDWARE_CURSOR is
+    // off leaves the candidate window at a stale/offset location.
     buffer += moveCursor(startRow + cluster.cursor.row, Math.max(1, cluster.cursor.col + 1));
-    buffer += showCursor();
+    buffer += showHardwareCursor ? showCursor() : hideCursor();
   } else {
     buffer += hideCursor();
   }
