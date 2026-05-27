@@ -1250,7 +1250,13 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   });
 
-  pi.on("session_shutdown", async () => {
+  pi.on("session_shutdown", async (event) => {
+    // When switching sessions (resume/new/fork), preserve keyboard modes
+    // (Kitty protocol, modifyOtherKeys) so that Shift+Enter and other
+    // modified keys continue to work. Only reset on quit/reload where
+    // the terminal should be restored to a clean state.
+    const isTerminalExit = event?.reason === "quit" || event?.reason === "reload";
+
     sessionGeneration++;
     dismissWelcomeOverlay?.();
     dismissWelcomeOverlay = null;
@@ -1260,7 +1266,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     statusRenderScheduler.cancel();
     restoreFooterStatusRepaintHook?.();
     restoreFooterStatusRepaintHook = null;
-    teardownFixedEditorCompositor({ resetExtendedKeyboardModes: true });
+    teardownFixedEditorCompositor(isTerminalExit ? { resetExtendedKeyboardModes: true } : undefined);
     stashShortcutInputUnsubscribe?.();
     stashShortcutInputUnsubscribe = null;
     shellSession?.dispose();
