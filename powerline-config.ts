@@ -97,7 +97,7 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     customItems: normalizeCustomItems(value.customItems),
     mouseScroll: value.mouseScroll !== false,
     fixedEditor: value.fixedEditor !== false,
-    splitLayout: value.splitLayout !== true
+    splitLayout: value.splitLayout === true
   };
 }
 
