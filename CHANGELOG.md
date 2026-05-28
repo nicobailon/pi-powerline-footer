@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- **Pi 0.76 compatibility** — Verified test suite compatibility against `@earendil-works/pi-ai`, `@earendil-works/pi-coding-agent`, and `@earendil-works/pi-tui` `0.76.0`, then widened peer/dev ranges to `>=0.74.0 <0.77.0`.
+
 ## [0.5.6] - 2026-05-26
 
 ### Fixed
