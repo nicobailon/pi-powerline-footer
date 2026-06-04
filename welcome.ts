@@ -1,4 +1,4 @@
-import { readdirSync, existsSync, statSync, readFileSync } from "node:fs";
+import { readdirSync, existsSync, statSync, readFileSync, openSync, readSync, closeSync } from "node:fs";
 import { join, basename } from "node:path";
 import { homedir as osHomedir } from "node:os";
 import type { Component } from "@earendil-works/pi-tui";
@@ -536,6 +536,30 @@ export function discoverLoadedCounts(): LoadedCounts {
 /**
  * Get recent sessions from the sessions directory.
  */
+/**
+ * Read the `cwd` field from the first line of a pi session JSONL file.
+ * Reads only the first 512 bytes to avoid loading large session files.
+ * Returns null if the file cannot be read or does not contain a valid cwd.
+ */
+export function readSessionCwd(filePath: string): string | null {
+  let fd: number | null = null;
+  try {
+    fd = openSync(filePath, "r");
+    const buffer = Buffer.alloc(512);
+    const bytesRead = readSync(fd, buffer, 0, 512, 0);
+    const firstLine = buffer.subarray(0, bytesRead).toString("utf-8").split("\n")[0];
+    if (!firstLine) return null;
+    const parsed = JSON.parse(firstLine);
+    return typeof parsed?.cwd === "string" ? parsed.cwd : null;
+  } catch {
+    return null;
+  } finally {
+    if (fd !== null) {
+      try { closeSync(fd); } catch {}
+    }
+  }
+}
+
 export function getRecentSessions(maxCount: number = 3): RecentSession[] {
   const homeDir = process.env.HOME || process.env.USERPROFILE || osHomedir();
   
@@ -559,7 +583,16 @@ export function getRecentSessions(maxCount: number = 3): RecentSession[] {
           } else if (entry.endsWith(".jsonl")) {
             const parentName = basename(dir);
             let projectName = parentName;
-            if (parentName.startsWith("--")) {
+            // Prefer reading cwd from the session header (first line of the JSONL).
+            // The encoded directory name (e.g. --Users-jsmith-src-github.com-org-foo-bar--)
+            // uses "-" for both path separators and literal dashes, making it impossible to
+            // reliably recover the last path component by splitting on "-" alone.
+            // (e.g. "foo-bar" would incorrectly resolve to "bar")
+            const cwdFromHeader = readSessionCwd(entryPath);
+            if (cwdFromHeader) {
+              projectName = basename(cwdFromHeader);
+            } else if (parentName.startsWith("--")) {
+              // Fallback for unreadable files: best-effort parse of encoded dir name.
               const parts = parentName.split("-").filter(p => p);
               projectName = parts[parts.length - 1] || parentName;
             }
