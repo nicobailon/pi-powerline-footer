@@ -44,6 +44,16 @@ test("parsePowerlineConfig supports disabling fixed editor", () => {
   assert.equal(config.fixedEditor, false);
 });
 
+test("parsePowerlineConfig supports below placement with bottom alias", () => {
+  const config = parsePowerlineConfig(
+    { preset: "compact", placement: "bottom" },
+    ["default", "compact"],
+  );
+
+  assert.equal(config.preset, "compact");
+  assert.equal(config.placement, "below");
+});
+
 test("mergeSegmentsWithCustomItems appends custom segment ids by position", () => {
   const merged = mergeSegmentsWithCustomItems(
     {
@@ -83,16 +93,20 @@ test("nextPowerlineSettingWithPreset preserves object settings", () => {
 test("nextPowerlineSettingWithOptions preserves object settings", () => {
   const updated = nextPowerlineSettingWithOptions(
     { preset: "default", customItems: [{ id: "ci" }], mouseScroll: false },
-    { fixedEditor: false },
+    { fixedEditor: false, placement: "below" },
     "compact",
   );
   if (typeof updated !== "object" || updated === null || Array.isArray(updated)) {
     assert.fail("expected an object powerline setting");
   }
+  if (!("preset" in updated && "fixedEditor" in updated && "mouseScroll" in updated && "placement" in updated && "customItems" in updated)) {
+    assert.fail("expected all existing object settings to be preserved");
+  }
 
   assert.equal(updated.preset, "default");
   assert.equal(updated.fixedEditor, false);
   assert.equal(updated.mouseScroll, false);
+  assert.equal(updated.placement, "below");
   assert.deepEqual(updated.customItems, [{ id: "ci" }]);
 });
 

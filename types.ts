@@ -85,6 +85,8 @@ export interface StatusLineSegmentOptions {
   time?: { format?: "12h" | "24h"; showSeconds?: boolean };
 }
 
+export type PowerlinePlacement = "above" | "below";
+
 export type CustomItemPosition = "left" | "right" | "secondary";
 
 export interface CustomStatusItem {

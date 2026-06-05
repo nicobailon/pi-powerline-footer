@@ -1,11 +1,12 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
-import type { ColorValue, CustomItemPosition, CustomStatusItem, PresetDef, StatusLinePreset, StatusLineSegmentId } from "./types.ts";
+import type { ColorValue, CustomItemPosition, CustomStatusItem, PowerlinePlacement, PresetDef, StatusLinePreset, StatusLineSegmentId } from "./types.ts";
 
 export interface PowerlineConfig {
   preset: StatusLinePreset;
   customItems: CustomStatusItem[];
   mouseScroll: boolean;
   fixedEditor: boolean;
+  placement: PowerlinePlacement;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -28,6 +29,13 @@ function normalizeCustomItemId(value: unknown): string | null {
 function normalizeCustomItemPosition(value: unknown): CustomItemPosition {
   if (value === "left" || value === "right" || value === "secondary") return value;
   return "right";
+}
+
+function normalizePowerlinePlacement(value: unknown): PowerlinePlacement {
+  if (typeof value !== "string") return "above";
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "below" || normalized === "bottom") return "below";
+  return "above";
 }
 
 function normalizeCustomColor(value: unknown): ColorValue | undefined {
@@ -84,7 +92,7 @@ function normalizeCustomItems(raw: unknown): CustomStatusItem[] {
 }
 
 export function parsePowerlineConfig(value: unknown, presets: readonly StatusLinePreset[]): PowerlineConfig {
-  const defaultConfig: PowerlineConfig = { preset: "default", customItems: [], mouseScroll: true, fixedEditor: true };
+  const defaultConfig: PowerlineConfig = { preset: "default", customItems: [], mouseScroll: true, fixedEditor: true, placement: "above" };
 
   const directPreset = normalizePreset(value, presets);
   if (directPreset) return { ...defaultConfig, preset: directPreset };
@@ -96,6 +104,7 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     customItems: normalizeCustomItems(value.customItems),
     mouseScroll: value.mouseScroll !== false,
     fixedEditor: value.fixedEditor !== false,
+    placement: normalizePowerlinePlacement(value.placement),
   };
 }
 
@@ -127,7 +136,7 @@ export function nextPowerlineSettingWithPreset(existingPowerlineSetting: unknown
 
 export function nextPowerlineSettingWithOptions(
   existingPowerlineSetting: unknown,
-  updates: Partial<Pick<PowerlineConfig, "mouseScroll" | "fixedEditor">>,
+  updates: Partial<Pick<PowerlineConfig, "mouseScroll" | "fixedEditor" | "placement">>,
   currentPreset: StatusLinePreset,
 ): unknown {
   if (!isRecord(existingPowerlineSetting)) {
