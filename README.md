@@ -44,13 +44,15 @@ Restart pi to activate.
 
 ## Usage
 
-Activates automatically. Toggle with `/powerline`, switch presets with `/powerline <name>`, fixed-editor mode with `/powerline fixed-editor on|off|toggle`, and wheel mode with `/powerline mouse-scroll on|off|toggle`.
+Activates automatically. Toggle with `/powerline`, switch presets with `/powerline <name>`, fixed-editor mode with `/powerline fixed-editor on|off|toggle`, powerline placement with `/powerline placement above|below|toggle`, and wheel mode with `/powerline mouse-scroll on|off|toggle`.
 
 Fixed editor is on by default.
 
 - `/powerline fixed-editor off` — return to Pi’s regular scrolling layout
 - `/powerline fixed-editor on` — re-enable the fixed editor
 - `/powerline fixed-editor toggle` — switch between the two
+- `/powerline placement below` — render the main powerline row below the editor
+- `/powerline placement above` — restore the default top-of-editor placement
 
 You can also set it in `~/.pi/agent/settings.json` or project-local `.pi/settings.json`:
 
@@ -58,12 +60,13 @@ You can also set it in `~/.pi/agent/settings.json` or project-local `.pi/setting
 {
   "powerline": {
     "preset": "default",
-    "fixedEditor": false
+    "fixedEditor": false,
+    "placement": "below"
   }
 }
 ```
 
-Use `"fixedEditor": true` to enable it again. Add `"mouseScroll": false` if you want native terminal selection instead of fixed-editor mouse handling.
+Use `"fixedEditor": true` to enable it again. Add `"mouseScroll": false` if you want native terminal selection instead of fixed-editor mouse handling. `placement` defaults to `"above"` and accepts `"below"` to put the main powerline row under the prompt.
 
 | Preset | Description |
 |--------|-------------|

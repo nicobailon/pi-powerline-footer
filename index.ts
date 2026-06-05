@@ -69,6 +69,7 @@ let config: PowerlineConfig = {
   customItems: [],
   mouseScroll: true,
   fixedEditor: true,
+  placement: "above",
 };
 
 const CUSTOM_COMPACTION_STATUS_KEY = "compact-policy";
@@ -627,7 +628,7 @@ function writePowerlinePresetSetting(preset: StatusLinePreset, cwd: string = pro
 
 function writePowerlineOptionSetting(
   cwd: string,
-  updates: Partial<Pick<PowerlineConfig, "mouseScroll" | "fixedEditor">>,
+  updates: Partial<Pick<PowerlineConfig, "mouseScroll" | "fixedEditor" | "placement">>,
   currentPreset: StatusLinePreset,
 ): boolean {
   return writePowerlineSetting(cwd, (existingPowerlineSetting) => (
@@ -1709,7 +1710,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   // Command to toggle/configure
   pi.registerCommand("powerline", {
-    description: "Configure powerline status (toggle, preset)",
+    description: "Configure powerline status (toggle, preset, placement)",
     handler: async (args, ctx) => {
       // Update context reference (command ctx may have more methods)
       currentCtx = ctx;
@@ -1786,6 +1787,26 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           ctx.ui.notify(`Powerline fixed editor ${config.fixedEditor ? "enabled" : "disabled"}`, "info");
         } else {
           ctx.ui.notify(`Powerline fixed editor ${config.fixedEditor ? "enabled" : "disabled"} (not persisted; check settings.json)`, "warning");
+        }
+        return;
+      }
+
+
+      const placementMatch = /^placement(?:\s+(above|below|top|bottom|toggle))?$/.exec(normalizedArgs);
+      if (placementMatch) {
+        const mode = placementMatch[1] ?? "toggle";
+        config.placement = mode === "toggle"
+          ? config.placement === "above" ? "below" : "above"
+          : mode === "below" || mode === "bottom" ? "below" : "above";
+        resetLayoutCache();
+        if (enabled && ctx.hasUI) {
+          setupCustomEditor(ctx);
+        }
+
+        if (writePowerlineOptionSetting(ctx.cwd, { placement: config.placement }, config.preset)) {
+          ctx.ui.notify(`Powerline placement set to: ${config.placement}`, "info");
+        } else {
+          ctx.ui.notify(`Powerline placement set to: ${config.placement} (not persisted; check settings.json)`, "warning");
         }
         return;
       }
@@ -2321,6 +2342,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           secondaryLines: [...renderPowerlineSecondaryLines(width, theme), ...belowWidgetLines],
           transcriptLines: renderBashTranscriptLines(width, theme),
           lastPromptLines: renderLastPromptLines(width),
+          powerlinePlacement: config.placement,
         });
       },
     });
@@ -2430,6 +2452,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   }
 
   function installPowerlineWidgets(ctx: any) {
+    const powerlinePlacement = config.placement === "below" ? "belowEditor" : "aboveEditor";
     ctx.ui.setWidget("powerline-status", () => ({
       dispose() {},
       invalidate() {
@@ -2448,7 +2471,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       render(width: number): string[] {
         return renderPowerlineTopLines(width, theme);
       },
-    }), { placement: "aboveEditor" });
+    }), { placement: powerlinePlacement });
 
     ctx.ui.setWidget("powerline-secondary", (_tui: any, theme: Theme) => ({
       dispose() {},

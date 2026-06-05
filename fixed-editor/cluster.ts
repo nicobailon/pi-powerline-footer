@@ -1,4 +1,5 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import type { PowerlinePlacement } from "../types.ts";
 
 export const CURSOR_MARKER = "\x1b_pi:c\x07";
 
@@ -11,6 +12,7 @@ export interface FixedEditorClusterInput {
   secondaryLines?: string[];
   transcriptLines?: string[];
   lastPromptLines?: string[];
+  powerlinePlacement?: PowerlinePlacement;
 }
 
 export interface FixedEditorCursor {
@@ -87,6 +89,31 @@ export function renderFixedEditorCluster(input: FixedEditorClusterInput): FixedE
 
   const editorLines = capEditorLines(editorSource, maxRows);
   let remaining = maxRows - editorLines.length;
+
+  if (input.powerlinePlacement === "below") {
+    const top = takeTail(topLines, remaining);
+    remaining -= top.length;
+
+    const secondary = takeTail(secondaryLines, remaining);
+    remaining -= secondary.length;
+
+    const lastPrompt = takeTail(lastPromptLines, remaining);
+    remaining -= lastPrompt.length;
+
+    const status = takeTail(statusLines, remaining);
+    remaining -= status.length;
+
+    const transcript = takeTail(transcriptLines, remaining);
+
+    return extractCursor([
+      ...status,
+      ...editorLines,
+      ...top,
+      ...secondary,
+      ...transcript,
+      ...lastPrompt,
+    ]);
+  }
 
   const top = takeTail(topLines, remaining);
   remaining -= top.length;

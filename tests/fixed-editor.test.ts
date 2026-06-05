@@ -51,6 +51,20 @@ test("fixed cluster keeps the editor visible before optional rows", () => {
   assert.deepEqual(rendered.cursor, { row: 2, col: 7 });
 });
 
+test("fixed cluster can render the powerline below the editor", () => {
+  const rendered = renderFixedEditorCluster({
+    width: 80,
+    terminalRows: 5,
+    topLines: ["powerline"],
+    editorLines: ["edit-a", `edit-b ${CURSOR_MARKER}`],
+    secondaryLines: ["secondary"],
+    powerlinePlacement: "below",
+  });
+
+  assert.deepEqual(rendered.lines, ["edit-a", "edit-b ", "powerline", "secondary"]);
+  assert.deepEqual(rendered.cursor, { row: 1, col: 7 });
+});
+
 test("fixed cluster caps oversized editor around the cursor", () => {
   const rendered = renderFixedEditorCluster({
     width: 80,
