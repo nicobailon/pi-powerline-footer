@@ -17,6 +17,14 @@ export interface LoadedCounts {
   promptTemplates: number;
 }
 
+function formatTokens(n: number): string {
+  if (n < 1000) return n.toString();
+  if (n < 10000) return `${(n / 1000).toFixed(1)}k`;
+  if (n < 1000000) return `${Math.round(n / 1000)}k`;
+  if (n < 10000000) return `${(n / 1000000).toFixed(1)}M`;
+  return `${Math.round(n / 1000000)}M`;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Shared rendering utilities
 // ═══════════════════════════════════════════════════════════════════════════
@@ -85,6 +93,7 @@ interface WelcomeData {
   providerName: string;
   recentSessions: RecentSession[];
   loadedCounts: LoadedCounts;
+  initialContextTokens: number | null;
 }
 
 function buildLeftColumn(data: WelcomeData, colWidth: number): string[] {
@@ -121,7 +130,7 @@ function buildRightColumn(data: WelcomeData, colWidth: number): string[] {
   const countLines: string[] = [];
   const { contextFiles, extensions, skills, promptTemplates } = data.loadedCounts;
   const itemPrefix = dim("- ");
-  
+
   if (contextFiles > 0 || extensions > 0 || skills > 0 || promptTemplates > 0) {
     if (contextFiles > 0) {
       countLines.push(` ${itemPrefix}${fgOnly("gitClean", `${contextFiles}`)} context file${contextFiles !== 1 ? "s" : ""}`);
@@ -138,6 +147,11 @@ function buildRightColumn(data: WelcomeData, colWidth: number): string[] {
   } else {
     countLines.push(` ${dim("No extensions loaded")}`);
   }
+
+  if (typeof data.initialContextTokens === "number" && Number.isFinite(data.initialContextTokens) && data.initialContextTokens > 0) {
+    countLines.push(` ${itemPrefix}${fgOnly("gitClean", `≈ ${formatTokens(data.initialContextTokens)}`)} initial tokens`);
+  }
+  
   
   return [
     ` ${bold(fgOnly("accent", "Tips"))}`,
@@ -226,8 +240,9 @@ export class WelcomeComponent implements Component {
     providerName: string,
     recentSessions: RecentSession[] = [],
     loadedCounts: LoadedCounts = { contextFiles: 0, extensions: 0, skills: 0, promptTemplates: 0 },
+    initialContextTokens: number | null = null,
   ) {
-    this.data = { modelName, providerName, recentSessions, loadedCounts };
+    this.data = { modelName, providerName, recentSessions, loadedCounts, initialContextTokens };
   }
 
   setCountdown(seconds: number): void {
@@ -276,8 +291,9 @@ export class WelcomeHeader implements Component {
     providerName: string,
     recentSessions: RecentSession[] = [],
     loadedCounts: LoadedCounts = { contextFiles: 0, extensions: 0, skills: 0, promptTemplates: 0 },
+    initialContextTokens: number | null = null,
   ) {
-    this.data = { modelName, providerName, recentSessions, loadedCounts };
+    this.data = { modelName, providerName, recentSessions, loadedCounts, initialContextTokens };
   }
 
   invalidate(): void {}

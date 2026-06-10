@@ -1,3 +1,6 @@
+export { estimatePromptTokens } from "./token-estimate.ts";
+import { estimatePromptTokens } from "./token-estimate.ts";
+
 interface CoreContextUsage {
   contextTokens: number;
   contextWindow: number;
@@ -38,4 +41,17 @@ export function readCoreContextUsage(ctx: unknown): CoreContextUsage | null {
       ? percent
       : (tokens / contextWindow) * 100,
   };
+}
+
+export function estimateInitialContextTokens(ctx: unknown): number | null {
+  if (!isRecord(ctx) || typeof ctx.getSystemPrompt !== "function") {
+    return null;
+  }
+
+  const prompt = ctx.getSystemPrompt();
+  if (typeof prompt !== "string" || !prompt.trim()) {
+    return null;
+  }
+
+  return estimatePromptTokens(prompt);
 }

@@ -33,7 +33,7 @@ import { ansi, getFgAnsiCode } from "./colors.ts";
 import { WelcomeComponent, WelcomeHeader, discoverLoadedCounts, getRecentSessions } from "./welcome.ts";
 import { createWelcomeDismissScheduler } from "./welcome-dismiss.ts";
 import { createRenderScheduler } from "./render-scheduler.ts";
-import { readCoreContextUsage } from "./context-usage.ts";
+import { estimateInitialContextTokens, readCoreContextUsage } from "./context-usage.ts";
 import { renderFixedEditorCluster } from "./fixed-editor/cluster.ts";
 import { emergencyTerminalModeReset, TerminalSplitCompositor } from "./fixed-editor/terminal-split.ts";
 import { getDefaultColors } from "./theme.ts";
@@ -2767,8 +2767,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     const providerName = ctx.model?.provider || "Unknown";
     const loadedCounts = discoverLoadedCounts();
     const recentSessions = getRecentSessions(3);
+    const initialContextTokens = estimateInitialContextTokens(ctx);
     
-    const header = new WelcomeHeader(modelName, providerName, recentSessions, loadedCounts);
+    const header = new WelcomeHeader(modelName, providerName, recentSessions, loadedCounts, initialContextTokens);
     welcomeHeaderActive = true;
     
     ctx.ui.setHeader(() => {
@@ -2788,6 +2789,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     const providerName = ctx.model?.provider || "Unknown";
     const loadedCounts = discoverLoadedCounts();
     const recentSessions = getRecentSessions(3);
+    const initialContextTokens = estimateInitialContextTokens(ctx);
     
     const overlaySessionGeneration = sessionGeneration;
 
@@ -2815,6 +2817,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
             providerName,
             recentSessions,
             loadedCounts,
+            initialContextTokens,
           );
           
           let countdown = 30;
