@@ -318,6 +318,20 @@ The path segment supports three modes:
 
 Configure via preset options: `path: { mode: "full" }`
 
+## Git polling
+
+By default the git segment polls both branch and dirty state. If background `git status --porcelain` calls interfere with your workflow, use branch-only polling:
+
+```json
+{
+  "powerline": {
+    "git": { "polling": "branch" }
+  }
+}
+```
+
+Use `"off"` to disable extension-owned git polling entirely and only show the branch reported by Pi when available.
+
 ## Segments
 
 `model` · `thinking` · `shell_mode` · `path` · `git` · `subagents` · `token_in` · `token_out` · `token_total` · `cost` · `context_pct` · `context_total` · `time_spent` · `time` · `session` · `hostname` · `cache_read` · `cache_write`

@@ -17,6 +17,7 @@ test("stash shortcut supports macOS Option+S character input", () => {
   assert.match(source, /ctx\.ui\.onTerminalInput\(\(data: string\) =>/);
   assert.match(source, /if \(isStashShortcutInput\(data\)\)/);
   assert.match(source, /return \{ consume: true \};/);
+  assert.match(source, /function getCurrentEditorText\(ctx: any, editor: any\): string \{\n\s+const editorText = editor\?\.getExpandedText\?\.\(\);\n\s+if \(typeof editorText === "string" && editorText\.length > 0\) return editorText;\n\s+return ctx\.ui\.getEditorText\?\.\(\) \?\? editorText \?\? "";\n\}/);
   assert.match(source, /function stashOrRestoreEditorText\(ctx: any\): void/);
   assert.match(source, /if \(isStashShortcutInput\(data\)\)/);
   assert.match(source, /stashOrRestoreEditorText\(ctx\);/);

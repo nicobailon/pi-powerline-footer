@@ -1,9 +1,10 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
-import type { ColorValue, CustomItemPosition, CustomStatusItem, PresetDef, StatusLinePreset, StatusLineSegmentId } from "./types.ts";
+import type { ColorValue, CustomItemPosition, CustomStatusItem, PresetDef, StatusLinePreset, StatusLineSegmentId, StatusLineSegmentOptions } from "./types.ts";
 
 export interface PowerlineConfig {
   preset: StatusLinePreset;
   customItems: CustomStatusItem[];
+  segmentOptions: StatusLineSegmentOptions;
   mouseScroll: boolean;
   fixedEditor: boolean;
   splitLayout: boolean;
@@ -84,8 +85,60 @@ function normalizeCustomItems(raw: unknown): CustomStatusItem[] {
   return [...deduped.values()];
 }
 
+function normalizeSegmentOptions(raw: Record<string, unknown>): StatusLineSegmentOptions {
+  const options: StatusLineSegmentOptions = {};
+
+  if (isRecord(raw.model)) {
+    options.model = {
+      ...(typeof raw.model.showThinkingLevel === "boolean" ? { showThinkingLevel: raw.model.showThinkingLevel } : {}),
+    };
+  }
+
+  if (isRecord(raw.path)) {
+    options.path = {
+      ...(raw.path.mode === "basename" || raw.path.mode === "abbreviated" || raw.path.mode === "full" ? { mode: raw.path.mode } : {}),
+      ...(typeof raw.path.maxLength === "number" && Number.isFinite(raw.path.maxLength) && raw.path.maxLength > 0
+        ? { maxLength: Math.floor(raw.path.maxLength) }
+        : {}),
+    };
+  }
+
+  if (isRecord(raw.git)) {
+    options.git = {
+      ...(typeof raw.git.showBranch === "boolean" ? { showBranch: raw.git.showBranch } : {}),
+      ...(typeof raw.git.showStaged === "boolean" ? { showStaged: raw.git.showStaged } : {}),
+      ...(typeof raw.git.showUnstaged === "boolean" ? { showUnstaged: raw.git.showUnstaged } : {}),
+      ...(typeof raw.git.showUntracked === "boolean" ? { showUntracked: raw.git.showUntracked } : {}),
+      ...(raw.git.polling === "full" || raw.git.polling === "branch" || raw.git.polling === "off" ? { polling: raw.git.polling } : {}),
+    };
+  }
+
+  if (isRecord(raw.time)) {
+    options.time = {
+      ...(raw.time.format === "12h" || raw.time.format === "24h" ? { format: raw.time.format } : {}),
+      ...(typeof raw.time.showSeconds === "boolean" ? { showSeconds: raw.time.showSeconds } : {}),
+    };
+  }
+
+  return options;
+}
+
+export function mergeSegmentOptions(
+  defaults: StatusLineSegmentOptions = {},
+  overrides: StatusLineSegmentOptions = {},
+): StatusLineSegmentOptions {
+  return {
+    ...defaults,
+    ...overrides,
+    model: { ...defaults.model, ...overrides.model },
+    path: { ...defaults.path, ...overrides.path },
+    git: { ...defaults.git, ...overrides.git },
+    time: { ...defaults.time, ...overrides.time },
+  };
+}
+
 export function parsePowerlineConfig(value: unknown, presets: readonly StatusLinePreset[]): PowerlineConfig {
-  const defaultConfig: PowerlineConfig = { preset: "default", customItems: [], mouseScroll: true, fixedEditor: true, splitLayout: false };
+  const defaultConfig: PowerlineConfig = { preset: "default", customItems: [], segmentOptions: {}, mouseScroll: true, fixedEditor: true, splitLayout: false };
 
   const directPreset = normalizePreset(value, presets);
   if (directPreset) return { ...defaultConfig, preset: directPreset };
@@ -95,6 +148,7 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
   return {
     preset: normalizePreset(value.preset, presets) ?? defaultConfig.preset,
     customItems: normalizeCustomItems(value.customItems),
+    segmentOptions: normalizeSegmentOptions(value),
     mouseScroll: value.mouseScroll !== false,
     fixedEditor: value.fixedEditor !== false,
     splitLayout: value.splitLayout === true

@@ -2,6 +2,38 @@
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-06-08
+
+### Fixed
+- **Prompt history draft preservation** — Returning from prompt-history browsing with Down now restores the unsent editor draft instead of clearing it.
+
+## [0.6.0] - 2026-06-05
+
+### Changed
+- **Prompt history recall** — Pressing Up at the end of non-bash editor text now recalls the previous submitted prompt, while Up inside the text keeps normal cursor movement.
+- **Pi 0.76 compatibility** — Verified compatibility against `@earendil-works/pi-ai`, `@earendil-works/pi-coding-agent`, and `@earendil-works/pi-tui` `0.76.0`, then widened peer/dev ranges to `>=0.74.0 <0.77.0`.
+- **Git polling control** — Added `powerline.git.polling` with `full`, `branch`, and `off` modes so users can avoid background dirty-state polling in worktrees or Windows environments.
+
+### Fixed
+- **Session-switch keyboard modes** — Preserved Kitty keyboard protocol and `modifyOtherKeys` across session switches so Shift+Enter keeps inserting newlines after resume/new/fork.
+- **Fixed-editor IME positioning** — Kept the terminal cursor anchored to the logical editor cursor even when the visible hardware cursor is hidden, improving IME candidate placement.
+- **Fixed-editor image scrolling** — Cleared stale Kitty image placements when the app-owned chat viewport moves so images scroll with text.
+- **Stale extension contexts** — Ignored only Pi's stale-context render race during session replacement while preserving other render errors.
+- **Stash text lookup** — Fell back to Pi's editor text when the custom editor temporarily reports an empty string, so stash/copy/history actions can still see current input.
+- **Segment option config** — Parsed and merged documented segment options like `powerline.path.mode` over preset defaults.
+- **Fixed-editor selection hit-testing** — Refreshed root viewport state before mouse selection hit-testing so copied text stays aligned after output changes.
+
+## [0.5.6] - 2026-05-26
+
+### Fixed
+- **Fixed-editor mouse scrolling** — Reasserted terminal mouse reporting after fixed-editor writes so mouse-wheel scrolling keeps working when the fixed editor is enabled.
+- **Fixed-editor chat clipping** — Guarded fixed-editor viewport writes against terminal autowrap drift so full-width user message boxes no longer lose characters at the right edge.
+
+## [0.5.5] - 2026-05-26
+
+### Fixed
+- **Pi 0.75 extension installs** — Widened Pi package peer dependency ranges so `pi-powerline-footer` can install alongside extensions that require Pi 0.75.x packages.
+
 ## [0.5.4] - 2026-05-10
 
 ### Fixed

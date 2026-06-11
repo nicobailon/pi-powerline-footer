@@ -211,3 +211,9 @@ test("powerline shortcuts have terminal-input fallback routing", () => {
   assert.match(source, /matchesConfiguredShortcut\(data, bashModeSettings\.toggleShortcut\)/);
   assert.match(source, /runPowerlineShortcut\(ctx, powerlineShortcutAction\)/);
 });
+
+test("powerline editor preserves a previous editor autocomplete provider", () => {
+  assert.match(source, /const previousEditorFactory = typeof ctx\.ui\.getEditorComponent === "function" \? ctx\.ui\.getEditorComponent\(\) : undefined/);
+  assert.match(source, /const previousEditor = previousEditorFactory\?\.\(tui, editorTheme, keybindings\)/);
+  assert.match(source, /return getEditorAutocompleteProvider\(editor\) \?\? getEditorAutocompleteProvider\(previousEditor\)/);
+});

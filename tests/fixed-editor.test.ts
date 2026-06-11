@@ -634,6 +634,37 @@ test("terminal split handles modified SGR wheel packets", () => {
   compositor.dispose();
 });
 
+test("terminal split guards wrapped terminal writes", () => {
+  const terminal = new FakeTerminal();
+  const tui = {
+    terminal,
+    hardwareCursorRow: 2,
+    previousViewportTop: 0,
+    render() {
+      return Array.from({ length: 15 }, (_, index) => `line-${index}`);
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render(40);
+
+  terminal.write("\x1b[?1006l\x1b[?1002l" + "x".repeat(40));
+
+  const write = terminal.writes.at(-1) ?? "";
+  assert.ok(write.includes("\x1b[?1006l\x1b[?1002l" + "x".repeat(40)));
+  assert.ok(write.indexOf("\x1b[?7l") < write.indexOf("x".repeat(40)));
+  assert.ok(write.lastIndexOf("\x1b[?7h") > write.lastIndexOf("x".repeat(40)));
+  assert.ok(write.lastIndexOf("\x1b[?1002h\x1b[?1006h") > write.lastIndexOf("\x1b[?1006l\x1b[?1002l"));
+
+  compositor.dispose();
+});
+
 test("terminal split pauses mouse reporting on right click for the terminal context menu", () => {
   const terminal = new FakeTerminal();
   let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
@@ -728,6 +759,45 @@ test("terminal split selects visible chat text and copies it on drag release", (
   assert.deepEqual(copied, ["ravo two\ncharlie three\ndelta"]);
   assert.ok(!terminal.writes.at(-1)?.includes("\x1b[?1006l\x1b[?1002l\x1b[?1000l"));
   assert.deepEqual(renderRequests, [undefined, undefined, undefined]);
+
+  compositor.dispose();
+});
+
+test("terminal split refreshes root lines before mouse selection hit-testing", () => {
+  const terminal = new FakeTerminal();
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const copied: string[] = [];
+  let rootLines = ["alpha one", "bravo two", "charlie three"];
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender() {},
+    render() {
+      return rootLines;
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    onCopySelection: (text) => copied.push(text),
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render(40);
+  rootLines = Array.from({ length: 15 }, (_, index) => `line-${index}`);
+
+  assert.deepEqual(inputListener?.("\x1b[<0;1;1M"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[<32;1;2M"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[<0;1;2m"), { consume: true });
+
+  assert.deepEqual(copied, ["line-5"]);
 
   compositor.dispose();
 });
@@ -1179,6 +1249,44 @@ test("terminal split keyboard scroll accepts configured shortcuts", () => {
   assert.deepEqual(renderRequests, [undefined]);
   assert.deepEqual(inputListener?.("\x1b[100;6u"), { consume: true });
   assert.deepEqual(renderRequests, [undefined, undefined]);
+
+  compositor.dispose();
+});
+
+test("terminal split clears Kitty images when the scroll viewport moves", () => {
+  const terminal = new FakeTerminal();
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender() {},
+    render() {
+      return Array.from({ length: 30 }, (_, index) => `line-${index}`);
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render();
+  terminal.writes = [];
+
+  assert.deepEqual(inputListener?.("\x1b[5~"), { consume: true });
+  assert.equal(terminal.writes.length, 1);
+  assert.match(terminal.writes[0] ?? "", /\x1b_Ga=d,d=A,q=2\x1b\\/);
+
+  terminal.writes = [];
+  terminal.write("root update");
+  assert.doesNotMatch(terminal.writes[0] ?? "", /\x1b_Ga=d,d=A,q=2\x1b\\/);
 
   compositor.dispose();
 });

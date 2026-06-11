@@ -13,6 +13,8 @@ interface CachedBranch {
   timestamp: number;
 }
 
+export type GitPollingMode = "full" | "branch" | "off";
+
 const CACHE_TTL_MS = 1000; // 1 second for file status
 const BRANCH_TTL_MS = 500; // Shorter TTL so branch updates quickly after invalidation
 let cachedStatus: CachedGitStatus | null = null;
@@ -154,9 +156,13 @@ export function getCurrentBranch(providerBranch: string | null): string | null {
  * This is designed for synchronous render() calls - returns last known value
  * while refreshing in background.
  */
-export function getGitStatus(providerBranch: string | null): GitStatus {
+export function getGitStatus(providerBranch: string | null, pollingMode: GitPollingMode = "full"): GitStatus {
   const now = Date.now();
-  const branch = getCurrentBranch(providerBranch);
+  const branch = pollingMode === "off" ? providerBranch : getCurrentBranch(providerBranch);
+
+  if (pollingMode !== "full") {
+    return { branch, staged: 0, unstaged: 0, untracked: 0 };
+  }
 
   // Return cached if fresh
   if (cachedStatus && now - cachedStatus.timestamp < CACHE_TTL_MS) {

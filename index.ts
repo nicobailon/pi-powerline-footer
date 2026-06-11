@@ -25,7 +25,7 @@ import { ManagedShellSession } from "./bash-mode/shell-session.ts";
 import { matchHistoryEntries, readGlobalShellHistory, readProjectHistory, appendProjectHistory } from "./bash-mode/history.ts";
 import type { BashModeSettings } from "./bash-mode/types.ts";
 import { getPreset, PRESETS } from "./presets.ts";
-import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, mergeSegmentsWithCustomItems, nextPowerlineSettingWithOptions, nextPowerlineSettingWithPreset, parsePowerlineConfig } from "./powerline-config.ts";
+import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, mergeSegmentOptions, mergeSegmentsWithCustomItems, nextPowerlineSettingWithOptions, nextPowerlineSettingWithPreset, parsePowerlineConfig } from "./powerline-config.ts";
 import { getSeparator } from "./separators.ts";
 import { renderSegment } from "./segments.ts";
 import { getGitStatus, invalidateGitStatus, invalidateGitBranch } from "./git-status.ts";
@@ -655,8 +655,14 @@ function hasNonWhitespaceText(text: string): boolean {
   return text.trim().length > 0;
 }
 
+function isStaleExtensionContextError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("This extension instance is stale");
+}
+
 function getCurrentEditorText(ctx: any, editor: any): string {
-  return editor?.getExpandedText?.() ?? ctx.ui.getEditorText();
+  const editorText = editor?.getExpandedText?.();
+  if (typeof editorText === "string" && editorText.length > 0) return editorText;
+  return ctx.ui.getEditorText?.() ?? editorText ?? "";
 }
 
 function buildStashPreview(text: string, maxWidth: number): string {
@@ -1269,7 +1275,13 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   });
 
-  pi.on("session_shutdown", async () => {
+  pi.on("session_shutdown", async (event) => {
+    // When switching sessions (resume/new/fork), preserve keyboard modes
+    // (Kitty protocol, modifyOtherKeys) so that Shift+Enter and other
+    // modified keys continue to work. Only reset on quit/reload where
+    // the terminal should be restored to a clean state.
+    const isTerminalExit = event?.reason === "quit" || event?.reason === "reload";
+
     sessionGeneration++;
     dismissWelcomeOverlay?.();
     dismissWelcomeOverlay = null;
@@ -1279,7 +1291,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     statusRenderScheduler.cancel();
     restoreFooterStatusRepaintHook?.();
     restoreFooterStatusRepaintHook = null;
-    teardownFixedEditorCompositor({ resetExtendedKeyboardModes: true });
+    teardownFixedEditorCompositor(isTerminalExit ? { resetExtendedKeyboardModes: true } : undefined);
     stashShortcutInputUnsubscribe?.();
     stashShortcutInputUnsubscribe = null;
     shellSession?.dispose();
@@ -2125,9 +2137,11 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     const contextWindow = coreContextUsage?.contextWindow ?? ctx.model?.contextWindow ?? 0;
     const contextPercent = coreContextUsage?.contextPercent ?? (contextWindow > 0 ? (contextTokens / contextWindow) * 100 : 0);
 
+    const segmentOptions = mergeSegmentOptions(presetDef.segmentOptions, config.segmentOptions);
+
     // Get git status (cached)
     const gitBranch = footerDataRef?.getGitBranch() ?? null;
-    const gitStatus = getGitStatus(gitBranch);
+    const gitStatus = getGitStatus(gitBranch, segmentOptions.git?.polling);
     const extensionStatuses = footerDataRef?.getExtensionStatuses() ?? new Map();
     const customItemsById = new Map(config.customItems.map((item) => [item.id, item]));
     const hiddenExtensionStatusKeys = collectHiddenExtensionStatusKeys(config.customItems);
@@ -2159,7 +2173,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       extensionStatuses,
       hiddenExtensionStatusKeys,
       customItemsById,
-      options: presetDef.segmentOptions ?? {},
+      options: segmentOptions,
       theme,
       colors,
     };
@@ -2185,16 +2199,28 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         return lastLayoutResult;
       }
     }
-    
+
     const presetDef = getPreset(config.preset);
-    const segmentCtx = buildSegmentContext(currentCtx, theme);
-    
+    let segmentCtx: SegmentContext;
+    try {
+      segmentCtx = buildSegmentContext(currentCtx, theme);
+    } catch (error) {
+      if (!isStaleExtensionContextError(error)) throw error;
+      currentCtx = null;
+      lastLayoutWidth = width;
+      lastLayoutResult = { topContent: "", secondaryContent: "" };
+      lastLayoutTimestamp = now;
+      layoutDirty = false;
+      forceNextLayoutRecompute = false;
+      return lastLayoutResult;
+    }
+
     lastLayoutWidth = width;
     lastLayoutResult = computeResponsiveLayout(segmentCtx, presetDef, width);
     lastLayoutTimestamp = now;
     layoutDirty = false;
     forceNextLayoutRecompute = false;
-    
+
     return lastLayoutResult;
   }
 
@@ -2328,6 +2354,19 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     fixedWidgetContainerAbove = tuiChildren[editorContainerMatch.index - 1] ?? null;
     fixedWidgetContainerBelow = tuiChildren[editorContainerMatch.index + 1] ?? null;
 
+    const fallbackTheme = ctx.ui.theme;
+    const readRenderTheme = (): Theme => {
+      if (!currentCtx) return fallbackTheme;
+      try {
+        return currentCtx.ui?.theme ?? fallbackTheme;
+      } catch (error) {
+        if (!isStaleExtensionContextError(error)) throw error;
+        currentCtx = null;
+        resetLayoutCache();
+        return fallbackTheme;
+      }
+    };
+
     let compositor: TerminalSplitCompositor;
     compositor = new TerminalSplitCompositor({
       tui,
@@ -2340,7 +2379,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       onCopySelection: (text) => copyTextToClipboard(ctx, text),
       getShowHardwareCursor: () => typeof tui.getShowHardwareCursor === "function" && tui.getShowHardwareCursor(),
       renderCluster: (width, terminalRows) => {
-        const theme = currentCtx?.ui?.theme ?? ctx.ui.theme;
+        const theme = readRenderTheme();
         const statusContainerLines = fixedStatusContainer
           ? compositor.renderHidden(fixedStatusContainer, width).filter((line) => visibleWidth(line) > 0)
           : [];
@@ -2550,8 +2589,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     ctx.ui.setWidget("powerline-last-prompt", undefined);
 
     let autocompleteFixed = false;
+    const previousEditorFactory = typeof ctx.ui.getEditorComponent === "function" ? ctx.ui.getEditorComponent() : undefined;
 
     const editorFactory = (tui: any, editorTheme: any, keybindings: any) => {
+      const previousEditor = previousEditorFactory?.(tui, editorTheme, keybindings);
       const editor = new BashModeEditor(tui, editorTheme, keybindings, {
         keybindings,
         isBashModeActive: () => bashModeActive,
@@ -2587,8 +2628,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         },
       });
 
-      const getInstalledAutocompleteProvider = (): AutocompleteProvider | undefined => {
-        const candidate = Reflect.get(editor, "autocompleteProvider");
+      const getEditorAutocompleteProvider = (sourceEditor: unknown): AutocompleteProvider | undefined => {
+        const candidate = sourceEditor && typeof sourceEditor === "object" ? Reflect.get(sourceEditor, "autocompleteProvider") : null;
         if (!candidate || typeof candidate !== "object") {
           return undefined;
         }
@@ -2599,6 +2640,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           return undefined;
         }
         return candidate;
+      };
+
+      const getInstalledAutocompleteProvider = (): AutocompleteProvider | undefined => {
+        return getEditorAutocompleteProvider(editor) ?? getEditorAutocompleteProvider(previousEditor);
       };
 
       const attachAutocompleteProvider = (): boolean => {

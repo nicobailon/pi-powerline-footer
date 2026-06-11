@@ -81,7 +81,13 @@ export interface StatusLineSegmentOptions {
     mode?: "basename" | "abbreviated" | "full";
     maxLength?: number;
   };
-  git?: { showBranch?: boolean; showStaged?: boolean; showUnstaged?: boolean; showUntracked?: boolean };
+  git?: {
+    showBranch?: boolean;
+    showStaged?: boolean;
+    showUnstaged?: boolean;
+    showUntracked?: boolean;
+    polling?: "full" | "branch" | "off";
+  };
   time?: { format?: "12h" | "24h"; showSeconds?: boolean };
 }
 

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, normalizeExtensionStatusValue, parsePowerlineConfig, mergeSegmentsWithCustomItems, nextPowerlineSettingWithOptions, nextPowerlineSettingWithPreset, normalizeCompactExtensionStatus } from "../powerline-config.ts";
+import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, normalizeExtensionStatusValue, parsePowerlineConfig, mergeSegmentOptions, mergeSegmentsWithCustomItems, nextPowerlineSettingWithOptions, nextPowerlineSettingWithPreset, normalizeCompactExtensionStatus } from "../powerline-config.ts";
 
 test("parsePowerlineConfig supports object config with custom items", () => {
   const config = parsePowerlineConfig(
@@ -42,6 +42,41 @@ test("parsePowerlineConfig supports disabling fixed editor", () => {
 
   assert.equal(config.preset, "compact");
   assert.equal(config.fixedEditor, false);
+});
+
+test("parsePowerlineConfig extracts supported segment options", () => {
+  const config = parsePowerlineConfig(
+    {
+      preset: "default",
+      model: { showThinkingLevel: true },
+      path: { mode: "full", maxLength: 120 },
+      git: { showBranch: false, showStaged: false, showUnstaged: true, showUntracked: false, polling: "branch" },
+      time: { format: "12h", showSeconds: true },
+    },
+    ["default", "compact"],
+  );
+
+  assert.deepEqual(config.segmentOptions, {
+    model: { showThinkingLevel: true },
+    path: { mode: "full", maxLength: 120 },
+    git: { showBranch: false, showStaged: false, showUnstaged: true, showUntracked: false, polling: "branch" },
+    time: { format: "12h", showSeconds: true },
+  });
+});
+
+test("mergeSegmentOptions lets user config override preset segment defaults", () => {
+  assert.deepEqual(
+    mergeSegmentOptions(
+      { path: { mode: "basename", maxLength: 20 }, git: { showBranch: true, showUntracked: true } },
+      { path: { mode: "full" }, git: { showUntracked: false } },
+    ),
+    {
+      model: {},
+      path: { mode: "full", maxLength: 20 },
+      git: { showBranch: true, showUntracked: false },
+      time: {},
+    },
+  );
 });
 
 test("mergeSegmentsWithCustomItems appends custom segment ids by position", () => {

@@ -1,4 +1,4 @@
-import { isKeyRelease, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { deleteAllKittyImages, isKeyRelease, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { matchesConfiguredShortcut } from "../shortcuts.ts";
 import type { FixedEditorClusterRender } from "./cluster.ts";
 
@@ -127,6 +127,14 @@ function enableAlternateScrollMode(): string {
 
 function disableAlternateScrollMode(): string {
   return "\x1b[?1007l";
+}
+
+function disableAutoWrap(): string {
+  return "\x1b[?7l";
+}
+
+function enableAutoWrap(): string {
+  return "\x1b[?7h";
 }
 
 function enableMouseReporting(): string {
@@ -301,9 +309,13 @@ export function buildFixedClusterPaint(
     buffer += sanitizeLine(cluster.lines[i] ?? "", width);
   }
 
-  if (cluster.cursor && showHardwareCursor) {
+  if (cluster.cursor) {
+    // Keep the real terminal cursor parked at the logical editor cursor even
+    // when it is visually hidden. macOS IME candidate windows anchor to the
+    // terminal cursor position, so skipping the move when PI_HARDWARE_CURSOR is
+    // off leaves the candidate window at a stale/offset location.
     buffer += moveCursor(startRow + cluster.cursor.row, Math.max(1, cluster.cursor.col + 1));
-    buffer += showCursor();
+    buffer += showHardwareCursor ? showCursor() : hideCursor();
   } else {
     buffer += hideCursor();
   }
@@ -352,6 +364,7 @@ export class TerminalSplitCompositor {
   private selectionDragging = false;
   private preserveSelectionFocusOnRelease = false;
   private lastLeftPress: { area: SelectionArea; line: number; at: number } | null = null;
+  private pendingImageCleanup = false;
 
   constructor(options: TerminalSplitCompositorOptions) {
     this.tui = options.tui;
@@ -378,7 +391,7 @@ export class TerminalSplitCompositor {
       + enterAlternateScreen()
       + this.enableAlternateScreenKeyboardMode()
       + disableAlternateScrollMode()
-      + (this.mouseScroll ? enableMouseReporting() : "")
+      + this.mouseReportingStateGuard()
       + endSynchronizedOutput(),
     );
     this.emergencyCleanup = () => {
@@ -461,6 +474,7 @@ export class TerminalSplitCompositor {
     this.clearSelection();
     this.lastLeftPress = null;
     this.scrollOffset = 0;
+    this.pendingImageCleanup = true;
     this.requestRender();
     return true;
   }
@@ -483,6 +497,7 @@ export class TerminalSplitCompositor {
       this.clearSelection();
       this.lastLeftPress = null;
       this.scrollOffset = nextOffset;
+      this.pendingImageCleanup = true;
       this.requestRender();
       return true;
     }
@@ -499,7 +514,10 @@ export class TerminalSplitCompositor {
 
     this.originalWrite(
       beginSynchronizedOutput()
+      + disableAutoWrap()
       + buildFixedClusterPaint(this.decorateCluster(cluster), rawRows, width, this.getShowHardwareCursor())
+      + enableAutoWrap()
+      + this.mouseReportingStateGuard()
       + endSynchronizedOutput(),
     );
   }
@@ -595,8 +613,13 @@ export class TerminalSplitCompositor {
       this.scrollOffset += lines.length - this.lastRootLineCount;
     }
     this.lastRootLineCount = lines.length;
+    const previousMaxScrollOffset = this.maxScrollOffset;
     this.maxScrollOffset = Math.max(0, lines.length - scrollableRows);
-    this.scrollOffset = Math.max(0, Math.min(this.scrollOffset, this.maxScrollOffset));
+    const nextScrollOffset = Math.max(0, Math.min(this.scrollOffset, this.maxScrollOffset));
+    if (nextScrollOffset !== this.scrollOffset || this.maxScrollOffset !== previousMaxScrollOffset) {
+      this.pendingImageCleanup = true;
+    }
+    this.scrollOffset = nextScrollOffset;
 
     return this.updateVisibleRootWindow(scrollableRows);
   }
@@ -627,6 +650,7 @@ export class TerminalSplitCompositor {
       return;
     }
 
+    this.refreshRootWindow(Math.max(1, this.terminal.columns || 80));
     const location = this.selectionLocationForPacket(packet);
 
     if (isRightPress(packet)) {
@@ -761,6 +785,7 @@ export class TerminalSplitCompositor {
     this.lastLeftPress = null;
     this.preserveSelectionFocusOnRelease = true;
     this.scrollOffset = nextOffset;
+    this.pendingImageCleanup = true;
     const start = this.updateVisibleRootWindow();
     const edgeLine = delta > 0 ? start : start + Math.max(0, this.visibleScrollableRows - 1);
     this.selectionFocus = {
@@ -859,6 +884,7 @@ export class TerminalSplitCompositor {
     this.clearSelection();
     this.lastLeftPress = null;
     this.scrollOffset = nextOffset;
+    this.pendingImageCleanup = true;
     this.repaintScrollableViewport(width);
     this.requestRender();
   }
@@ -876,7 +902,11 @@ export class TerminalSplitCompositor {
     const cluster = this.getCluster(width, rawRows);
     const scrollableRows = Math.max(1, rawRows - cluster.lines.length);
     const start = this.updateVisibleRootWindow(scrollableRows);
-    let buffer = beginSynchronizedOutput() + setScrollRegion(1, scrollableRows) + moveCursor(1, 1);
+    let buffer = beginSynchronizedOutput()
+      + this.consumePendingImageCleanup()
+      + disableAutoWrap()
+      + setScrollRegion(1, scrollableRows)
+      + moveCursor(1, 1);
 
     for (let row = 0; row < scrollableRows; row++) {
       if (row > 0) buffer += "\r\n";
@@ -885,6 +915,8 @@ export class TerminalSplitCompositor {
     }
 
     buffer += buildFixedClusterPaint(this.decorateCluster(cluster), rawRows, width, this.getShowHardwareCursor());
+    buffer += enableAutoWrap();
+    buffer += this.mouseReportingStateGuard();
     buffer += endSynchronizedOutput();
     this.originalWrite(buffer);
   }
@@ -1007,16 +1039,30 @@ export class TerminalSplitCompositor {
       const viewportTop = typeof this.tui.previousViewportTop === "number" ? this.tui.previousViewportTop : 0;
       const screenRow = Math.max(1, Math.min(scrollBottom, hardwareCursorRow - viewportTop + 1));
       const buffer = beginSynchronizedOutput()
+        + this.consumePendingImageCleanup()
+        + disableAutoWrap()
         + setScrollRegion(1, scrollBottom)
         + moveCursor(screenRow, 1)
         + data
         + buildFixedClusterPaint(this.decorateCluster(cluster), rawRows, width, this.getShowHardwareCursor())
+        + enableAutoWrap()
+        + this.mouseReportingStateGuard()
         + endSynchronizedOutput();
 
       this.originalWrite(buffer);
     } finally {
       this.writing = false;
     }
+  }
+
+  private consumePendingImageCleanup(): string {
+    if (!this.pendingImageCleanup) return "";
+    this.pendingImageCleanup = false;
+    return deleteAllKittyImages();
+  }
+
+  private mouseReportingStateGuard(): string {
+    return this.mouseScroll && !this.mouseReportingResumeTimer ? enableMouseReporting() : "";
   }
 
   private getCluster(width: number, terminalRows: number): FixedEditorClusterRender {
