@@ -71,6 +71,7 @@ interface DisposeOptions {
 }
 
 type ExtendedKeyboardMode = "kitty" | "modifyOtherKeys";
+const KEYBOARD_PROTOCOL_DISCOVERY_SEQUENCE = "\x1b[>7u\x1b[?u\x1b[c";
 
 const CONTEXT_MENU_MOUSE_REPORTING_PAUSE_MS = 1200;
 const CONTEXT_MENU_SELECTION_RESTORE_WINDOW_MS = 5000;
@@ -984,7 +985,9 @@ export class TerminalSplitCompositor {
 
   private enableAlternateScreenKeyboardMode(): string {
     this.extendedKeyboardMode = this.activeExtendedKeyboardMode();
-    return this.extendedKeyboardMode ? enableExtendedKeyboardMode(this.extendedKeyboardMode) : "";
+    return this.extendedKeyboardMode
+      ? enableExtendedKeyboardMode(this.extendedKeyboardMode)
+      : KEYBOARD_PROTOCOL_DISCOVERY_SEQUENCE;
   }
 
   private restoreTerminalState(options: DisposeOptions = {}): void {

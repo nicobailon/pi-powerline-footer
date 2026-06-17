@@ -1257,11 +1257,11 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", async (event) => {
-    // When switching sessions (resume/new/fork), preserve keyboard modes
-    // (Kitty protocol, modifyOtherKeys) so that Shift+Enter and other
-    // modified keys continue to work. Only reset on quit/reload where
-    // the terminal should be restored to a clean state.
-    const isTerminalExit = event?.reason === "quit" || event?.reason === "reload";
+    // `/reload` keeps the same live TUI/ProcessTerminal. Resetting Kitty
+    // keyboard protocol or modifyOtherKeys there makes Shift+Enter collapse to
+    // plain Enter until the protocol is negotiated again. Only do the hard
+    // terminal reset when Pi is actually quitting.
+    const shouldResetTerminalModes = event?.reason === "quit";
 
     sessionGeneration++;
     dismissWelcomeOverlay?.();
@@ -1272,7 +1272,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     statusRenderScheduler.cancel();
     restoreFooterStatusRepaintHook?.();
     restoreFooterStatusRepaintHook = null;
-    teardownFixedEditorCompositor(isTerminalExit ? { resetExtendedKeyboardModes: true } : undefined);
+    teardownFixedEditorCompositor(shouldResetTerminalModes ? { resetExtendedKeyboardModes: true } : undefined);
     stashShortcutInputUnsubscribe?.();
     stashShortcutInputUnsubscribe = null;
     shellSession?.dispose();
