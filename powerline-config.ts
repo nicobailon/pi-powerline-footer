@@ -7,6 +7,7 @@ export interface PowerlineConfig {
   segmentOptions: StatusLineSegmentOptions;
   mouseScroll: boolean;
   fixedEditor: boolean;
+  stashSharpSShortcut: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -137,7 +138,7 @@ export function mergeSegmentOptions(
 }
 
 export function parsePowerlineConfig(value: unknown, presets: readonly StatusLinePreset[]): PowerlineConfig {
-  const defaultConfig: PowerlineConfig = { preset: "default", customItems: [], segmentOptions: {}, mouseScroll: true, fixedEditor: true };
+  const defaultConfig: PowerlineConfig = { preset: "default", customItems: [], segmentOptions: {}, mouseScroll: true, fixedEditor: true, stashSharpSShortcut: false };
 
   const directPreset = normalizePreset(value, presets);
   if (directPreset) return { ...defaultConfig, preset: directPreset };
@@ -150,6 +151,7 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     segmentOptions: normalizeSegmentOptions(value),
     mouseScroll: value.mouseScroll !== false,
     fixedEditor: value.fixedEditor !== false,
+    stashSharpSShortcut: value.stashSharpSShortcut === true,
   };
 }
 

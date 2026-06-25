@@ -22,6 +22,7 @@ test("parsePowerlineConfig supports object config with custom items", () => {
   assert.equal(config.customItems[1].hideWhenMissing, false);
   assert.equal(config.mouseScroll, true);
   assert.equal(config.fixedEditor, true);
+  assert.equal(config.stashSharpSShortcut, false);
 });
 
 test("parsePowerlineConfig supports disabling mouse scroll", () => {
@@ -42,6 +43,10 @@ test("parsePowerlineConfig supports disabling fixed editor", () => {
 
   assert.equal(config.preset, "compact");
   assert.equal(config.fixedEditor, false);
+});
+
+test("parsePowerlineConfig supports opt-in sharp-s stash shortcut", () => {
+  assert.equal(parsePowerlineConfig({ stashSharpSShortcut: true }, ["default", "compact"]).stashSharpSShortcut, true);
 });
 
 test("parsePowerlineConfig extracts supported segment options", () => {

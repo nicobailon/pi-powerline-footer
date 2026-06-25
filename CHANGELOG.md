@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Editor stash shortcut** — Stash no longer consumes a literal `ß` by default, so German keyboard input can type sharp-s normally while real Alt/Meta-S sequences still toggle stash. The old printable-`ß` fallback is available with `powerline.stashSharpSShortcut`.
+
 ## [0.6.1] - 2026-06-08
 
 ### Fixed

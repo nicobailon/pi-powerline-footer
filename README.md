@@ -159,7 +159,7 @@ In `~/.pi/agent/settings.json`:
 
 ## Editor Stash
 
-Use `Alt+S` / `Option+S` as a quick stash toggle while drafting. It keeps one active stash and clears the editor when stashing.
+Use `Alt+S` / `Option+S` as a quick stash toggle while drafting. Literal `ß` remains normal text by default. It keeps one active stash and clears the editor when stashing.
 
 | Editor | Stash | `Alt+S` result |
 |--------|-------|----------------|
@@ -171,6 +171,8 @@ Use `Alt+S` / `Option+S` as a quick stash toggle while drafting. It keeps one ac
 Auto-restore after an agent run only happens when the editor is still empty. If you typed meanwhile, the stash is preserved.
 
 The `stash` indicator appears in the powerline bar (on presets with `extension_statuses`). Active stash is still session-local and resets on session switch / disable, but stash history is persisted to `~/.pi/agent/powerline-footer/stash-history.json` so it survives restarts.
+
+If your terminal sends `Option+S` as printable `ß`, set `powerline.stashSharpSShortcut` to `true`; leave it off for German layouts because plain `ß` will stash too.
 
 ### Stash history
 

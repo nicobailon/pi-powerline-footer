@@ -1,4 +1,4 @@
-import { matchesKey } from "@earendil-works/pi-tui";
+import { isKeyRelease, matchesKey } from "@earendil-works/pi-tui";
 
 const SUPER_SHORTCUT_PATTERNS = new Map<string, RegExp>([
   ["super+up", /^\x1b\[(?:1;9(?::[12])?[AH]|574(?:19|23);9(?::[12])?u|7;9(?::[12])?~|27;9;65~)$/],
@@ -35,6 +35,18 @@ export function shortcutConflictKey(shortcut: string): string {
     default:
       return shortcut;
   }
+}
+
+export function isStashShortcutInput(data: string, stashSharpSShortcut = false): boolean {
+  if (isKeyRelease(data)) return false;
+
+  return (stashSharpSShortcut && data === "ß")
+    || data === "\x1bs"
+    || data === "\x1bS"
+    || /^\x1b\[(?:83|115)(?::\d*)?(?::\d*)?;3(?::\d+)?u$/.test(data)
+    || data === "\x1b[27;3;115~"
+    || data === "\x1b[27;3;83~"
+    || matchesKey(data, "alt+s");
 }
 
 export function matchesConfiguredShortcut(data: string, shortcut: string): boolean {

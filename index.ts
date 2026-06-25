@@ -5,7 +5,7 @@ import {
   type Theme,
 } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { isKeyRelease, matchesKey, type AutocompleteProvider, type SelectItem, SelectList, truncateToWidth, TUI_KEYBINDINGS, visibleWidth } from "@earendil-works/pi-tui";
+import { isKeyRelease, type AutocompleteProvider, type SelectItem, SelectList, truncateToWidth, TUI_KEYBINDINGS, visibleWidth } from "@earendil-works/pi-tui";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
@@ -38,6 +38,7 @@ import { renderFixedEditorCluster } from "./fixed-editor/cluster.ts";
 import { emergencyTerminalModeReset, TerminalSplitCompositor } from "./fixed-editor/terminal-split.ts";
 import { getDefaultColors } from "./theme.ts";
 import {
+  isStashShortcutInput,
   isSupportedSuperShortcut,
   matchesConfiguredShortcut,
   shortcutConflictKey,
@@ -69,6 +70,7 @@ let config: PowerlineConfig = {
   customItems: [],
   mouseScroll: true,
   fixedEditor: true,
+  stashSharpSShortcut: false,
 };
 
 const CUSTOM_COMPACTION_STATUS_KEY = "compact-policy";
@@ -1571,18 +1573,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     }
   }
 
-  function isStashShortcutInput(data: string): boolean {
-    if (isKeyRelease(data)) return false;
-
-    return data === "ß"
-      || data === "\x1bs"
-      || data === "\x1bS"
-      || /^\x1b\[(?:83|115)(?::\d*)?(?::\d*)?;3(?::\d+)?u$/.test(data)
-      || data === "\x1b[27;3;115~"
-      || data === "\x1b[27;3;83~"
-      || matchesKey(data, "alt+s");
-  }
-
   function getChatJumpShortcutAction(data: string): ChatJumpShortcutAction | null {
     return CHAT_JUMP_SHORTCUTS.find(({ shortcutKey }) => matchesConfiguredShortcut(data, resolvedShortcuts[shortcutKey]))?.action ?? null;
   }
@@ -2528,7 +2518,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         if (!enabled || !ctx.hasUI || tuiRef?.hasOverlay?.()) {
           return undefined;
         }
-        if (isStashShortcutInput(data)) {
+        if (isStashShortcutInput(data, config.stashSharpSShortcut)) {
           stashOrRestoreEditorText(ctx);
           scheduleDismissWelcome(ctx);
           tuiRef?.requestRender();
@@ -2648,7 +2638,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       editor.handleInput = (data: string) => {
         lastEditorInputAt = Date.now();
 
-        if (isStashShortcutInput(data)) {
+        if (isStashShortcutInput(data, config.stashSharpSShortcut)) {
           stashOrRestoreEditorText(ctx);
           scheduleDismissWelcome(ctx);
           return;
