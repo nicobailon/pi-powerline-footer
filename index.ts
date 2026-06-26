@@ -8,7 +8,7 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { isKeyRelease, matchesKey, type AutocompleteProvider, type SelectItem, SelectList, truncateToWidth, TUI_KEYBINDINGS, visibleWidth } from "@earendil-works/pi-tui";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { homedir } from "node:os";
+import { getAgentDir } from "./paths.ts";
 
 import type { ColorScheme, SegmentContext, StatusLinePreset, StatusLineSegmentId } from "./types.ts";
 import type { PowerlineConfig } from "./powerline-config.ts";
@@ -323,8 +323,7 @@ function trackPromptHistory(editor: any): void {
 }
 
 function getSettingsPath(): string {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
-  return join(homeDir, ".pi", "agent", "settings.json");
+  return join(getAgentDir(), "settings.json");
 }
 
 function getProjectSettingsPath(cwd: string): string {
@@ -332,13 +331,11 @@ function getProjectSettingsPath(cwd: string): string {
 }
 
 function getGlobalCompactionPolicyPath(): string {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
-  return join(homeDir, ".pi", "agent", "compaction-policy.json");
+  return join(getAgentDir(), "compaction-policy.json");
 }
 
 function getCustomCompactionExtensionPath(): string {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
-  return join(homeDir, ".pi", "agent", "extensions", "pi-custom-compaction");
+  return join(getAgentDir(), "extensions", "pi-custom-compaction");
 }
 
 function mergeSettings(base: Record<string, unknown>, override: Record<string, unknown>): Record<string, unknown> {
@@ -422,13 +419,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function getStashHistoryPath(): string {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
-  return join(homeDir, ".pi", "agent", "powerline-footer", "stash-history.json");
+  return join(getAgentDir(), "powerline-footer", "stash-history.json");
 }
 
 function getSessionsPath(): string {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
-  return join(homeDir, ".pi", "agent", "sessions");
+  return join(getAgentDir(), "sessions");
 }
 
 function getProjectSessionsPath(cwd: string): string {

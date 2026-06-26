@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
+import { getAgentDir } from "../paths.ts";
 
 interface PersistedHistoryEntry {
   command: string;
@@ -13,7 +14,7 @@ function getHomeDir(): string {
 }
 
 function getHistoryDir(): string {
-  return join(getHomeDir(), ".pi", "agent", "powerline-footer", "bash-history");
+  return join(getAgentDir(), "powerline-footer", "bash-history");
 }
 
 function projectKey(cwd: string): string {

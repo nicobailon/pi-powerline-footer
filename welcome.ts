@@ -1,6 +1,7 @@
 import { readdirSync, existsSync, statSync, readFileSync } from "node:fs";
 import { join, basename } from "node:path";
 import { homedir as osHomedir } from "node:os";
+import { getAgentDir } from "./paths.ts";
 import type { Component } from "@earendil-works/pi-tui";
 import { truncateToWidth as tuiTruncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { ansi, fgOnly, getFgAnsiCode } from "./colors.ts";
@@ -342,7 +343,7 @@ export function discoverLoadedCounts(): LoadedCounts {
   let promptTemplates = 0;
 
   const agentsMdPaths = [
-    join(homeDir, ".pi", "agent", "AGENTS.md"),
+    join(getAgentDir(), "AGENTS.md"),
     join(homeDir, ".claude", "AGENTS.md"),
     join(cwd, "AGENTS.md"),
     join(cwd, ".pi", "AGENTS.md"),
@@ -354,7 +355,7 @@ export function discoverLoadedCounts(): LoadedCounts {
   }
 
   const extensionDirs = [
-    join(homeDir, ".pi", "agent", "extensions"),
+    join(getAgentDir(), "extensions"),
     join(cwd, "extensions"),
     join(cwd, ".pi", "extensions"),
   ];
@@ -362,7 +363,7 @@ export function discoverLoadedCounts(): LoadedCounts {
   const countedExtensions = new Set<string>();
 
   const settingsPaths = [
-    join(homeDir, ".pi", "agent", "settings.json"),
+    join(getAgentDir(), "settings.json"),
     join(cwd, ".pi", "settings.json"),
   ];
 
@@ -459,7 +460,7 @@ export function discoverLoadedCounts(): LoadedCounts {
   }
 
   const skillDirs = [
-    join(homeDir, ".pi", "agent", "skills"),
+    join(getAgentDir(), "skills"),
     join(cwd, ".pi", "skills"),
     join(cwd, "skills"),
   ];
@@ -492,7 +493,7 @@ export function discoverLoadedCounts(): LoadedCounts {
   }
 
   const templateDirs = [
-    join(homeDir, ".pi", "agent", "commands"),
+    join(getAgentDir(), "commands"),
     join(homeDir, ".claude", "commands"),
     join(cwd, ".pi", "commands"),
     join(cwd, ".claude", "commands"),
@@ -540,8 +541,8 @@ export function getRecentSessions(maxCount: number = 3): RecentSession[] {
   const homeDir = process.env.HOME || process.env.USERPROFILE || osHomedir();
   
   const sessionsDirs = [
-    join(homeDir, ".pi", "agent", "sessions"),
-    join(homeDir, ".pi", "sessions"),
+    join(getAgentDir(), "sessions"),
+    join(getAgentDir(), "..", "sessions"),
   ];
   
   const sessions: { name: string; mtime: number }[] = [];

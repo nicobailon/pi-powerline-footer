@@ -6,7 +6,7 @@ import { complete, type Context } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { homedir } from "node:os";
+import { getAgentDir } from "./paths.ts";
 
 type VibeMode = "generate" | "file";
 
@@ -77,8 +77,7 @@ let recentVibes: string[] = [];
 // ═══════════════════════════════════════════════════════════════════════════
 
 function getSettingsPath(): string {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
-  return join(homeDir, ".pi", "agent", "settings.json");
+  return join(getAgentDir(), "settings.json");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -208,8 +207,7 @@ function saveModelConfig(): boolean {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function getVibesDir(): string {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
-  return join(homeDir, ".pi", "agent", "vibes");
+  return join(getAgentDir(), "vibes");
 }
 
 function toVibeFileSlug(theme: string): string {
