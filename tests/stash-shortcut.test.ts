@@ -18,6 +18,10 @@ test("index passes stash shortcut config to the shared matcher", () => {
   assert.equal([...indexSource.matchAll(/isStashShortcutInput\(data, config\.stashSharpSShortcut\)/g)].length, 2);
 });
 
+test("index does not register a core Alt-S shortcut", () => {
+  assert.doesNotMatch(indexSource, /registerShortcut\("alt\+s"/);
+});
+
 test("index keeps prompt-history shortcut behavior", () => {
   assert.match(indexSource, /function isPromptHistoryShortcutInput\(data: string\): boolean/);
   assert.match(indexSource, /matchesConfiguredShortcut\(data, resolvedShortcuts\.stashHistory\)/);

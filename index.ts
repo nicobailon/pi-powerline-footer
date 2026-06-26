@@ -1877,14 +1877,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     },
   });
 
-  pi.registerShortcut("alt+s", {
-    description: "Stash/restore editor text",
-    handler: async (ctx) => {
-      if (!enabled || !ctx.hasUI) return;
-      stashOrRestoreEditorText(ctx);
-    },
-  });
-
   pi.registerShortcut(resolvedShortcuts.stashHistory, {
     description: "Open prompt history picker",
     handler: async (ctx) => {
