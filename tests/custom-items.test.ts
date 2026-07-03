@@ -20,8 +20,34 @@ test("parsePowerlineConfig supports object config with custom items", () => {
   assert.equal(config.customItems[0].statusKey, "ci-status");
   assert.equal(config.customItems[1].statusKey, "review");
   assert.equal(config.customItems[1].hideWhenMissing, false);
+  assert.deepEqual(config.disabledSegments, []);
+  assert.deepEqual(config.invalidDisabledSegments, []);
   assert.equal(config.mouseScroll, true);
   assert.equal(config.fixedEditor, true);
+});
+
+test("parsePowerlineConfig supports disabled segments", () => {
+  const config = parsePowerlineConfig(
+    {
+      preset: "default",
+      customItems: [{ id: "ci" }],
+      disabledSegments: [
+        "cost",
+        " extension_statuses ",
+        "custom:ci",
+        "cost",
+        "bad",
+        "custom:",
+        "custom:bad space",
+        "custom:missing",
+        123,
+      ],
+    },
+    ["default", "compact"],
+  );
+
+  assert.deepEqual(config.disabledSegments, ["cost", "extension_statuses", "custom:ci"]);
+  assert.deepEqual(config.invalidDisabledSegments, ["bad", "custom:", "custom:bad space", "custom:missing", "123"]);
 });
 
 test("parsePowerlineConfig supports disabling mouse scroll", () => {
@@ -97,6 +123,27 @@ test("mergeSegmentsWithCustomItems appends custom segment ids by position", () =
   assert.deepEqual(merged.leftSegments, ["path", "custom:ci"]);
   assert.deepEqual(merged.rightSegments, ["git", "custom:timer"]);
   assert.deepEqual(merged.secondarySegments, ["extension_statuses", "custom:review"]);
+});
+
+test("mergeSegmentsWithCustomItems filters disabled segment ids", () => {
+  const merged = mergeSegmentsWithCustomItems(
+    {
+      leftSegments: ["path", "model"],
+      rightSegments: ["git", "cost"],
+      secondarySegments: ["extension_statuses"],
+      separator: "powerline",
+    },
+    [
+      { id: "ci", statusKey: "ci", position: "left", hideWhenMissing: true, excludeFromExtensionStatuses: true },
+      { id: "timer", statusKey: "timer", position: "right", hideWhenMissing: true, excludeFromExtensionStatuses: true },
+      { id: "review", statusKey: "review", position: "secondary", hideWhenMissing: true, excludeFromExtensionStatuses: true },
+    ],
+    ["model", "cost", "custom:ci", "custom:review"],
+  );
+
+  assert.deepEqual(merged.leftSegments, ["path"]);
+  assert.deepEqual(merged.rightSegments, ["git", "custom:timer"]);
+  assert.deepEqual(merged.secondarySegments, ["extension_statuses"]);
 });
 
 test("nextPowerlineSettingWithPreset preserves object settings", () => {

@@ -27,26 +27,29 @@ export type SemanticColor =
 export type ColorScheme = Partial<Record<SemanticColor, ColorValue>>;
 
 // Built-in segment identifiers
-export type BuiltinStatusLineSegmentId =
-  | "model"
-  | "shell_mode"
-  | "path"
-  | "git"
-  | "subagents"
-  | "token_in"
-  | "token_out"
-  | "token_total"
-  | "cost"
-  | "context_pct"
-  | "context_total"
-  | "time_spent"
-  | "time"
-  | "session"
-  | "hostname"
-  | "cache_read"
-  | "cache_write"
-  | "thinking"
-  | "extension_statuses";
+export const BUILTIN_STATUS_LINE_SEGMENT_IDS = [
+  "model",
+  "shell_mode",
+  "path",
+  "git",
+  "subagents",
+  "token_in",
+  "token_out",
+  "token_total",
+  "cost",
+  "context_pct",
+  "context_total",
+  "time_spent",
+  "time",
+  "session",
+  "hostname",
+  "cache_read",
+  "cache_write",
+  "thinking",
+  "extension_statuses",
+] as const;
+
+export type BuiltinStatusLineSegmentId = typeof BUILTIN_STATUS_LINE_SEGMENT_IDS[number];
 
 // Segment identifiers (built-in + dynamically registered custom items)
 export type StatusLineSegmentId = BuiltinStatusLineSegmentId | `custom:${string}`;

@@ -67,6 +67,9 @@ import {
 let config: PowerlineConfig = {
   preset: "default",
   customItems: [],
+  disabledSegments: [],
+  invalidDisabledSegments: [],
+  segmentOptions: {},
   mouseScroll: true,
   fixedEditor: true,
 };
@@ -822,6 +825,15 @@ function resolveShortcutConfig(settings: Record<string, unknown>): PowerlineShor
   return resolved;
 }
 
+function warnInvalidDisabledSegments(ctx: any): void {
+  if (config.invalidDisabledSegments.length === 0) return;
+
+  const list = config.invalidDisabledSegments.map((id) => JSON.stringify(id)).join(", ");
+  const message = `Ignoring unknown powerline disabled segment${config.invalidDisabledSegments.length === 1 ? "" : "s"}: ${list}`;
+  console.debug(`[powerline-footer] ${message}`);
+  ctx.ui?.notify?.(message, "warning");
+}
+
 function parseBashModeSettings(settings: Record<string, unknown>): BashModeSettings {
   const raw = isRecord(settings.bashMode) ? settings.bashMode : {};
 
@@ -891,7 +903,7 @@ function computeResponsiveLayout(
   const sepWidth = visibleWidth(separatorDef.left) + 2; // separator + spaces around it
   
   // Get all segments: primary first, then secondary
-  const mergedSegments = mergeSegmentsWithCustomItems(presetDef, config.customItems);
+  const mergedSegments = mergeSegmentsWithCustomItems(presetDef, config.customItems, config.disabledSegments);
   const primaryIds = [...mergedSegments.leftSegments, ...mergedSegments.rightSegments];
   const secondaryIds = mergedSegments.secondarySegments;
   const allSegmentIds = [...primaryIds, ...secondaryIds];
@@ -1224,6 +1236,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     resolvedShortcuts = resolveShortcutConfig(settings);
     showLastPrompt = settings.showLastPrompt !== false;
     config = parsePowerlineConfig(settings.powerline, PRESET_NAMES);
+    warnInvalidDisabledSegments(ctx);
     stashedPromptHistory = readPersistedStashHistory();
     bashModeActive = false;
     bashTranscript = new BashTranscriptStore(bashModeSettings);

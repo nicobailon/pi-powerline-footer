@@ -121,6 +121,21 @@ You can promote any extension status key into its own dedicated powerline item. 
 
 If you still prefer the old style, `"powerline": "default"` continues to work.
 
+### Disabling segments
+
+Set `powerline.disabledSegments` to hide segments from whichever preset you use:
+
+```json
+{
+  "powerline": {
+    "preset": "default",
+    "disabledSegments": ["cost", "token_total", "custom:ci"]
+  }
+}
+```
+
+Use the segment names listed below. Custom items use their rendered segment id, `custom:<id>` (for example, `custom:ci`). Unknown names are ignored with a warning so typos do not break the footer.
+
 ## Bash mode
 
 Toggle bash mode with either:
@@ -334,7 +349,7 @@ Use `"off"` to disable extension-owned git polling entirely and only show the br
 
 ## Segments
 
-`model` · `thinking` · `shell_mode` · `path` · `git` · `subagents` · `token_in` · `token_out` · `token_total` · `cost` · `context_pct` · `context_total` · `time_spent` · `time` · `session` · `hostname` · `cache_read` · `cache_write`
+`model` · `thinking` · `shell_mode` · `path` · `git` · `subagents` · `token_in` · `token_out` · `token_total` · `cost` · `context_pct` · `context_total` · `time_spent` · `time` · `session` · `hostname` · `cache_read` · `cache_write` · `extension_statuses`
 
 ## Separators
 
