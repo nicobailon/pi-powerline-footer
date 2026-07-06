@@ -629,10 +629,11 @@ export class TerminalSplitCompositor {
 
     const mousePackets = this.mouseScroll ? parseSgrMousePackets(data) : null;
     if (mousePackets) {
+      let consumed = false;
       for (const packet of mousePackets) {
-        this.handleMousePacket(packet);
+        consumed = this.handleMousePacket(packet) || consumed;
       }
-      return { consume: true };
+      return consumed ? { consume: true } : undefined;
     }
 
     const keyboardDelta = parseKeyboardScrollDelta(data, this.keyboardScrollShortcuts);
@@ -642,12 +643,13 @@ export class TerminalSplitCompositor {
     return { consume: true };
   }
 
-  private handleMousePacket(packet: SgrMousePacket): void {
+  private handleMousePacket(packet: SgrMousePacket): boolean {
     const delta = mouseScrollDelta(packet);
     if (delta !== 0) {
       this.selectionDragging = false;
-      this.scrollBy(delta);
-      return;
+      if (this.scrollBy(delta)) return true;
+      this.pauseMouseReportingForWheelPassthrough();
+      return true;
     }
 
     this.refreshRootWindow(Math.max(1, this.terminal.columns || 80));
@@ -661,26 +663,26 @@ export class TerminalSplitCompositor {
         this.onCopySelection?.(selectedText);
         this.lastLeftPress = null;
         this.pauseMouseReportingForContextMenu(selectedText);
-        return;
+        return true;
       }
 
       this.clearSelection();
       this.lastLeftPress = null;
       this.pauseMouseReportingForContextMenu();
-      return;
+      return true;
     }
 
-    if (this.scrollSelectionAtViewportEdge(packet)) return;
+    if (this.scrollSelectionAtViewportEdge(packet)) return true;
     if (this.selectionDragging && isMouseRelease(packet)) {
       this.finishSelection(packet, location);
-      return;
+      return true;
     }
 
-    if (!location) return;
+    if (!location) return false;
 
     if (isLeftPress(packet)) {
       this.startSelection(location);
-      return;
+      return true;
     }
 
     if (this.selectionDragging && isLeftDrag(packet) && location.area === this.selectionArea) {
@@ -688,8 +690,10 @@ export class TerminalSplitCompositor {
       this.preserveSelectionFocusOnRelease = false;
       this.selectionFocus = location.point;
       this.requestRender();
-      return;
+      return true;
     }
+
+    return false;
   }
 
   private updateVisibleRootWindow(scrollableRows = this.visibleScrollableRows): number {
@@ -874,12 +878,12 @@ export class TerminalSplitCompositor {
     return Boolean(range && location.point.col >= range.startCol && location.point.col < range.endCol);
   }
 
-  private scrollBy(delta: number): void {
+  private scrollBy(delta: number): boolean {
     const width = Math.max(1, this.terminal.columns || 80);
     this.refreshRootWindow(width);
 
     const nextOffset = Math.max(0, Math.min(this.scrollOffset + delta, this.maxScrollOffset));
-    if (nextOffset === this.scrollOffset) return;
+    if (nextOffset === this.scrollOffset) return false;
 
     this.clearSelection();
     this.lastLeftPress = null;
@@ -887,6 +891,7 @@ export class TerminalSplitCompositor {
     this.pendingImageCleanup = true;
     this.repaintScrollableViewport(width);
     this.requestRender();
+    return true;
   }
 
   private requestRender(): void {
@@ -966,6 +971,22 @@ export class TerminalSplitCompositor {
     };
 
     scheduleClipboardRestore();
+  }
+
+  private pauseMouseReportingForWheelPassthrough(): void {
+    if (this.mouseReportingResumeTimer) return;
+
+    this.originalWrite(beginSynchronizedOutput() + disableMouseReporting() + endSynchronizedOutput());
+    this.mouseReportingResumeTimer = setTimeout(() => {
+      this.mouseReportingResumeTimer = null;
+      if (!this.disposed) {
+        this.originalWrite(beginSynchronizedOutput() + enableMouseReporting() + endSynchronizedOutput());
+      }
+    }, CONTEXT_MENU_MOUSE_REPORTING_PAUSE_MS);
+
+    if (typeof this.mouseReportingResumeTimer === "object" && "unref" in this.mouseReportingResumeTimer) {
+      this.mouseReportingResumeTimer.unref();
+    }
   }
 
   private clearSelection(): void {

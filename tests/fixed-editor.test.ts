@@ -634,6 +634,61 @@ test("terminal split handles modified SGR wheel packets", () => {
   compositor.dispose();
 });
 
+test("terminal split releases mouse reporting when wheel scrolling hits a viewport edge", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+
+  const terminal = new FakeTerminal();
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const renderRequests: Array<boolean | undefined> = [];
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender(force?: boolean) {
+      renderRequests.push(force);
+    },
+    render() {
+      return Array.from({ length: 15 }, (_, index) => `line-${index}`);
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render(40);
+
+  assert.deepEqual(inputListener?.("\x1b[<65;1;10M"), { consume: true });
+  assert.ok(terminal.writes.at(-1)?.includes("\x1b[?1006l\x1b[?1002l\x1b[?1000l"));
+  assert.deepEqual(renderRequests, []);
+
+  t.mock.timers.tick(1200);
+  assert.ok(terminal.writes.at(-1)?.includes("\x1b[?1002h\x1b[?1006h"));
+
+  assert.deepEqual(inputListener?.("\x1b[5~"), { consume: true });
+  assert.deepEqual(renderRequests, [undefined]);
+  assert.deepEqual(tui.render(40), [
+    "line-0", "line-1", "line-2", "line-3", "line-4",
+    "line-5", "line-6", "line-7", "line-8", "line-9",
+  ]);
+
+  assert.deepEqual(inputListener?.("\x1b[<64;1;1M"), { consume: true });
+  assert.ok(terminal.writes.at(-1)?.includes("\x1b[?1006l\x1b[?1002l\x1b[?1000l"));
+  assert.deepEqual(renderRequests, [undefined]);
+
+  t.mock.timers.tick(1200);
+  assert.ok(terminal.writes.at(-1)?.includes("\x1b[?1002h\x1b[?1006h"));
+
+  compositor.dispose();
+});
+
 test("terminal split guards wrapped terminal writes", () => {
   const terminal = new FakeTerminal();
   const tui = {
