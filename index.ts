@@ -35,7 +35,7 @@ import { createWelcomeDismissScheduler } from "./welcome-dismiss.ts";
 import { createRenderScheduler } from "./render-scheduler.ts";
 import { readCoreContextUsage } from "./context-usage.ts";
 import { renderFixedEditorCluster } from "./fixed-editor/cluster.ts";
-import { emergencyTerminalModeReset, TerminalSplitCompositor } from "./fixed-editor/terminal-split.ts";
+import { DEFAULT_SCROLL_REPAINT_THROTTLE_MS, emergencyTerminalModeReset, TerminalSplitCompositor } from "./fixed-editor/terminal-split.ts";
 import { getDefaultColors } from "./theme.ts";
 import {
   isSupportedSuperShortcut,
@@ -120,7 +120,7 @@ const DEFAULT_SHORTCUTS: PowerlineShortcuts = {
   jumpNextUserMessage: "ctrl+shift+i",
   jumpPreviousLlmMessage: "ctrl+alt+,",
   jumpNextLlmMessage: "ctrl+alt+.",
-  jumpChatBottom: "ctrl+alt+b",
+  jumpChatBottom: "ctrl+alt+g",
   scrollChatUp: "super+up",
   scrollChatDown: "super+down",
   editorStart: "super+shift+up",
@@ -2346,6 +2346,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         up: resolvedShortcuts.scrollChatUp,
         down: resolvedShortcuts.scrollChatDown,
       },
+      scrollRepaintThrottleMs: DEFAULT_SCROLL_REPAINT_THROTTLE_MS,
       scrollAwayNavigationCard: {
         actions: [
           { id: "bottom", label: "Jump to bottom", shortcutLabel: formatShortcutLabel(resolvedShortcuts.jumpChatBottom) },

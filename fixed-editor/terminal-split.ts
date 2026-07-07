@@ -36,6 +36,7 @@ interface TerminalSplitCompositorOptions {
   keyboardScrollShortcuts?: KeyboardScrollShortcuts;
   scrollAwayNavigationCard?: ScrollAwayNavigationCardOptions;
   onCopySelection?: (text: string) => void;
+  scrollRepaintThrottleMs?: number;
 }
 
 interface PatchedRenderable {
@@ -122,6 +123,8 @@ type ExtendedKeyboardMode = "kitty" | "modifyOtherKeys";
 const CONTEXT_MENU_MOUSE_REPORTING_PAUSE_MS = 1200;
 const CONTEXT_MENU_SELECTION_RESTORE_WINDOW_MS = 5000;
 const CONTEXT_MENU_CLIPBOARD_RESTORE_INTERVAL_MS = 100;
+export const DEFAULT_SCROLL_REPAINT_THROTTLE_MS = 16;
+const SCROLL_SETTLED_RENDER_MS = 80;
 const DOUBLE_CLICK_MS = 500;
 const DEFAULT_KEYBOARD_SCROLL_SHORTCUTS: KeyboardScrollShortcuts = {
   up: "super+up",
@@ -514,6 +517,7 @@ export class TerminalSplitCompositor {
   private readonly keyboardScrollShortcuts: KeyboardScrollShortcuts;
   private readonly scrollAwayNavigationCard: ScrollAwayNavigationCardOptions | null;
   private readonly onCopySelection: ((text: string) => void) | null;
+  private readonly scrollRepaintThrottleMs: number;
   private extendedKeyboardMode: ExtendedKeyboardMode | null = null;
   private readonly rowsDescriptor: PropertyDescriptor | undefined;
   private readonly originalWrite: (data: string) => void;
@@ -525,6 +529,8 @@ export class TerminalSplitCompositor {
   private emergencyCleanup: (() => void) | null = null;
   private mouseReportingResumeTimer: ReturnType<typeof setTimeout> | null = null;
   private clipboardRestoreTimer: ReturnType<typeof setTimeout> | null = null;
+  private scrollRepaintTimer: ReturnType<typeof setTimeout> | null = null;
+  private scrollSettledRenderTimer: ReturnType<typeof setTimeout> | null = null;
   private installed = false;
   private disposed = false;
   private writing = false;
@@ -548,6 +554,7 @@ export class TerminalSplitCompositor {
   private preserveSelectionFocusOnRelease = false;
   private lastLeftPress: { area: SelectionArea; line: number; at: number } | null = null;
   private pendingImageCleanup = false;
+  private pendingScrollDeltas: number[] = [];
 
   constructor(options: TerminalSplitCompositorOptions) {
     this.tui = options.tui;
@@ -558,6 +565,7 @@ export class TerminalSplitCompositor {
     this.keyboardScrollShortcuts = options.keyboardScrollShortcuts ?? DEFAULT_KEYBOARD_SCROLL_SHORTCUTS;
     this.scrollAwayNavigationCard = options.scrollAwayNavigationCard ?? null;
     this.onCopySelection = options.onCopySelection ?? null;
+    this.scrollRepaintThrottleMs = Math.max(0, options.scrollRepaintThrottleMs ?? 0);
     this.rowsDescriptor = descriptorForRows(options.terminal);
     this.originalWrite = options.terminal.write.bind(options.terminal);
     this.originalDoRender = typeof options.tui.doRender === "function" ? options.tui.doRender.bind(options.tui) : null;
@@ -728,6 +736,15 @@ export class TerminalSplitCompositor {
       clearTimeout(this.clipboardRestoreTimer);
       this.clipboardRestoreTimer = null;
     }
+    if (this.scrollRepaintTimer) {
+      clearTimeout(this.scrollRepaintTimer);
+      this.scrollRepaintTimer = null;
+    }
+    if (this.scrollSettledRenderTimer) {
+      clearTimeout(this.scrollSettledRenderTimer);
+      this.scrollSettledRenderTimer = null;
+    }
+    this.pendingScrollDeltas = [];
 
     this.terminal.write = this.originalWrite;
     if (this.originalDoRender) {
@@ -812,8 +829,22 @@ export class TerminalSplitCompositor {
 
     const mousePackets = this.mouseScroll ? parseSgrMousePackets(data) : null;
     if (mousePackets) {
+      let wheelDeltas: number[] = [];
       for (const packet of mousePackets) {
+        const delta = mouseScrollDelta(packet);
+        if (delta !== 0) {
+          wheelDeltas.push(delta);
+          continue;
+        }
+        if (wheelDeltas.length > 0) {
+          this.queueScrollDeltas(wheelDeltas);
+          wheelDeltas = [];
+        }
+        this.flushQueuedScroll();
         this.handleMousePacket(packet);
+      }
+      if (wheelDeltas.length > 0) {
+        this.queueScrollDeltas(wheelDeltas);
       }
       return { consume: true };
     }
@@ -821,6 +852,7 @@ export class TerminalSplitCompositor {
     const keyboardDelta = parseKeyboardScrollDelta(data, this.keyboardScrollShortcuts);
     if (keyboardDelta === 0) return undefined;
 
+    this.flushQueuedScroll();
     this.scrollBy(keyboardDelta);
     return { consume: true };
   }
@@ -828,8 +860,7 @@ export class TerminalSplitCompositor {
   private handleMousePacket(packet: SgrMousePacket): void {
     const delta = mouseScrollDelta(packet);
     if (delta !== 0) {
-      this.selectionDragging = false;
-      this.scrollBy(delta);
+      this.queueScrollBy(delta);
       return;
     }
 
@@ -1149,11 +1180,60 @@ export class TerminalSplitCompositor {
     return Boolean(range && location.point.col >= range.startCol && location.point.col < range.endCol);
   }
 
-  private scrollBy(delta: number): void {
+  private queueScrollBy(delta: number): void {
+    this.queueScrollDeltas([delta]);
+  }
+
+  private queueScrollDeltas(deltas: number[]): void {
+    const nonZeroDeltas = deltas.filter((delta) => delta !== 0);
+    if (nonZeroDeltas.length === 0) return;
+
+    this.selectionDragging = false;
+    if (this.scrollRepaintThrottleMs <= 0) {
+      this.scrollByDeltas(nonZeroDeltas, { deferRender: false });
+      return;
+    }
+
+    this.pendingScrollDeltas.push(...nonZeroDeltas);
+    if (this.scrollRepaintTimer) return;
+
+    this.scrollRepaintTimer = setTimeout(() => {
+      this.scrollRepaintTimer = null;
+      if (!this.disposed) {
+        this.flushQueuedScroll();
+      }
+    }, this.scrollRepaintThrottleMs);
+
+    if (typeof this.scrollRepaintTimer === "object" && "unref" in this.scrollRepaintTimer) {
+      this.scrollRepaintTimer.unref();
+    }
+  }
+
+  private flushQueuedScroll(): void {
+    if (this.scrollRepaintTimer) {
+      clearTimeout(this.scrollRepaintTimer);
+      this.scrollRepaintTimer = null;
+    }
+
+    const deltas = this.pendingScrollDeltas;
+    this.pendingScrollDeltas = [];
+    if (deltas.length > 0 && !this.disposed && !this.hasVisibleOverlay()) {
+      this.scrollByDeltas(deltas, { deferRender: true });
+    }
+  }
+
+  private scrollBy(delta: number, options: { deferRender?: boolean } = {}): void {
+    this.scrollByDeltas([delta], options);
+  }
+
+  private scrollByDeltas(deltas: number[], options: { deferRender?: boolean } = {}): void {
     const width = Math.max(1, this.terminal.columns || 80);
     this.refreshRootWindow(width);
 
-    const nextOffset = Math.max(0, Math.min(this.scrollOffset + delta, this.maxScrollOffset));
+    let nextOffset = this.scrollOffset;
+    for (const delta of deltas) {
+      nextOffset = Math.max(0, Math.min(nextOffset + delta, this.maxScrollOffset));
+    }
     if (nextOffset === this.scrollOffset) return;
 
     this.clearSelection();
@@ -1161,12 +1241,33 @@ export class TerminalSplitCompositor {
     this.scrollOffset = nextOffset;
     this.pendingImageCleanup = true;
     this.repaintScrollableViewport(width);
-    this.requestRender();
+    if (options.deferRender) {
+      this.scheduleScrollSettledRender();
+    } else {
+      this.requestRender();
+    }
   }
 
   private requestRender(): void {
     if (typeof this.tui.requestRender === "function") {
       this.tui.requestRender();
+    }
+  }
+
+  private scheduleScrollSettledRender(): void {
+    if (this.scrollSettledRenderTimer) {
+      clearTimeout(this.scrollSettledRenderTimer);
+    }
+
+    this.scrollSettledRenderTimer = setTimeout(() => {
+      this.scrollSettledRenderTimer = null;
+      if (!this.disposed) {
+        this.requestRender();
+      }
+    }, SCROLL_SETTLED_RENDER_MS);
+
+    if (typeof this.scrollSettledRenderTimer === "object" && "unref" in this.scrollSettledRenderTimer) {
+      this.scrollSettledRenderTimer.unref();
     }
   }
 

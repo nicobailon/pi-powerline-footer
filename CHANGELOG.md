@@ -7,9 +7,10 @@
 
 ### Changed
 - **Herdr and tmux scroll guidance** — Keeps fixed-editor mouse scrolling enabled by default and documents that host multiplexer scrollback needs `/powerline fixed-editor off`.
-- **Bottom jump shortcut** — Uses `ctrl+alt+b` as the default fixed-editor jump-to-bottom shortcut instead of `ctrl+shift+g`.
+- **Bottom jump shortcut** — Uses `ctrl+alt+g` as the default fixed-editor jump-to-bottom shortcut instead of `ctrl+shift+g`.
 
 ### Fixed
+- **Fixed-editor wheel bursts** — Coalesces rapid mouse-wheel packets into throttled viewport repaints and defers the follow-up TUI render until scrolling settles, reducing flicker and slowdowns in terminal multiplexers.
 - **Welcome discovery noise** — Ignored vanished/dangling skill, extension, and prompt-template entries during welcome overlay discovery instead of printing stack traces.
 
 ## [0.6.1] - 2026-06-08
