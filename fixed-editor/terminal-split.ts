@@ -14,17 +14,16 @@ interface KeyboardScrollShortcuts {
   down: string;
 }
 
-export type ScrollAwayNavigationActionId = "bottom" | "previousUser" | "nextUser" | "previousAssistant" | "nextAssistant";
+export type ScrollAwayNavigationShortcutId = "bottom" | "previousUser" | "nextUser" | "previousAssistant" | "nextAssistant";
 
-export interface ScrollAwayNavigationAction {
-  id: ScrollAwayNavigationActionId;
-  label: string;
+export interface ScrollAwayNavigationShortcut {
+  id: ScrollAwayNavigationShortcutId;
   shortcutLabel: string;
 }
 
 export interface ScrollAwayNavigationCardOptions {
-  actions: ScrollAwayNavigationAction[];
-  onAction?: (id: ScrollAwayNavigationActionId) => boolean;
+  shortcuts: ScrollAwayNavigationShortcut[];
+  onClickBottom?: () => boolean;
 }
 
 interface TerminalSplitCompositorOptions {
@@ -82,7 +81,6 @@ interface SelectionLocation {
 }
 
 interface ScrollAwayCardBounds {
-  actionId: ScrollAwayNavigationActionId;
   row: number;
   startCol: number;
   endCol: number;
@@ -434,11 +432,11 @@ function compactShortcutPair(previous: string, next: string): string {
 }
 
 function buildScrollAwayCardCandidates(
-  bottom: ScrollAwayNavigationAction,
-  previousUser: ScrollAwayNavigationAction,
-  nextUser: ScrollAwayNavigationAction,
-  previousAssistant: ScrollAwayNavigationAction,
-  nextAssistant: ScrollAwayNavigationAction,
+  bottom: ScrollAwayNavigationShortcut,
+  previousUser: ScrollAwayNavigationShortcut,
+  nextUser: ScrollAwayNavigationShortcut,
+  previousAssistant: ScrollAwayNavigationShortcut,
+  nextAssistant: ScrollAwayNavigationShortcut,
 ): ScrollAwayCardCandidate[] {
   const bottomShortcut = `${bottom.shortcutLabel} ↓`;
   const userShortcut = compactShortcutPair(previousUser.shortcutLabel, nextUser.shortcutLabel);
@@ -446,7 +444,7 @@ function buildScrollAwayCardCandidates(
 
   return [
     buildBoxedScrollAwayCard([
-      { kind: "content", left: bottom.label, right: bottomShortcut },
+      { kind: "content", left: "Jump to bottom", right: bottomShortcut },
       { kind: "divider" },
       { kind: "content", left: "User messages", right: `prev ${previousUser.shortcutLabel} · next ${nextUser.shortcutLabel}` },
       { kind: "content", left: "Assistant responses", right: `prev ${previousAssistant.shortcutLabel} · next ${nextAssistant.shortcutLabel}` },
@@ -652,7 +650,10 @@ export class TerminalSplitCompositor {
   }
 
   jumpToRootBottom(): boolean {
-    if (this.disposed || this.hasVisibleOverlay() || this.scrollOffset === 0) return false;
+    if (this.disposed || this.hasVisibleOverlay()) return false;
+
+    this.cancelQueuedScroll();
+    if (this.scrollOffset === 0) return false;
 
     this.clearSelection();
     this.lastLeftPress = null;
@@ -665,6 +666,7 @@ export class TerminalSplitCompositor {
   private jumpToRootTarget(targetLines: readonly number[], direction: "previous" | "next"): boolean {
     if (this.disposed || targetLines.length === 0 || this.hasVisibleOverlay()) return false;
 
+    this.cancelQueuedScroll();
     const start = this.visibleRootStart;
     const candidates = direction === "previous"
       ? targetLines.filter((line) => line < start).sort((a, b) => b - a)
@@ -831,8 +833,11 @@ export class TerminalSplitCompositor {
           this.queueScrollDeltas(wheelDeltas);
           wheelDeltas = [];
         }
-        this.flushQueuedScroll();
-        this.handleMousePacket(packet);
+        const width = Math.max(1, this.terminal.columns || 80);
+        const hadQueuedScroll = this.pendingScrollDeltas.length > 0;
+        if (this.handleScrollAwayCardClick(packet, width)) continue;
+        const flushedQueuedScroll = this.flushQueuedScroll();
+        this.handleMousePacket(packet, { skipScrollAwayCard: hadQueuedScroll || flushedQueuedScroll });
       }
       if (wheelDeltas.length > 0) {
         this.queueScrollDeltas(wheelDeltas);
@@ -848,7 +853,7 @@ export class TerminalSplitCompositor {
     return { consume: true };
   }
 
-  private handleMousePacket(packet: SgrMousePacket): void {
+  private handleMousePacket(packet: SgrMousePacket, options: { skipScrollAwayCard?: boolean } = {}): void {
     const delta = mouseScrollDelta(packet);
     if (delta !== 0) {
       this.queueScrollBy(delta);
@@ -857,13 +862,7 @@ export class TerminalSplitCompositor {
 
     const width = Math.max(1, this.terminal.columns || 80);
     this.refreshRootWindow(width);
-    if (isLeftPress(packet) && !this.selectionDragging) {
-      const actionId = this.scrollAwayCardActionForPacket(packet, width);
-      if (actionId && this.scrollAwayNavigationCard?.onAction?.(actionId)) {
-        this.lastLeftPress = null;
-        return;
-      }
-    }
+    if (!options.skipScrollAwayCard && this.handleScrollAwayCardClick(packet, width)) return;
     const location = this.selectionLocationForPacket(packet);
 
     if (isRightPress(packet)) {
@@ -948,14 +947,22 @@ export class TerminalSplitCompositor {
     return sanitizeLine(`${before}${overlayLine}${after}`, totalWidth);
   }
 
-  private scrollAwayCardActionForPacket(packet: SgrMousePacket, width: number): ScrollAwayNavigationActionId | null {
+  private handleScrollAwayCardClick(packet: SgrMousePacket, width: number): boolean {
+    if (!isLeftPress(packet) || this.selectionDragging) return false;
+    if (!this.isScrollAwayCardClick(packet, width) || !this.scrollAwayNavigationCard?.onClickBottom?.()) return false;
+
+    this.lastLeftPress = null;
+    return true;
+  }
+
+  private isScrollAwayCardClick(packet: SgrMousePacket, width: number): boolean {
     const card = this.computeScrollAwayNavigationCard(width, this.visibleScrollableRows);
-    if (!card) return null;
+    if (!card) return false;
 
     const col = Math.max(0, packet.col - 1);
-    return card.bounds.find((bound) => {
+    return card.bounds.some((bound) => {
       return packet.row === bound.row && col >= bound.startCol && col < bound.endCol;
-    })?.actionId ?? null;
+    });
   }
 
   private computeScrollAwayNavigationCard(width: number, scrollableRows: number): ScrollAwayCardLayout | null {
@@ -963,12 +970,12 @@ export class TerminalSplitCompositor {
       return null;
     }
 
-    const actionById = new Map(this.scrollAwayNavigationCard.actions.map((action) => [action.id, action]));
-    const bottom = actionById.get("bottom");
-    const previousUser = actionById.get("previousUser");
-    const nextUser = actionById.get("nextUser");
-    const previousAssistant = actionById.get("previousAssistant");
-    const nextAssistant = actionById.get("nextAssistant");
+    const shortcutById = new Map(this.scrollAwayNavigationCard.shortcuts.map((shortcut) => [shortcut.id, shortcut]));
+    const bottom = shortcutById.get("bottom");
+    const previousUser = shortcutById.get("previousUser");
+    const nextUser = shortcutById.get("nextUser");
+    const previousAssistant = shortcutById.get("previousAssistant");
+    const nextAssistant = shortcutById.get("nextAssistant");
     if (!bottom || !previousUser || !nextUser || !previousAssistant || !nextAssistant) return null;
 
     for (const candidate of buildScrollAwayCardCandidates(bottom, previousUser, nextUser, previousAssistant, nextAssistant)) {
@@ -978,7 +985,6 @@ export class TerminalSplitCompositor {
       const startCol = Math.max(0, Math.floor((width - candidateWidth) / 2));
       const firstRow = scrollableRows - candidate.lines.length + 1;
       const bounds: ScrollAwayCardBounds[] = candidate.lines.map((_, index) => ({
-        actionId: "bottom",
         row: firstRow + index,
         startCol,
         endCol: startCol + candidateWidth,
@@ -1187,7 +1193,15 @@ export class TerminalSplitCompositor {
     }
   }
 
-  private flushQueuedScroll(): void {
+  private cancelQueuedScroll(): void {
+    if (this.scrollRepaintTimer) {
+      clearTimeout(this.scrollRepaintTimer);
+      this.scrollRepaintTimer = null;
+    }
+    this.pendingScrollDeltas = [];
+  }
+
+  private flushQueuedScroll(): boolean {
     if (this.scrollRepaintTimer) {
       clearTimeout(this.scrollRepaintTimer);
       this.scrollRepaintTimer = null;
@@ -1197,7 +1211,9 @@ export class TerminalSplitCompositor {
     this.pendingScrollDeltas = [];
     if (deltas.length > 0 && !this.disposed && !this.hasVisibleOverlay()) {
       this.scrollByDeltas(deltas, { deferRender: true });
+      return true;
     }
+    return false;
   }
 
   private scrollBy(delta: number, options: { deferRender?: boolean } = {}): void {

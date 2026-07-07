@@ -10,7 +10,6 @@ import {
   moveCursor,
   resetScrollRegion,
   setScrollRegion,
-  type ScrollAwayNavigationActionId,
   type ScrollAwayNavigationCardOptions,
   TerminalSplitCompositor,
 } from "../fixed-editor/terminal-split.ts";
@@ -37,16 +36,16 @@ class FakeTerminal {
   showCursor(): void {}
 }
 
-function navigationCardOptions(onAction: (id: ScrollAwayNavigationActionId) => boolean = () => false): ScrollAwayNavigationCardOptions {
+function navigationCardOptions(onClickBottom: () => boolean = () => false): ScrollAwayNavigationCardOptions {
   return {
-    actions: [
-      { id: "bottom", label: "Jump to bottom", shortcutLabel: "ctrl+alt+g" },
-      { id: "previousUser", label: "Previous user message", shortcutLabel: "ctrl+shift+u" },
-      { id: "nextUser", label: "Next user message", shortcutLabel: "ctrl+shift+i" },
-      { id: "previousAssistant", label: "Previous assistant response", shortcutLabel: "ctrl+alt+," },
-      { id: "nextAssistant", label: "Next assistant response", shortcutLabel: "ctrl+alt+." },
+    shortcuts: [
+      { id: "bottom", shortcutLabel: "ctrl+alt+g" },
+      { id: "previousUser", shortcutLabel: "ctrl+shift+u" },
+      { id: "nextUser", shortcutLabel: "ctrl+shift+i" },
+      { id: "previousAssistant", shortcutLabel: "ctrl+alt+," },
+      { id: "nextAssistant", shortcutLabel: "ctrl+alt+." },
     ],
-    onAction,
+    onClickBottom,
   };
 }
 
@@ -604,6 +603,106 @@ test("terminal split coalesces throttled wheel bursts", (t) => {
   compositor.dispose();
 });
 
+test("terminal split cancels queued wheel scroll when jumping to bottom", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+
+  const terminal = new FakeTerminal();
+  terminal.columns = 40;
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const renderRequests: Array<boolean | undefined> = [];
+  const rootLines = Array.from({ length: 15 }, (_, index) => `line-${index}`);
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender(force?: boolean) {
+      renderRequests.push(force);
+    },
+    render() {
+      return rootLines;
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    scrollRepaintThrottleMs: 16,
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render(40);
+  assert.deepEqual(inputListener?.("\x1b[5~"), { consume: true });
+  assert.deepEqual(tui.render(40), [
+    "line-0", "line-1", "line-2", "line-3", "line-4",
+    "line-5", "line-6", "line-7", "line-8", "line-9",
+  ]);
+
+  terminal.writes = [];
+  renderRequests.length = 0;
+  assert.deepEqual(inputListener?.("\x1b[<64;1;1M"), { consume: true });
+  assert.equal(compositor.jumpToRootBottom(), true);
+
+  t.mock.timers.tick(16);
+  assert.equal(terminal.writes.length, 0);
+  assert.deepEqual(renderRequests, [undefined]);
+  assert.deepEqual(tui.render(40), [
+    "line-5", "line-6", "line-7", "line-8", "line-9",
+    "line-10", "line-11", "line-12", "line-13", "line-14",
+  ]);
+
+  compositor.dispose();
+});
+
+test("terminal split ignores card clicks created only by a queued wheel flush", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+
+  const terminal = new FakeTerminal();
+  terminal.columns = 80;
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  let bottomClicks = 0;
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender() {},
+    render() {
+      return Array.from({ length: 30 }, (_, index) => `line-${index}`);
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    scrollRepaintThrottleMs: 16,
+    scrollAwayNavigationCard: navigationCardOptions(() => {
+      bottomClicks++;
+      return true;
+    }),
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  assert.ok(!tui.render(80).some((line) => line.includes("Jump to bottom")));
+
+  assert.deepEqual(inputListener?.("\x1b[<64;20;6M"), { consume: true });
+  assert.ok(!tui.render(80).some((line) => line.includes("Jump to bottom")));
+  assert.deepEqual(inputListener?.("\x1b[<0;20;6M"), { consume: true });
+
+  assert.equal(bottomClicks, 0);
+  assert.ok(tui.render(80).some((line) => line.includes("Jump to bottom")));
+
+  compositor.dispose();
+});
+
 test("terminal split renders a scroll-away navigation card in render and repaint paths", () => {
   const terminal = new FakeTerminal();
   terminal.columns = 80;
@@ -630,7 +729,7 @@ test("terminal split renders a scroll-away navigation card in render and repaint
   compositor = new TerminalSplitCompositor({
     tui,
     terminal,
-    scrollAwayNavigationCard: navigationCardOptions((id) => id === "bottom" && compositor.jumpToRootBottom()),
+    scrollAwayNavigationCard: navigationCardOptions(() => compositor.jumpToRootBottom()),
     renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
   });
 
@@ -667,7 +766,7 @@ test("terminal split routes every scroll-away shortcut card click to bottom", ()
   const terminal = new FakeTerminal();
   terminal.columns = 80;
   let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
-  const actions: ScrollAwayNavigationActionId[] = [];
+  const bottomClicks: string[] = [];
   const tui = {
     terminal,
     addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
@@ -685,8 +784,8 @@ test("terminal split routes every scroll-away shortcut card click to bottom", ()
   const compositor = new TerminalSplitCompositor({
     tui,
     terminal,
-    scrollAwayNavigationCard: navigationCardOptions((id) => {
-      actions.push(id);
+    scrollAwayNavigationCard: navigationCardOptions(() => {
+      bottomClicks.push("bottom");
       return true;
     }),
     renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
@@ -734,25 +833,26 @@ test("terminal split routes every scroll-away shortcut card click to bottom", ()
   }
   assert.deepEqual(inputListener?.(`\x1b[<0;${lastCol + 1};${rowFor("Jump to bottom")}M`), { consume: true });
 
-  assert.deepEqual(actions, clickTargets.map(() => "bottom"));
+  assert.deepEqual(bottomClicks, clickTargets.map(() => "bottom"));
 
   compositor.dispose();
 });
 
 test("terminal split scroll-away navigation card width tiers collapse without wrapping", () => {
   const cases = [
-    { width: 80, includes: ["Jump to bottom", "User messages", "Assistant responses"], excludes: [] },
-    { width: 50, includes: ["Bottom", "User", "Assistant", "prev ctrl+shift+u"], excludes: ["Jump to bottom"] },
-    { width: 30, includes: ["User prev/next", "⌃⇧U/I", "Asst prev/next", "⌃⌥,/."], excludes: ["User messages"] },
-    { width: 20, includes: ["Bottom ctrl+alt+g ↓"], excludes: ["User prev/next"] },
-    { width: 8, includes: ["Bottom ↓"], excludes: ["ctrl+alt+g"] },
-    { width: 7, includes: [], excludes: ["Bottom"] },
+    { width: 80, includes: ["Jump to bottom", "User messages", "Assistant responses"], excludes: [], clickText: "┌" },
+    { width: 50, includes: ["Bottom", "User", "Assistant", "prev ctrl+shift+u"], excludes: ["Jump to bottom"], clickText: "┌" },
+    { width: 30, includes: ["User prev/next", "⌃⇧U/I", "Asst prev/next", "⌃⌥,/."], excludes: ["User messages"], clickText: "┌" },
+    { width: 20, includes: ["Bottom ctrl+alt+g ↓"], excludes: ["User prev/next"], clickText: "Bottom ctrl+alt+g ↓" },
+    { width: 8, includes: ["Bottom ↓"], excludes: ["ctrl+alt+g"], clickText: "Bottom ↓" },
+    { width: 7, includes: [], excludes: ["Bottom"], clickText: null },
   ];
 
-  for (const { width, includes, excludes } of cases) {
+  for (const { width, includes, excludes, clickText } of cases) {
     const terminal = new FakeTerminal();
     terminal.columns = width;
     let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+    let bottomClicks = 0;
     const tui = {
       terminal,
       addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
@@ -770,7 +870,10 @@ test("terminal split scroll-away navigation card width tiers collapse without wr
     const compositor = new TerminalSplitCompositor({
       tui,
       terminal,
-      scrollAwayNavigationCard: navigationCardOptions(),
+      scrollAwayNavigationCard: navigationCardOptions(() => {
+        bottomClicks++;
+        return true;
+      }),
       renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
     });
 
@@ -788,6 +891,26 @@ test("terminal split scroll-away navigation card width tiers collapse without wr
     }
     for (const line of rendered) {
       assert.ok(visibleWidth(line) <= width, `width ${width} line should not wrap: ${line}`);
+    }
+
+    if (clickText) {
+      const rowIndex = rendered.findIndex((line) => line.includes(clickText));
+      assert.notEqual(rowIndex, -1, `width ${width} should have a clickable card row`);
+      const line = rendered[rowIndex] ?? "";
+      const start = line.indexOf(clickText);
+      const clickWidth = clickText === "┌"
+        ? visibleWidth(line.slice(start, line.indexOf("┐") + 1))
+        : visibleWidth(clickText);
+      assert.deepEqual(inputListener?.(`\x1b[<0;${start + 1};${rowIndex + 1}M`), { consume: true });
+      if (start + clickWidth < width) {
+        assert.deepEqual(inputListener?.(`\x1b[<0;${start + clickWidth + 1};${rowIndex + 1}M`), { consume: true });
+      } else {
+        assert.deepEqual(inputListener?.("\x1b[<0;1;1M"), { consume: true });
+      }
+      assert.equal(bottomClicks, 1, `width ${width} should only click inside the card`);
+    } else {
+      assert.deepEqual(inputListener?.("\x1b[<0;1;1M"), { consume: true });
+      assert.equal(bottomClicks, 0, `width ${width} should not render a clickable card`);
     }
 
     compositor.dispose();

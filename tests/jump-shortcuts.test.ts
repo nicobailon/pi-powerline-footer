@@ -78,8 +78,9 @@ test("chat jump shortcuts are configurable and route through fixed editor scroll
   assert.match(source, /resolvedShortcuts = resolveShortcutConfig\(settings\)/);
   assert.match(source, /keyboardScrollShortcuts: \{\n\s+up: resolvedShortcuts\.scrollChatUp,\n\s+down: resolvedShortcuts\.scrollChatDown,/);
   assert.match(source, /scrollAwayNavigationCard: \{/);
-  assert.match(source, /id: "bottom", label: "Jump to bottom", shortcutLabel: formatShortcutLabel\(resolvedShortcuts\.jumpChatBottom\)/);
-  assert.match(source, /case "previousAssistant":\n\s+return jumpToChatMessage\(ctx, "assistant", "previous"\)/);
+  assert.match(source, /shortcuts: \[/);
+  assert.match(source, /id: "bottom", shortcutLabel: formatShortcutLabel\(resolvedShortcuts\.jumpChatBottom\)/);
+  assert.match(source, /onClickBottom: \(\) => jumpChatToBottom\(ctx\)/);
   assert.match(source, /function formatShortcutLabel\(shortcut: string\): string/);
   assert.match(source, /part\.toLowerCase\(\) === "super" \? "cmd" : part/);
   assert.match(source, /editorBoundaryShortcuts: \{\n\s+start: resolvedShortcuts\.editorStart,\n\s+end: resolvedShortcuts\.editorEnd,/);

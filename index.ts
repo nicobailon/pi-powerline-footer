@@ -2348,27 +2348,14 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       },
       scrollRepaintThrottleMs: DEFAULT_SCROLL_REPAINT_THROTTLE_MS,
       scrollAwayNavigationCard: {
-        actions: [
-          { id: "bottom", label: "Jump to bottom", shortcutLabel: formatShortcutLabel(resolvedShortcuts.jumpChatBottom) },
-          { id: "previousUser", label: "Previous user message", shortcutLabel: formatShortcutLabel(resolvedShortcuts.jumpPreviousUserMessage) },
-          { id: "nextUser", label: "Next user message", shortcutLabel: formatShortcutLabel(resolvedShortcuts.jumpNextUserMessage) },
-          { id: "previousAssistant", label: "Previous assistant response", shortcutLabel: formatShortcutLabel(resolvedShortcuts.jumpPreviousLlmMessage) },
-          { id: "nextAssistant", label: "Next assistant response", shortcutLabel: formatShortcutLabel(resolvedShortcuts.jumpNextLlmMessage) },
+        shortcuts: [
+          { id: "bottom", shortcutLabel: formatShortcutLabel(resolvedShortcuts.jumpChatBottom) },
+          { id: "previousUser", shortcutLabel: formatShortcutLabel(resolvedShortcuts.jumpPreviousUserMessage) },
+          { id: "nextUser", shortcutLabel: formatShortcutLabel(resolvedShortcuts.jumpNextUserMessage) },
+          { id: "previousAssistant", shortcutLabel: formatShortcutLabel(resolvedShortcuts.jumpPreviousLlmMessage) },
+          { id: "nextAssistant", shortcutLabel: formatShortcutLabel(resolvedShortcuts.jumpNextLlmMessage) },
         ],
-        onAction: (id) => {
-          switch (id) {
-            case "bottom":
-              return jumpChatToBottom(ctx);
-            case "previousUser":
-              return jumpToChatMessage(ctx, "user", "previous");
-            case "nextUser":
-              return jumpToChatMessage(ctx, "user", "next");
-            case "previousAssistant":
-              return jumpToChatMessage(ctx, "assistant", "previous");
-            case "nextAssistant":
-              return jumpToChatMessage(ctx, "assistant", "next");
-          }
-        },
+        onClickBottom: () => jumpChatToBottom(ctx),
       },
       onCopySelection: (text) => copyTextToClipboard(ctx, text),
       getShowHardwareCursor: () => typeof tui.getShowHardwareCursor === "function" && tui.getShowHardwareCursor(),
