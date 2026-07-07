@@ -960,9 +960,7 @@ function computeResponsiveLayout(
 
 export default function powerlineFooter(pi: ExtensionAPI) {
   const startupSettings = readSettings();
-  config = parsePowerlineConfig(startupSettings.powerline, PRESET_NAMES, {
-    defaultMouseScroll: process.env.HERDR_ENV !== "1",
-  });
+  config = parsePowerlineConfig(startupSettings.powerline, PRESET_NAMES);
   let resolvedShortcuts = resolveShortcutConfig(startupSettings);
   let bashModeSettings = parseBashModeSettings(startupSettings);
 
@@ -1229,9 +1227,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     bashModeSettings = parseBashModeSettings(settings);
     resolvedShortcuts = resolveShortcutConfig(settings);
     showLastPrompt = settings.showLastPrompt !== false;
-    config = parsePowerlineConfig(settings.powerline, PRESET_NAMES, {
-      defaultMouseScroll: process.env.HERDR_ENV !== "1",
-    });
+    config = parsePowerlineConfig(settings.powerline, PRESET_NAMES);
     stashedPromptHistory = readPersistedStashHistory();
     bashModeActive = false;
     bashTranscript = new BashTranscriptStore(bashModeSettings);

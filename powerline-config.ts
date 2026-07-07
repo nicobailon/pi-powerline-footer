@@ -136,18 +136,8 @@ export function mergeSegmentOptions(
   };
 }
 
-export function parsePowerlineConfig(
-  value: unknown,
-  presets: readonly StatusLinePreset[],
-  options: { defaultMouseScroll?: boolean } = {},
-): PowerlineConfig {
-  const defaultConfig: PowerlineConfig = {
-    preset: "default",
-    customItems: [],
-    segmentOptions: {},
-    mouseScroll: options.defaultMouseScroll ?? true,
-    fixedEditor: true,
-  };
+export function parsePowerlineConfig(value: unknown, presets: readonly StatusLinePreset[]): PowerlineConfig {
+  const defaultConfig: PowerlineConfig = { preset: "default", customItems: [], segmentOptions: {}, mouseScroll: true, fixedEditor: true };
 
   const directPreset = normalizePreset(value, presets);
   if (directPreset) return { ...defaultConfig, preset: directPreset };
@@ -158,7 +148,7 @@ export function parsePowerlineConfig(
     preset: normalizePreset(value.preset, presets) ?? defaultConfig.preset,
     customItems: normalizeCustomItems(value.customItems),
     segmentOptions: normalizeSegmentOptions(value),
-    mouseScroll: typeof value.mouseScroll === "boolean" ? value.mouseScroll : defaultConfig.mouseScroll,
+    mouseScroll: value.mouseScroll !== false,
     fixedEditor: value.fixedEditor !== false,
   };
 }

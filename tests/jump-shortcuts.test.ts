@@ -107,11 +107,6 @@ test("super shortcut matching rejects plain keys and unsupported command aliases
   assert.equal(shortcutConflictKey("super+shift+end"), "super+shift+down");
 });
 
-test("Herdr panes default fixed-editor mouse capture off unless configured", () => {
-  const herdrDefaultUses = [...source.matchAll(/defaultMouseScroll: process\.env\.HERDR_ENV !== "1"/g)];
-  assert.equal(herdrDefaultUses.length, 2);
-});
-
 test("editor submits follow the fixed chat viewport to bottom", () => {
   assert.match(source, /function followSubmittedEditorToBottom\(\): void/);
   assert.match(source, /onEditorSubmit: \(\) => followSubmittedEditorToBottom\(\)/);

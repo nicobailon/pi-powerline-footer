@@ -18,7 +18,7 @@ Customizes the default [pi](https://github.com/badlogic/pi-mono) editor with a p
 
 **Rounded box design** — Status renders directly in the editor's top border, not as a separate footer.
 
-**Fixed editor cluster** — In interactive TUI sessions, chat/feed content scrolls above the fixed Pi working/status line, powerline rows, editor, ghost suggestions, bash transcript, and last-prompt/status rows. Scroll chat with the mouse wheel, PageUp/PageDown, Command+PageUp/PageDown, Ctrl+Shift+Up/Down, or message-jump shortcuts; the editor stays put. When you are scrolled away from the bottom, a stacked navigation card appears over the bottom of the chat viewport with the configured bottom, user-message, and assistant-response jump shortcuts. Drag text to copy it, drag selection to the viewport edge to scroll, double-click a line to select it, and right-click to open the terminal menu. Use `/powerline fixed-editor off` for Pi’s regular scrolling layout, or `/powerline mouse-scroll off` for native terminal selection. Inside Herdr panes, mouse scrolling defaults off unless you explicitly set `mouseScroll`, so Herdr can keep owning wheel scrollback by default.
+**Fixed editor cluster** — In interactive TUI sessions, chat/feed content scrolls above the fixed Pi working/status line, powerline rows, editor, ghost suggestions, bash transcript, and last-prompt/status rows. Scroll chat with the mouse wheel, PageUp/PageDown, Command+PageUp/PageDown, Ctrl+Shift+Up/Down, or message-jump shortcuts; the editor stays put. When you are scrolled away from the bottom, a stacked navigation card appears over the bottom of the chat viewport with the configured bottom, user-message, and assistant-response jump shortcuts. Drag text to copy it, drag selection to the viewport edge to scroll, double-click a line to select it, and right-click to open the terminal menu. Use `/powerline fixed-editor off` for Pi’s regular scrolling layout, or `/powerline mouse-scroll off` for native terminal selection.
 
 **Live thinking level indicator** — Shows current thinking level (`think:off`, `think:med`, etc.) with per-level colors. High and xhigh levels use a rainbow effect inspired by Claude Code's ultrathink.
 
@@ -63,7 +63,7 @@ You can also set it in `~/.pi/agent/settings.json` or project-local `.pi/setting
 }
 ```
 
-Use `"fixedEditor": true` to enable it again. Add `"mouseScroll": false` if you want native terminal selection instead of fixed-editor mouse handling. When Pi runs inside a Herdr-managed pane (`HERDR_ENV=1`), fixed-editor mouse wheel capture defaults off unless `mouseScroll` is set; use `/powerline mouse-scroll on` or set `"mouseScroll": true` if you want Pi to own wheel scrolling and navigation-card mouse clicks inside Herdr. PageUp/PageDown still go to Pi’s fixed-editor viewport because fixed-editor runs in the alternate screen.
+Use `"fixedEditor": true` to enable it again. Add `"mouseScroll": false` if you want native terminal selection instead of fixed-editor mouse handling. In Herdr, tmux, and other terminal multiplexers, fixed-editor scrolling is Pi-owned while fixed-editor mode is on; keep mouse scrolling enabled for the fixed-editor viewport, or use `/powerline fixed-editor off` when you want the host multiplexer scrollback to own the experience.
 
 | Preset | Description |
 |--------|-------------|
