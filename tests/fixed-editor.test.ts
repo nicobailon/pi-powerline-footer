@@ -663,7 +663,7 @@ test("terminal split renders a scroll-away navigation card in render and repaint
   compositor.dispose();
 });
 
-test("terminal split routes scroll-away navigation card clicks by row and half", () => {
+test("terminal split routes every scroll-away shortcut card click to bottom", () => {
   const terminal = new FakeTerminal();
   terminal.columns = 80;
   let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
@@ -697,41 +697,44 @@ test("terminal split routes scroll-away navigation card clicks by row and half",
   inputListener?.("\x1b[5~");
   const rendered = tui.render(80);
 
-  function cardRow(label: string): { row: number; firstCol: number; lastCol: number; rightHalfCol: number } {
+  const topRowIndex = rendered.findIndex((line) => line.includes("┌") && line.includes("┐"));
+  const dividerRowIndex = rendered.findIndex((line) => line.includes("├") && line.includes("┤"));
+  const bottomBorderRowIndex = rendered.findIndex((line) => line.includes("└") && line.includes("┘"));
+  assert.notEqual(topRowIndex, -1, "card top border should render");
+  assert.notEqual(dividerRowIndex, -1, "card divider should render");
+  assert.notEqual(bottomBorderRowIndex, -1, "card bottom border should render");
+
+  const topLine = rendered[topRowIndex] ?? "";
+  const start = topLine.indexOf("┌");
+  const end = topLine.indexOf("┐");
+  assert.ok(start >= 0 && end > start, "card should have horizontal bounds");
+
+  function rowFor(label: string): number {
     const rowIndex = rendered.findIndex((line) => line.includes(label));
     assert.notEqual(rowIndex, -1, `${label} row should render`);
-    const line = rendered[rowIndex] ?? "";
-    const start = line.indexOf("│");
-    const end = line.lastIndexOf("│");
-    assert.ok(start >= 0 && end > start, `${label} row should have card borders`);
-    return {
-      row: rowIndex + 1,
-      firstCol: start + 1,
-      lastCol: end + 1,
-      rightHalfCol: start + Math.floor((end - start + 1) / 2) + 1,
-    };
+    return rowIndex + 1;
   }
 
-  const bottom = cardRow("Jump to bottom");
-  const user = cardRow("User messages");
-  const assistant = cardRow("Assistant responses");
+  const firstCol = start + 1;
+  const lastCol = end + 1;
+  const rightHalfCol = start + Math.floor((end - start + 1) / 2) + 1;
+  const clickTargets = [
+    { col: firstCol, row: topRowIndex + 1 },
+    { col: rightHalfCol, row: rowFor("Jump to bottom") },
+    { col: firstCol, row: dividerRowIndex + 1 },
+    { col: firstCol, row: rowFor("User messages") },
+    { col: rightHalfCol, row: rowFor("User messages") },
+    { col: firstCol, row: rowFor("Assistant responses") },
+    { col: rightHalfCol, row: rowFor("Assistant responses") },
+    { col: lastCol, row: bottomBorderRowIndex + 1 },
+  ];
 
-  assert.deepEqual(inputListener?.(`\x1b[<0;${bottom.firstCol};${bottom.row}M`), { consume: true });
-  assert.deepEqual(inputListener?.(`\x1b[<0;${bottom.lastCol};${bottom.row}M`), { consume: true });
-  assert.deepEqual(inputListener?.(`\x1b[<0;${user.firstCol};${user.row}M`), { consume: true });
-  assert.deepEqual(inputListener?.(`\x1b[<0;${user.rightHalfCol};${user.row}M`), { consume: true });
-  assert.deepEqual(inputListener?.(`\x1b[<0;${assistant.firstCol};${assistant.row}M`), { consume: true });
-  assert.deepEqual(inputListener?.(`\x1b[<0;${assistant.rightHalfCol};${assistant.row}M`), { consume: true });
-  assert.deepEqual(inputListener?.(`\x1b[<0;${bottom.lastCol + 1};${bottom.row}M`), { consume: true });
+  for (const target of clickTargets) {
+    assert.deepEqual(inputListener?.(`\x1b[<0;${target.col};${target.row}M`), { consume: true });
+  }
+  assert.deepEqual(inputListener?.(`\x1b[<0;${lastCol + 1};${rowFor("Jump to bottom")}M`), { consume: true });
 
-  assert.deepEqual(actions, [
-    "bottom",
-    "bottom",
-    "previousUser",
-    "nextUser",
-    "previousAssistant",
-    "nextAssistant",
-  ]);
+  assert.deepEqual(actions, clickTargets.map(() => "bottom"));
 
   compositor.dispose();
 });

@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ### Added
-- **Fixed-editor scroll-away navigation card** — Shows a stacked bottom/user/assistant jump card with configured shortcuts when chat is scrolled away from the bottom, including mouse targets for bottom and previous/next message jumps when fixed-editor mouse handling is enabled.
+- **Fixed-editor scroll-away shortcut hint card** — Shows a stacked bottom/user/assistant shortcut card when chat is scrolled away from the bottom; clicking anywhere in the card jumps back to the bottom when fixed-editor mouse handling is enabled.
 
 ### Changed
 - **Herdr and tmux scroll guidance** — Keeps fixed-editor mouse scrolling enabled by default and documents that host multiplexer scrollback needs `/powerline fixed-editor off`.

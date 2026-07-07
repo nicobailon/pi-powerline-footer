@@ -90,9 +90,6 @@ interface ScrollAwayCardBounds {
 
 interface ScrollAwayCardCandidate {
   lines: string[];
-  bottomLineIndex: number;
-  userLineIndex?: number;
-  assistantLineIndex?: number;
 }
 
 interface ScrollAwayCardLayout extends ScrollAwayCardCandidate {
@@ -103,7 +100,6 @@ interface ScrollAwayCardLayout extends ScrollAwayCardCandidate {
 
 interface ScrollAwayCardContentRow {
   kind: "content";
-  actionRow?: "bottom" | "user" | "assistant";
   left: string;
   right?: string;
 }
@@ -363,7 +359,6 @@ function buildBoxedScrollAwayCard(rows: ScrollAwayCardRow[]): ScrollAwayCardCand
   const contentRows = rows.filter((row): row is ScrollAwayCardContentRow => row.kind === "content");
   const contentWidth = Math.max(1, ...contentRows.map(cardRowContentWidth));
   const lines = [`┌${"─".repeat(contentWidth)}┐`];
-  const candidate: ScrollAwayCardCandidate = { lines, bottomLineIndex: -1 };
 
   for (const row of rows) {
     if (row.kind === "divider") {
@@ -371,15 +366,11 @@ function buildBoxedScrollAwayCard(rows: ScrollAwayCardRow[]): ScrollAwayCardCand
       continue;
     }
 
-    const lineIndex = lines.length;
-    if (row.actionRow === "bottom") candidate.bottomLineIndex = lineIndex;
-    if (row.actionRow === "user") candidate.userLineIndex = lineIndex;
-    if (row.actionRow === "assistant") candidate.assistantLineIndex = lineIndex;
     lines.push(`│${alignCardRow(row, contentWidth)}│`);
   }
 
   lines.push(`└${"─".repeat(contentWidth)}┘`);
-  return candidate;
+  return { lines };
 }
 
 function splitShortcutLabel(label: string): { modifiers: string[]; key: string } {
@@ -455,25 +446,25 @@ function buildScrollAwayCardCandidates(
 
   return [
     buildBoxedScrollAwayCard([
-      { kind: "content", actionRow: "bottom", left: bottom.label, right: bottomShortcut },
+      { kind: "content", left: bottom.label, right: bottomShortcut },
       { kind: "divider" },
-      { kind: "content", actionRow: "user", left: "User messages", right: `prev ${previousUser.shortcutLabel} · next ${nextUser.shortcutLabel}` },
-      { kind: "content", actionRow: "assistant", left: "Assistant responses", right: `prev ${previousAssistant.shortcutLabel} · next ${nextAssistant.shortcutLabel}` },
+      { kind: "content", left: "User messages", right: `prev ${previousUser.shortcutLabel} · next ${nextUser.shortcutLabel}` },
+      { kind: "content", left: "Assistant responses", right: `prev ${previousAssistant.shortcutLabel} · next ${nextAssistant.shortcutLabel}` },
     ]),
     buildBoxedScrollAwayCard([
-      { kind: "content", actionRow: "bottom", left: "Bottom", right: bottomShortcut },
+      { kind: "content", left: "Bottom", right: bottomShortcut },
       { kind: "divider" },
-      { kind: "content", actionRow: "user", left: "User", right: `prev ${previousUser.shortcutLabel} · next ${nextUser.shortcutLabel}` },
-      { kind: "content", actionRow: "assistant", left: "Assistant", right: `prev ${previousAssistant.shortcutLabel} · next ${nextAssistant.shortcutLabel}` },
+      { kind: "content", left: "User", right: `prev ${previousUser.shortcutLabel} · next ${nextUser.shortcutLabel}` },
+      { kind: "content", left: "Assistant", right: `prev ${previousAssistant.shortcutLabel} · next ${nextAssistant.shortcutLabel}` },
     ]),
     buildBoxedScrollAwayCard([
-      { kind: "content", actionRow: "bottom", left: "Bottom", right: bottomShortcut },
+      { kind: "content", left: "Bottom", right: bottomShortcut },
       { kind: "divider" },
-      { kind: "content", actionRow: "user", left: "User prev/next", right: userShortcut },
-      { kind: "content", actionRow: "assistant", left: "Asst prev/next", right: assistantShortcut },
+      { kind: "content", left: "User prev/next", right: userShortcut },
+      { kind: "content", left: "Asst prev/next", right: assistantShortcut },
     ]),
-    { lines: [`Bottom ${bottomShortcut}`], bottomLineIndex: 0 },
-    { lines: ["Bottom ↓"], bottomLineIndex: 0 },
+    { lines: [`Bottom ${bottomShortcut}`] },
+    { lines: ["Bottom ↓"] },
   ];
 }
 
@@ -986,25 +977,12 @@ export class TerminalSplitCompositor {
 
       const startCol = Math.max(0, Math.floor((width - candidateWidth) / 2));
       const firstRow = scrollableRows - candidate.lines.length + 1;
-      const bounds: ScrollAwayCardBounds[] = [{
+      const bounds: ScrollAwayCardBounds[] = candidate.lines.map((_, index) => ({
         actionId: "bottom",
-        row: firstRow + candidate.bottomLineIndex,
+        row: firstRow + index,
         startCol,
         endCol: startCol + candidateWidth,
-      }];
-      const splitCol = startCol + Math.floor(candidateWidth / 2);
-      if (candidate.userLineIndex !== undefined) {
-        bounds.push(
-          { actionId: "previousUser", row: firstRow + candidate.userLineIndex, startCol, endCol: splitCol },
-          { actionId: "nextUser", row: firstRow + candidate.userLineIndex, startCol: splitCol, endCol: startCol + candidateWidth },
-        );
-      }
-      if (candidate.assistantLineIndex !== undefined) {
-        bounds.push(
-          { actionId: "previousAssistant", row: firstRow + candidate.assistantLineIndex, startCol, endCol: splitCol },
-          { actionId: "nextAssistant", row: firstRow + candidate.assistantLineIndex, startCol: splitCol, endCol: startCol + candidateWidth },
-        );
-      }
+      }));
 
       return { ...candidate, width: candidateWidth, startCol, bounds };
     }
