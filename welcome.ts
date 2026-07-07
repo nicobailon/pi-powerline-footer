@@ -315,6 +315,15 @@ export class WelcomeHeader implements Component {
 const loggedDiscoveryErrors = new Set<string>();
 
 function logDiscoveryError(scope: string, error: unknown): void {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "ENOENT"
+  ) {
+    return;
+  }
+
   const message = error instanceof Error ? error.message : String(error);
   const key = `${scope}:${message}`;
   if (loggedDiscoveryErrors.has(key)) {

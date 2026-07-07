@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Welcome discovery noise** — Ignored vanished/dangling skill, extension, and prompt-template entries during welcome overlay discovery instead of printing stack traces.
+
 ## [0.6.1] - 2026-06-08
 
 ### Fixed
