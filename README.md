@@ -198,7 +198,7 @@ Selecting an entry inserts it into the editor. If the editor already has text, y
 - `ctrl+shift+i` — jump the fixed-editor chat viewport to the next user message
 - `ctrl+alt+,` — jump the fixed-editor chat viewport to the previous LLM message
 - `ctrl+alt+.` — jump the fixed-editor chat viewport to the next LLM message
-- `ctrl+end` — jump the fixed-editor chat viewport to the bottom
+- `ctrl+alt+b` — jump the fixed-editor chat viewport to the bottom
 
 Copy/cut actions do not modify stash state or stash history. Dragging files, folders, images, or screenshots from Finder into the custom editor inserts their path strings. Chat jumps require fixed-editor mode because they use its app-owned scroll viewport. When fixed-editor chat is scrolled away from the bottom, the viewport shows a navigation card with these configured shortcut labels; with mouse scrolling enabled, clicking the bottom row jumps to the bottom and clicking the left or right half of the user/assistant rows jumps to the previous or next matching message. Submitting editor text also returns that viewport to the bottom so new output stays in view.
 
@@ -216,7 +216,7 @@ You can override shortcut keys in `~/.pi/agent/settings.json`:
     "jumpNextUserMessage": "ctrl+shift+i",
     "jumpPreviousLlmMessage": "ctrl+alt+,",
     "jumpNextLlmMessage": "ctrl+alt+.",
-    "jumpChatBottom": "ctrl+end",
+    "jumpChatBottom": "ctrl+alt+b",
     "scrollChatUp": "cmd+up",
     "scrollChatDown": "cmd+down",
     "editorStart": "cmd+shift+up",

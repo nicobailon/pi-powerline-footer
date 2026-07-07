@@ -40,7 +40,7 @@ class FakeTerminal {
 function navigationCardOptions(onAction: (id: ScrollAwayNavigationActionId) => boolean = () => false): ScrollAwayNavigationCardOptions {
   return {
     actions: [
-      { id: "bottom", label: "Jump to bottom", shortcutLabel: "ctrl+end" },
+      { id: "bottom", label: "Jump to bottom", shortcutLabel: "ctrl+alt+b" },
       { id: "previousUser", label: "Previous user message", shortcutLabel: "ctrl+shift+u" },
       { id: "nextUser", label: "Next user message", shortcutLabel: "ctrl+shift+i" },
       { id: "previousAssistant", label: "Previous assistant response", shortcutLabel: "ctrl+alt+," },
@@ -588,7 +588,7 @@ test("terminal split renders a scroll-away navigation card in render and repaint
   assert.deepEqual(inputListener?.("\x1b[5~"), { consume: true });
   assert.deepEqual(renderRequests, [undefined]);
   assert.match(terminal.writes.at(-1) ?? "", /Jump to bottom/);
-  assert.match(terminal.writes.at(-1) ?? "", /ctrl\+end/);
+  assert.match(terminal.writes.at(-1) ?? "", /ctrl\+alt\+b/);
 
   const away = tui.render(80);
   assert.ok(away.some((line) => line.includes("Jump to bottom")));
@@ -687,8 +687,8 @@ test("terminal split scroll-away navigation card width tiers collapse without wr
     { width: 80, includes: ["Jump to bottom", "User messages", "Assistant responses"], excludes: [] },
     { width: 50, includes: ["Bottom", "User", "Assistant", "prev ctrl+shift+u"], excludes: ["Jump to bottom"] },
     { width: 30, includes: ["User prev/next", "⌃⇧U/I", "Asst prev/next", "⌃⌥,/."], excludes: ["User messages"] },
-    { width: 22, includes: ["Bottom ctrl+end ↓"], excludes: ["User prev/next"] },
-    { width: 8, includes: ["Bottom ↓"], excludes: ["ctrl+end"] },
+    { width: 20, includes: ["Bottom ctrl+alt+b ↓"], excludes: ["User prev/next"] },
+    { width: 8, includes: ["Bottom ↓"], excludes: ["ctrl+alt+b"] },
     { width: 7, includes: [], excludes: ["Bottom"] },
   ];
 

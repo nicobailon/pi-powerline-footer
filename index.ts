@@ -120,7 +120,7 @@ const DEFAULT_SHORTCUTS: PowerlineShortcuts = {
   jumpNextUserMessage: "ctrl+shift+i",
   jumpPreviousLlmMessage: "ctrl+alt+,",
   jumpNextLlmMessage: "ctrl+alt+.",
-  jumpChatBottom: "ctrl+end",
+  jumpChatBottom: "ctrl+alt+b",
   scrollChatUp: "super+up",
   scrollChatDown: "super+down",
   editorStart: "super+shift+up",
