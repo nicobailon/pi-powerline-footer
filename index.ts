@@ -691,6 +691,10 @@ function normalizeShortcut(value: string): string {
   return [...modifiers, parts[parts.length - 1]].join("+");
 }
 
+function formatShortcutLabel(shortcut: string): string {
+  return shortcut.split("+").map((part) => part.toLowerCase() === "super" ? "cmd" : part).join("+");
+}
+
 function reservedShortcuts(): Set<string> {
   const shortcuts = new Set<string>([
     ...EXTRA_RESERVED_SHORTCUTS,
@@ -2342,6 +2346,29 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         up: resolvedShortcuts.scrollChatUp,
         down: resolvedShortcuts.scrollChatDown,
       },
+      scrollAwayNavigationCard: {
+        actions: [
+          { id: "bottom", label: "Jump to bottom", shortcutLabel: formatShortcutLabel(resolvedShortcuts.jumpChatBottom) },
+          { id: "previousUser", label: "Previous user message", shortcutLabel: formatShortcutLabel(resolvedShortcuts.jumpPreviousUserMessage) },
+          { id: "nextUser", label: "Next user message", shortcutLabel: formatShortcutLabel(resolvedShortcuts.jumpNextUserMessage) },
+          { id: "previousAssistant", label: "Previous assistant response", shortcutLabel: formatShortcutLabel(resolvedShortcuts.jumpPreviousLlmMessage) },
+          { id: "nextAssistant", label: "Next assistant response", shortcutLabel: formatShortcutLabel(resolvedShortcuts.jumpNextLlmMessage) },
+        ],
+        onAction: (id) => {
+          switch (id) {
+            case "bottom":
+              return jumpChatToBottom(ctx);
+            case "previousUser":
+              return jumpToChatMessage(ctx, "user", "previous");
+            case "nextUser":
+              return jumpToChatMessage(ctx, "user", "next");
+            case "previousAssistant":
+              return jumpToChatMessage(ctx, "assistant", "previous");
+            case "nextAssistant":
+              return jumpToChatMessage(ctx, "assistant", "next");
+          }
+        },
+      },
       onCopySelection: (text) => copyTextToClipboard(ctx, text),
       getShowHardwareCursor: () => typeof tui.getShowHardwareCursor === "function" && tui.getShowHardwareCursor(),
       renderCluster: (width, terminalRows) => {
@@ -2434,17 +2461,17 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     return [...new Set(targets)].sort((a, b) => a - b);
   }
 
-  function jumpToChatMessage(ctx: any, role: ChatJumpRole, direction: ChatJumpDirection): void {
+  function jumpToChatMessage(ctx: any, role: ChatJumpRole, direction: ChatJumpDirection): boolean {
     if (!fixedEditorCompositor) {
       ctx.ui.notify("Chat message jumps require /powerline fixed-editor on", "warning");
-      return;
+      return false;
     }
 
     const targets = collectChatMessageStartLines(role);
     const label = role === "assistant" ? "LLM" : "user";
     if (targets.length === 0) {
       ctx.ui.notify(`No ${label} messages found`, "info");
-      return;
+      return false;
     }
 
     const jumped = direction === "previous"
@@ -2452,16 +2479,19 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       : fixedEditorCompositor.jumpToNextRootTarget(targets);
     if (!jumped) {
       ctx.ui.notify(`No ${direction} ${label} message`, "info");
+      return false;
     }
+
+    return true;
   }
 
-  function jumpChatToBottom(ctx: any): void {
+  function jumpChatToBottom(ctx: any): boolean {
     if (!fixedEditorCompositor) {
       ctx.ui.notify("Chat bottom jump requires /powerline fixed-editor on", "warning");
-      return;
+      return false;
     }
 
-    fixedEditorCompositor.jumpToRootBottom();
+    return fixedEditorCompositor.jumpToRootBottom();
   }
 
   function followSubmittedEditorToBottom(): void {

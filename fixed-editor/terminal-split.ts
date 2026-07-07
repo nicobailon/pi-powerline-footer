@@ -14,6 +14,19 @@ interface KeyboardScrollShortcuts {
   down: string;
 }
 
+export type ScrollAwayNavigationActionId = "bottom" | "previousUser" | "nextUser" | "previousAssistant" | "nextAssistant";
+
+export interface ScrollAwayNavigationAction {
+  id: ScrollAwayNavigationActionId;
+  label: string;
+  shortcutLabel: string;
+}
+
+export interface ScrollAwayNavigationCardOptions {
+  actions: ScrollAwayNavigationAction[];
+  onAction?: (id: ScrollAwayNavigationActionId) => boolean;
+}
+
 interface TerminalSplitCompositorOptions {
   tui: any;
   terminal: TerminalLike;
@@ -21,6 +34,7 @@ interface TerminalSplitCompositorOptions {
   getShowHardwareCursor?: () => boolean;
   mouseScroll?: boolean;
   keyboardScrollShortcuts?: KeyboardScrollShortcuts;
+  scrollAwayNavigationCard?: ScrollAwayNavigationCardOptions;
   onCopySelection?: (text: string) => void;
 }
 
@@ -65,6 +79,39 @@ interface SelectionLocation {
   area: SelectionArea;
   point: SelectionPoint;
 }
+
+interface ScrollAwayCardBounds {
+  actionId: ScrollAwayNavigationActionId;
+  row: number;
+  startCol: number;
+  endCol: number;
+}
+
+interface ScrollAwayCardCandidate {
+  lines: string[];
+  bottomLineIndex: number;
+  userLineIndex?: number;
+  assistantLineIndex?: number;
+}
+
+interface ScrollAwayCardLayout extends ScrollAwayCardCandidate {
+  width: number;
+  startCol: number;
+  bounds: ScrollAwayCardBounds[];
+}
+
+interface ScrollAwayCardContentRow {
+  kind: "content";
+  actionRow?: "bottom" | "user" | "assistant";
+  left: string;
+  right?: string;
+}
+
+interface ScrollAwayCardDividerRow {
+  kind: "divider";
+}
+
+type ScrollAwayCardRow = ScrollAwayCardContentRow | ScrollAwayCardDividerRow;
 
 interface DisposeOptions {
   resetExtendedKeyboardModes?: boolean;
@@ -292,6 +339,141 @@ function normalizeOverlayCompositionLine(line: string): string {
   return line.includes("\t") ? line.replace(/\t/g, "   ") : line;
 }
 
+function padVisibleEnd(text: string, width: number): string {
+  return text + " ".repeat(Math.max(0, width - visibleWidth(text)));
+}
+
+function cardRowContentWidth(row: ScrollAwayCardContentRow): number {
+  return row.right === undefined
+    ? visibleWidth(row.left)
+    : visibleWidth(row.left) + 2 + visibleWidth(row.right);
+}
+
+function alignCardRow(row: ScrollAwayCardContentRow, contentWidth: number): string {
+  if (row.right === undefined) return padVisibleEnd(row.left, contentWidth);
+
+  const gap = Math.max(2, contentWidth - visibleWidth(row.left) - visibleWidth(row.right));
+  return `${row.left}${" ".repeat(gap)}${row.right}`;
+}
+
+function buildBoxedScrollAwayCard(rows: ScrollAwayCardRow[]): ScrollAwayCardCandidate {
+  const contentRows = rows.filter((row): row is ScrollAwayCardContentRow => row.kind === "content");
+  const contentWidth = Math.max(1, ...contentRows.map(cardRowContentWidth));
+  const lines = [`┌${"─".repeat(contentWidth)}┐`];
+  const candidate: ScrollAwayCardCandidate = { lines, bottomLineIndex: -1 };
+
+  for (const row of rows) {
+    if (row.kind === "divider") {
+      lines.push(`├${"─".repeat(contentWidth)}┤`);
+      continue;
+    }
+
+    const lineIndex = lines.length;
+    if (row.actionRow === "bottom") candidate.bottomLineIndex = lineIndex;
+    if (row.actionRow === "user") candidate.userLineIndex = lineIndex;
+    if (row.actionRow === "assistant") candidate.assistantLineIndex = lineIndex;
+    lines.push(`│${alignCardRow(row, contentWidth)}│`);
+  }
+
+  lines.push(`└${"─".repeat(contentWidth)}┘`);
+  return candidate;
+}
+
+function splitShortcutLabel(label: string): { modifiers: string[]; key: string } {
+  const parts = label.split("+").filter((part) => part.length > 0);
+  if (parts.length === 0) return { modifiers: [], key: "" };
+  return { modifiers: parts.slice(0, -1), key: parts[parts.length - 1] ?? "" };
+}
+
+function compactShortcutModifiers(modifiers: string[]): string {
+  return modifiers.map((modifier) => {
+    switch (modifier.toLowerCase()) {
+      case "ctrl":
+      case "control":
+        return "⌃";
+      case "shift":
+        return "⇧";
+      case "alt":
+      case "option":
+        return "⌥";
+      case "cmd":
+      case "command":
+      case "super":
+        return "⌘";
+      default:
+        return `${modifier}+`;
+    }
+  }).join("");
+}
+
+function compactShortcutKey(key: string): string {
+  switch (key.toLowerCase()) {
+    case "up":
+      return "↑";
+    case "down":
+      return "↓";
+    case "left":
+      return "←";
+    case "right":
+      return "→";
+    default:
+      return /^[a-z]$/i.test(key) ? key.toUpperCase() : key;
+  }
+}
+
+function compactShortcutLabel(label: string): string {
+  const shortcut = splitShortcutLabel(label);
+  return `${compactShortcutModifiers(shortcut.modifiers)}${compactShortcutKey(shortcut.key)}`;
+}
+
+function compactShortcutPair(previous: string, next: string): string {
+  const previousShortcut = splitShortcutLabel(previous);
+  const nextShortcut = splitShortcutLabel(next);
+  const sameModifiers = previousShortcut.modifiers.length === nextShortcut.modifiers.length
+    && previousShortcut.modifiers.every((modifier, index) => modifier.toLowerCase() === nextShortcut.modifiers[index]?.toLowerCase());
+
+  if (sameModifiers) {
+    return `${compactShortcutModifiers(previousShortcut.modifiers)}${compactShortcutKey(previousShortcut.key)}/${compactShortcutKey(nextShortcut.key)}`;
+  }
+
+  return `${compactShortcutLabel(previous)}/${compactShortcutLabel(next)}`;
+}
+
+function buildScrollAwayCardCandidates(
+  bottom: ScrollAwayNavigationAction,
+  previousUser: ScrollAwayNavigationAction,
+  nextUser: ScrollAwayNavigationAction,
+  previousAssistant: ScrollAwayNavigationAction,
+  nextAssistant: ScrollAwayNavigationAction,
+): ScrollAwayCardCandidate[] {
+  const bottomShortcut = `${bottom.shortcutLabel} ↓`;
+  const userShortcut = compactShortcutPair(previousUser.shortcutLabel, nextUser.shortcutLabel);
+  const assistantShortcut = compactShortcutPair(previousAssistant.shortcutLabel, nextAssistant.shortcutLabel);
+
+  return [
+    buildBoxedScrollAwayCard([
+      { kind: "content", actionRow: "bottom", left: bottom.label, right: bottomShortcut },
+      { kind: "divider" },
+      { kind: "content", actionRow: "user", left: "User messages", right: `prev ${previousUser.shortcutLabel} · next ${nextUser.shortcutLabel}` },
+      { kind: "content", actionRow: "assistant", left: "Assistant responses", right: `prev ${previousAssistant.shortcutLabel} · next ${nextAssistant.shortcutLabel}` },
+    ]),
+    buildBoxedScrollAwayCard([
+      { kind: "content", actionRow: "bottom", left: "Bottom", right: bottomShortcut },
+      { kind: "divider" },
+      { kind: "content", actionRow: "user", left: "User", right: `prev ${previousUser.shortcutLabel} · next ${nextUser.shortcutLabel}` },
+      { kind: "content", actionRow: "assistant", left: "Assistant", right: `prev ${previousAssistant.shortcutLabel} · next ${nextAssistant.shortcutLabel}` },
+    ]),
+    buildBoxedScrollAwayCard([
+      { kind: "content", actionRow: "bottom", left: "Bottom", right: bottomShortcut },
+      { kind: "divider" },
+      { kind: "content", actionRow: "user", left: "User prev/next", right: userShortcut },
+      { kind: "content", actionRow: "assistant", left: "Asst prev/next", right: assistantShortcut },
+    ]),
+    { lines: [`Bottom ${bottomShortcut}`], bottomLineIndex: 0 },
+    { lines: ["Bottom ↓"], bottomLineIndex: 0 },
+  ];
+}
+
 export function buildFixedClusterPaint(
   cluster: FixedEditorClusterRender,
   terminalRows: number,
@@ -330,6 +512,7 @@ export class TerminalSplitCompositor {
   private readonly getShowHardwareCursor: () => boolean;
   private readonly mouseScroll: boolean;
   private readonly keyboardScrollShortcuts: KeyboardScrollShortcuts;
+  private readonly scrollAwayNavigationCard: ScrollAwayNavigationCardOptions | null;
   private readonly onCopySelection: ((text: string) => void) | null;
   private extendedKeyboardMode: ExtendedKeyboardMode | null = null;
   private readonly rowsDescriptor: PropertyDescriptor | undefined;
@@ -373,6 +556,7 @@ export class TerminalSplitCompositor {
     this.getShowHardwareCursor = options.getShowHardwareCursor ?? (() => false);
     this.mouseScroll = options.mouseScroll !== false;
     this.keyboardScrollShortcuts = options.keyboardScrollShortcuts ?? DEFAULT_KEYBOARD_SCROLL_SHORTCUTS;
+    this.scrollAwayNavigationCard = options.scrollAwayNavigationCard ?? null;
     this.onCopySelection = options.onCopySelection ?? null;
     this.rowsDescriptor = descriptorForRows(options.terminal);
     this.originalWrite = options.terminal.write.bind(options.terminal);
@@ -591,10 +775,9 @@ export class TerminalSplitCompositor {
 
     this.renderingScrollableRoot = true;
     try {
-      const start = this.refreshRootWindow(width);
-      return this.visibleRootLines.map((line, index) => {
-        return this.renderSelectionHighlight(line, start + index, "root");
-      });
+      const renderWidth = Math.max(1, Number.isFinite(width) ? width : this.terminal.columns || 80);
+      const start = this.refreshRootWindow(renderWidth);
+      return this.renderVisibleRootLines(start, renderWidth, this.visibleScrollableRows);
     } finally {
       this.renderingScrollableRoot = false;
     }
@@ -604,7 +787,7 @@ export class TerminalSplitCompositor {
     if (!this.originalRender) return this.updateVisibleRootWindow();
 
     const rawRows = this.getRawRows();
-    const renderWidth = Math.max(1, width);
+    const renderWidth = Math.max(1, Number.isFinite(width) ? width : this.terminal.columns || 80);
     const cluster = this.getCluster(renderWidth, rawRows);
     const scrollableRows = Math.max(1, rawRows - cluster.lines.length);
     const lines = this.originalRender(renderWidth);
@@ -650,7 +833,15 @@ export class TerminalSplitCompositor {
       return;
     }
 
-    this.refreshRootWindow(Math.max(1, this.terminal.columns || 80));
+    const width = Math.max(1, this.terminal.columns || 80);
+    this.refreshRootWindow(width);
+    if (isLeftPress(packet) && !this.selectionDragging) {
+      const actionId = this.scrollAwayCardActionForPacket(packet, width);
+      if (actionId && this.scrollAwayNavigationCard?.onAction?.(actionId)) {
+        this.lastLeftPress = null;
+        return;
+      }
+    }
     const location = this.selectionLocationForPacket(packet);
 
     if (isRightPress(packet)) {
@@ -704,6 +895,90 @@ export class TerminalSplitCompositor {
     this.visibleScrollableRows = rows;
     this.visibleRootLines = visibleLines;
     return start;
+  }
+
+  private renderVisibleRootLines(start: number, width: number, scrollableRows: number): string[] {
+    const renderedLines = this.visibleRootLines.map((line, index) => {
+      return this.renderSelectionHighlight(line, start + index, "root");
+    });
+    const card = this.computeScrollAwayNavigationCard(width, scrollableRows);
+    if (!card) return renderedLines;
+
+    const firstCardRow = scrollableRows - card.lines.length;
+    for (let index = 0; index < card.lines.length; index++) {
+      const row = firstCardRow + index;
+      if (row < 0 || row >= renderedLines.length) continue;
+      renderedLines[row] = this.composeScrollAwayCardLine(renderedLines[row] ?? "", card.lines[index] ?? "", card.startCol, card.width, width);
+    }
+
+    return renderedLines;
+  }
+
+  private composeScrollAwayCardLine(baseLine: string, overlayLine: string, startCol: number, overlayWidth: number, totalWidth: number): string {
+    const base = sanitizeOverlayBaseLine(baseLine, totalWidth);
+    if (typeof this.tui.compositeLineAt === "function") {
+      return sanitizeLine(this.tui.compositeLineAt(base, overlayLine, startCol, overlayWidth, totalWidth), totalWidth);
+    }
+
+    const plainBase = stripAnsi(base);
+    const before = padVisibleEnd(sliceColumns(plainBase, 0, startCol), startCol);
+    const after = sliceColumns(plainBase, startCol + overlayWidth, Number.POSITIVE_INFINITY);
+    return sanitizeLine(`${before}${overlayLine}${after}`, totalWidth);
+  }
+
+  private scrollAwayCardActionForPacket(packet: SgrMousePacket, width: number): ScrollAwayNavigationActionId | null {
+    const card = this.computeScrollAwayNavigationCard(width, this.visibleScrollableRows);
+    if (!card) return null;
+
+    const col = Math.max(0, packet.col - 1);
+    return card.bounds.find((bound) => {
+      return packet.row === bound.row && col >= bound.startCol && col < bound.endCol;
+    })?.actionId ?? null;
+  }
+
+  private computeScrollAwayNavigationCard(width: number, scrollableRows: number): ScrollAwayCardLayout | null {
+    if (!this.scrollAwayNavigationCard || this.scrollOffset <= 0 || scrollableRows < 1 || width < visibleWidth("Bottom ↓")) {
+      return null;
+    }
+
+    const actionById = new Map(this.scrollAwayNavigationCard.actions.map((action) => [action.id, action]));
+    const bottom = actionById.get("bottom");
+    const previousUser = actionById.get("previousUser");
+    const nextUser = actionById.get("nextUser");
+    const previousAssistant = actionById.get("previousAssistant");
+    const nextAssistant = actionById.get("nextAssistant");
+    if (!bottom || !previousUser || !nextUser || !previousAssistant || !nextAssistant) return null;
+
+    for (const candidate of buildScrollAwayCardCandidates(bottom, previousUser, nextUser, previousAssistant, nextAssistant)) {
+      const candidateWidth = Math.max(...candidate.lines.map((line) => visibleWidth(line)));
+      if (candidateWidth > width || candidate.lines.length > scrollableRows) continue;
+
+      const startCol = Math.max(0, Math.floor((width - candidateWidth) / 2));
+      const firstRow = scrollableRows - candidate.lines.length + 1;
+      const bounds: ScrollAwayCardBounds[] = [{
+        actionId: "bottom",
+        row: firstRow + candidate.bottomLineIndex,
+        startCol,
+        endCol: startCol + candidateWidth,
+      }];
+      const splitCol = startCol + Math.floor(candidateWidth / 2);
+      if (candidate.userLineIndex !== undefined) {
+        bounds.push(
+          { actionId: "previousUser", row: firstRow + candidate.userLineIndex, startCol, endCol: splitCol },
+          { actionId: "nextUser", row: firstRow + candidate.userLineIndex, startCol: splitCol, endCol: startCol + candidateWidth },
+        );
+      }
+      if (candidate.assistantLineIndex !== undefined) {
+        bounds.push(
+          { actionId: "previousAssistant", row: firstRow + candidate.assistantLineIndex, startCol, endCol: splitCol },
+          { actionId: "nextAssistant", row: firstRow + candidate.assistantLineIndex, startCol: splitCol, endCol: startCol + candidateWidth },
+        );
+      }
+
+      return { ...candidate, width: candidateWidth, startCol, bounds };
+    }
+
+    return null;
   }
 
   private finishSelection(packet: SgrMousePacket, location: SelectionLocation | null): void {
@@ -902,6 +1177,7 @@ export class TerminalSplitCompositor {
     const cluster = this.getCluster(width, rawRows);
     const scrollableRows = Math.max(1, rawRows - cluster.lines.length);
     const start = this.updateVisibleRootWindow(scrollableRows);
+    const visibleLines = this.renderVisibleRootLines(start, width, scrollableRows);
     let buffer = beginSynchronizedOutput()
       + this.consumePendingImageCleanup()
       + disableAutoWrap()
@@ -911,7 +1187,7 @@ export class TerminalSplitCompositor {
     for (let row = 0; row < scrollableRows; row++) {
       if (row > 0) buffer += "\r\n";
       buffer += clearLine();
-      buffer += sanitizeLine(this.renderSelectionHighlight(this.visibleRootLines[row] ?? "", start + row, "root"), width);
+      buffer += sanitizeLine(visibleLines[row] ?? "", width);
     }
 
     buffer += buildFixedClusterPaint(this.decorateCluster(cluster), rawRows, width, this.getShowHardwareCursor());

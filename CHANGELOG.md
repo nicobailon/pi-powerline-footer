@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- **Fixed-editor scroll-away navigation card** — Shows a stacked bottom/user/assistant jump card with configured shortcuts when chat is scrolled away from the bottom, including mouse targets for bottom and previous/next message jumps when fixed-editor mouse handling is enabled.
+
 ### Fixed
 - **Welcome discovery noise** — Ignored vanished/dangling skill, extension, and prompt-template entries during welcome overlay discovery instead of printing stack traces.
 
