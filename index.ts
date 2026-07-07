@@ -120,7 +120,7 @@ const DEFAULT_SHORTCUTS: PowerlineShortcuts = {
   jumpNextUserMessage: "ctrl+shift+i",
   jumpPreviousLlmMessage: "ctrl+alt+,",
   jumpNextLlmMessage: "ctrl+alt+.",
-  jumpChatBottom: "ctrl+shift+g",
+  jumpChatBottom: "ctrl+end",
   scrollChatUp: "super+up",
   scrollChatDown: "super+down",
   editorStart: "super+shift+up",
@@ -960,7 +960,9 @@ function computeResponsiveLayout(
 
 export default function powerlineFooter(pi: ExtensionAPI) {
   const startupSettings = readSettings();
-  config = parsePowerlineConfig(startupSettings.powerline, PRESET_NAMES);
+  config = parsePowerlineConfig(startupSettings.powerline, PRESET_NAMES, {
+    defaultMouseScroll: process.env.HERDR_ENV !== "1",
+  });
   let resolvedShortcuts = resolveShortcutConfig(startupSettings);
   let bashModeSettings = parseBashModeSettings(startupSettings);
 
@@ -1227,7 +1229,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     bashModeSettings = parseBashModeSettings(settings);
     resolvedShortcuts = resolveShortcutConfig(settings);
     showLastPrompt = settings.showLastPrompt !== false;
-    config = parsePowerlineConfig(settings.powerline, PRESET_NAMES);
+    config = parsePowerlineConfig(settings.powerline, PRESET_NAMES, {
+      defaultMouseScroll: process.env.HERDR_ENV !== "1",
+    });
     stashedPromptHistory = readPersistedStashHistory();
     bashModeActive = false;
     bashTranscript = new BashTranscriptStore(bashModeSettings);

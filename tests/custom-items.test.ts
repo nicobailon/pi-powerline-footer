@@ -34,6 +34,25 @@ test("parsePowerlineConfig supports disabling mouse scroll", () => {
   assert.equal(config.mouseScroll, false);
 });
 
+test("parsePowerlineConfig supports a custom mouse scroll default", () => {
+  assert.equal(
+    parsePowerlineConfig({ preset: "compact" }, ["default", "compact"], { defaultMouseScroll: false }).mouseScroll,
+    false,
+  );
+  assert.equal(
+    parsePowerlineConfig("compact", ["default", "compact"], { defaultMouseScroll: false }).mouseScroll,
+    false,
+  );
+  assert.equal(
+    parsePowerlineConfig({ preset: "compact", mouseScroll: true }, ["default", "compact"], { defaultMouseScroll: false }).mouseScroll,
+    true,
+  );
+  assert.equal(
+    parsePowerlineConfig({ preset: "compact", mouseScroll: false }, ["default", "compact"], { defaultMouseScroll: true }).mouseScroll,
+    false,
+  );
+});
+
 test("parsePowerlineConfig supports disabling fixed editor", () => {
   const config = parsePowerlineConfig(
     { preset: "compact", fixedEditor: false },

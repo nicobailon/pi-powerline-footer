@@ -5,6 +5,10 @@
 ### Added
 - **Fixed-editor scroll-away navigation card** — Shows a stacked bottom/user/assistant jump card with configured shortcuts when chat is scrolled away from the bottom, including mouse targets for bottom and previous/next message jumps when fixed-editor mouse handling is enabled.
 
+### Changed
+- **Herdr wheel ownership** — Defaults fixed-editor mouse wheel capture off inside Herdr-managed panes unless `powerline.mouseScroll` is set, letting Herdr own pane wheel scrollback by default.
+- **Bottom jump shortcut** — Uses `ctrl+end` as the default fixed-editor jump-to-bottom shortcut instead of `ctrl+shift+g`.
+
 ### Fixed
 - **Welcome discovery noise** — Ignored vanished/dangling skill, extension, and prompt-template entries during welcome overlay discovery instead of printing stack traces.
 
