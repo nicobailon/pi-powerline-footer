@@ -2165,6 +2165,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       sessionId: ctx.sessionManager?.getSessionId?.(),
       cwd: ctx.cwd,
       usageStats: { input, output, cacheRead, cacheWrite, cost },
+      contextTokens,
       contextPercent,
       contextWindow,
       autoCompactEnabled: ctx.settingsManager?.getCompactionSettings?.()?.enabled ?? true,

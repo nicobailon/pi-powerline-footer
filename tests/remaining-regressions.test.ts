@@ -33,6 +33,7 @@ function createSegmentContext(overrides: Partial<SegmentContext> = {}): SegmentC
     sessionId: undefined,
     cwd: "/tmp/project",
     usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
+    contextTokens: 0,
     contextPercent: 0,
     contextWindow: 0,
     autoCompactEnabled: true,
@@ -99,6 +100,17 @@ test("cost segment supports subscription display modes", () => {
   assert.deepEqual(both, { content: "$0.42 (sub)", visible: true });
   assert.deepEqual(zeroReported, { content: "(sub)", visible: true });
   assert.deepEqual(zeroBoth, { content: "(sub)", visible: true });
+});
+
+test("context segment shows used tokens, maximum, and percentage", () => {
+  const context = renderSegment("context_pct", createSegmentContext({
+    contextTokens: 4_500,
+    contextPercent: 1.7,
+    contextWindow: 272_000,
+  }));
+
+  assert.equal(stripAnsi(context.content), "◫ 4.5k/272k (1.7%) AC");
+  assert.equal(context.visible, true);
 });
 
 test("Nerd Font context icon uses stable database glyph", () => {
