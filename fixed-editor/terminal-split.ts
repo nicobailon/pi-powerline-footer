@@ -260,6 +260,12 @@ function mouseScrollDelta(packet: SgrMousePacket): number {
   return 0;
 }
 
+function parseAlternateScrollDelta(data: string): number {
+  if (data === "\x1b[A" || data === "\x1bOA") return 3;
+  if (data === "\x1b[B" || data === "\x1bOB") return -3;
+  return 0;
+}
+
 function isLeftPress(packet: SgrMousePacket): boolean {
   return packet.final === "M" && mouseBaseButton(packet.code) === 0 && (packet.code & 32) === 0;
 }
@@ -611,7 +617,9 @@ export class TerminalSplitCompositor {
       beginSynchronizedOutput()
       + enterAlternateScreen()
       + this.enableAlternateScreenKeyboardMode()
-      + disableAlternateScrollMode()
+      + (!this.mouseScroll && this.terminal.kittyProtocolActive === true
+        ? enableAlternateScrollMode()
+        : disableAlternateScrollMode())
       + this.mouseReportingStateGuard()
       + endSynchronizedOutput(),
     );
@@ -883,6 +891,17 @@ export class TerminalSplitCompositor {
         this.queueScrollDeltas(wheelDeltas);
       }
       return { consume: true };
+    }
+
+    // Alternate-screen wheel events look like legacy arrows. Only consume them
+    // after Kitty negotiation so real legacy arrows remain untouched elsewhere;
+    // avoiding mouse capture preserves native terminal Cmd-click/OSC 8 behavior.
+    if (!this.mouseScroll && this.terminal.kittyProtocolActive === true) {
+      const alternateScrollDelta = parseAlternateScrollDelta(data);
+      if (alternateScrollDelta !== 0) {
+        this.queueScrollBy(alternateScrollDelta);
+        return { consume: true };
+      }
     }
 
     const keyboardDelta = parseKeyboardScrollDelta(data, this.keyboardScrollShortcuts);

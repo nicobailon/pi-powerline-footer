@@ -16,6 +16,7 @@ import {
 
 class FakeTerminal {
   columns = 40;
+  kittyProtocolActive?: boolean;
   private rowCount = 12;
   writes: string[] = [];
 
@@ -548,6 +549,80 @@ test("terminal split renders chat through an app-owned scroll viewport", () => {
 
   compositor.dispose();
   assert.equal(inputListener, null);
+});
+
+test("terminal split keeps native links while using alternate scroll", () => {
+  const terminal = new FakeTerminal();
+  terminal.kittyProtocolActive = true;
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const rootLines = Array.from({ length: 15 }, (_, index) => `line-${index}`);
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender() {},
+    render() {
+      return rootLines;
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    mouseScroll: false,
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  const setup = terminal.writes[0] ?? "";
+  assert.ok(setup.includes("\x1b[?1007h"));
+  assert.doesNotMatch(setup, /\x1b\[\?1002h|\x1b\[\?1006h/);
+  assert.deepEqual(inputListener?.("\x1b[A"), { consume: true });
+  assert.deepEqual(tui.render(40), [
+    "line-2", "line-3", "line-4", "line-5", "line-6",
+    "line-7", "line-8", "line-9", "line-10", "line-11",
+  ]);
+  assert.deepEqual(inputListener?.("\x1bOB"), { consume: true });
+  assert.deepEqual(tui.render(40), [
+    "line-5", "line-6", "line-7", "line-8", "line-9",
+    "line-10", "line-11", "line-12", "line-13", "line-14",
+  ]);
+
+  compositor.dispose();
+  const cleanup = terminal.writes.at(-1) ?? "";
+  assert.doesNotMatch(cleanup, /\x1b\[\?1002l|\x1b\[\?1006l/);
+  assert.ok(cleanup.includes("\x1b[?1007h"));
+});
+
+test("terminal split leaves alternate scroll disabled without Kitty keyboard protocol", () => {
+  const terminal = new FakeTerminal();
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    mouseScroll: false,
+    renderCluster: () => ({ lines: ["cluster"], cursor: null }),
+  });
+
+  compositor.install();
+  const setup = terminal.writes[0] ?? "";
+  assert.ok(setup.includes("\x1b[?1007l"));
+  assert.equal(inputListener?.("\x1b[A"), undefined);
+  compositor.dispose();
 });
 
 test("terminal split coalesces throttled wheel bursts", (t) => {
