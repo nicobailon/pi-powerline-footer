@@ -549,7 +549,6 @@ export class TerminalSplitCompositor {
   private readonly renderCluster: (width: number, terminalRows: number) => FixedEditorClusterRender;
   private readonly getShowHardwareCursor: () => boolean;
   private readonly mouseScroll: boolean;
-  private readonly nativeAlternateScroll: boolean;
   private readonly keyboardScrollShortcuts: KeyboardScrollShortcuts;
   private readonly scrollAwayNavigationCard: ScrollAwayNavigationCardOptions | null;
   private readonly onCopySelection: ((text: string) => void) | null;
@@ -598,7 +597,6 @@ export class TerminalSplitCompositor {
     this.renderCluster = options.renderCluster;
     this.getShowHardwareCursor = options.getShowHardwareCursor ?? (() => false);
     this.mouseScroll = options.mouseScroll !== false;
-    this.nativeAlternateScroll = !this.mouseScroll && this.terminal.kittyProtocolActive === true;
     this.keyboardScrollShortcuts = options.keyboardScrollShortcuts ?? DEFAULT_KEYBOARD_SCROLL_SHORTCUTS;
     this.scrollAwayNavigationCard = options.scrollAwayNavigationCard ?? null;
     this.onCopySelection = options.onCopySelection ?? null;
@@ -619,7 +617,9 @@ export class TerminalSplitCompositor {
       beginSynchronizedOutput()
       + enterAlternateScreen()
       + this.enableAlternateScreenKeyboardMode()
-      + (this.nativeAlternateScroll ? enableAlternateScrollMode() : disableAlternateScrollMode())
+      + (!this.mouseScroll && this.terminal.kittyProtocolActive === true
+        ? enableAlternateScrollMode()
+        : disableAlternateScrollMode())
       + this.mouseReportingStateGuard()
       + endSynchronizedOutput(),
     );
@@ -893,11 +893,10 @@ export class TerminalSplitCompositor {
       return { consume: true };
     }
 
-    // Alternate-screen wheel events look like legacy arrows. Keep this decision
-    // stable for the compositor lifetime: reloads can reset the live Kitty flag
-    // after ?1007h is active, which would otherwise leak wheel arrows into prompt
-    // history. Avoiding mouse capture preserves native Cmd-click/OSC 8 behavior.
-    if (this.nativeAlternateScroll) {
+    // Alternate-screen wheel events look like legacy arrows. Only consume them
+    // while Kitty keyboard mode can distinguish physical arrows from wheel input;
+    // avoiding mouse capture preserves native terminal Cmd-click/OSC 8 behavior.
+    if (!this.mouseScroll && this.terminal.kittyProtocolActive === true) {
       const alternateScrollDelta = parseAlternateScrollDelta(data);
       if (alternateScrollDelta !== 0) {
         this.queueScrollBy(alternateScrollDelta);

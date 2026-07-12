@@ -598,7 +598,7 @@ test("terminal split keeps native links while using alternate scroll", () => {
   assert.ok(cleanup.includes("\x1b[?1007h"));
 });
 
-test("terminal split keeps native alternate scroll after keyboard capability reset", () => {
+test("terminal split passes arrow keys through after keyboard capability reset", () => {
   const terminal = new FakeTerminal();
   terminal.kittyProtocolActive = true;
   let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
@@ -628,10 +628,11 @@ test("terminal split keeps native alternate scroll after keyboard capability res
   tui.render(40);
   terminal.kittyProtocolActive = false;
 
-  assert.deepEqual(inputListener?.("\x1b[A"), { consume: true });
+  assert.equal(inputListener?.("\x1b[A"), undefined);
+  assert.equal(inputListener?.("\x1b[B"), undefined);
   assert.deepEqual(tui.render(40), [
-    "line-2", "line-3", "line-4", "line-5", "line-6",
-    "line-7", "line-8", "line-9", "line-10", "line-11",
+    "line-5", "line-6", "line-7", "line-8", "line-9",
+    "line-10", "line-11", "line-12", "line-13", "line-14",
   ]);
 
   compositor.dispose();
