@@ -22,7 +22,7 @@ The screenshot is illustrative and may differ from current Pi versions. The supp
 
 **Fixed editor cluster** — In interactive TUI sessions, chat/feed content scrolls above the fixed Pi working/status line, powerline rows, editor, ghost suggestions, bash transcript, and last-prompt/status rows. Scroll chat with the mouse wheel, PageUp/PageDown, Command+PageUp/PageDown, Ctrl+Shift+Up/Down, or message-jump shortcuts; the editor stays put. When you are scrolled away from the bottom, a stacked shortcut hint card appears over the bottom of the chat viewport with the configured bottom, user-message, and assistant-response jump shortcuts. When mouse scrolling is enabled, click anywhere in that card to jump back to the bottom. Drag text to copy it, drag selection to the viewport edge to scroll, double-click a line to select it, and right-click to open the terminal menu. Use `/powerline fixed-editor off` for Pi’s regular scrolling layout, or `/powerline mouse-scroll off` for native terminal selection.
 
-**Live thinking level indicator** — Shows current thinking level (`think:off`, `think:med`, etc.) with per-level colors. High and xhigh levels use a rainbow effect inspired by Claude Code's ultrathink.
+**Live thinking level indicator** — Shows current thinking level (`think:off`, `think:med`, etc.) with per-level colors. High, xhigh, and max levels use a rainbow effect inspired by Claude Code's ultrathink.
 
 **Smart defaults** — Nerd Font auto-detection for iTerm, WezTerm, Kitty, Ghostty, and Alacritty with ASCII fallbacks. Colors matched to oh-my-pi's dark theme.
 
@@ -341,6 +341,7 @@ The thinking segment shows live updates when you change thinking level:
 | medium | `think:med` | teal |
 | high | `think:high` | rainbow |
 | xhigh | `think:xhigh` | rainbow |
+| max | `think:max` | rainbow |
 
 ## Path Display
 
