@@ -112,11 +112,19 @@ interface DisposeOptions {
   resetExtendedKeyboardModes?: boolean;
 }
 
+interface PendingAmbiguousArrow {
+  data: string;
+  delta: number;
+  count: number;
+  timer: ReturnType<typeof setTimeout>;
+}
+
 type ExtendedKeyboardMode = "kitty" | "modifyOtherKeys";
 
 const CONTEXT_MENU_MOUSE_REPORTING_PAUSE_MS = 1200;
 const CONTEXT_MENU_SELECTION_RESTORE_WINDOW_MS = 5000;
 const CONTEXT_MENU_CLIPBOARD_RESTORE_INTERVAL_MS = 100;
+const AMBIGUOUS_ARROW_SETTLE_MS = 12;
 export const DEFAULT_SCROLL_REPAINT_THROTTLE_MS = 16;
 const SCROLL_SETTLED_RENDER_MS = 80;
 const DOUBLE_CLICK_MS = 500;
@@ -263,6 +271,12 @@ function mouseScrollDelta(packet: SgrMousePacket): number {
 function parseAlternateScrollDelta(data: string): number {
   if (data === "\x1b[A" || data === "\x1bOA") return 3;
   if (data === "\x1b[B" || data === "\x1bOB") return -3;
+  return 0;
+}
+
+function parseAmbiguousKittyArrowDelta(data: string): number {
+  if (data === "\x1b[1;1:1A") return 3;
+  if (data === "\x1b[1;1:1B") return -3;
   return 0;
 }
 
@@ -590,6 +604,8 @@ export class TerminalSplitCompositor {
   private lastLeftPress: { area: SelectionArea; line: number; at: number } | null = null;
   private pendingImageCleanup = false;
   private pendingScrollDeltas: number[] = [];
+  private pendingAmbiguousArrow: PendingAmbiguousArrow | null = null;
+  private replayingAmbiguousArrow = false;
 
   constructor(options: TerminalSplitCompositorOptions) {
     this.tui = options.tui;
@@ -785,6 +801,10 @@ export class TerminalSplitCompositor {
       clearTimeout(this.scrollSettledRenderTimer);
       this.scrollSettledRenderTimer = null;
     }
+    if (this.pendingAmbiguousArrow) {
+      clearTimeout(this.pendingAmbiguousArrow.timer);
+      this.pendingAmbiguousArrow = null;
+    }
     this.pendingScrollDeltas = [];
 
     this.terminal.write = this.originalWrite;
@@ -866,6 +886,7 @@ export class TerminalSplitCompositor {
   }
 
   private handleInput(data: string): { consume?: boolean; data?: string } | undefined {
+    if (this.replayingAmbiguousArrow) return undefined;
     if (this.disposed || this.hasVisibleOverlay()) return undefined;
 
     const mousePackets = this.mouseScroll ? parseSgrMousePackets(data) : null;
@@ -893,10 +914,16 @@ export class TerminalSplitCompositor {
       return { consume: true };
     }
 
-    // Alternate-screen wheel events look like legacy arrows. Only consume them
-    // while Kitty keyboard mode can distinguish physical arrows from wheel input;
-    // avoiding mouse capture preserves native terminal Cmd-click/OSC 8 behavior.
+    // Ghostty encodes both alternate-scroll wheel input and physical arrows as
+    // Kitty arrow presses. A wheel notch is a sub-6ms burst; a physical press is
+    // a singleton. Buffer briefly so bursts scroll chat and singletons reach the editor.
     if (!this.mouseScroll && this.terminal.kittyProtocolActive === true) {
+      const ambiguousArrowDelta = parseAmbiguousKittyArrowDelta(data);
+      if (ambiguousArrowDelta !== 0) {
+        this.bufferAmbiguousArrow(data, ambiguousArrowDelta);
+        return { consume: true };
+      }
+
       const alternateScrollDelta = parseAlternateScrollDelta(data);
       if (alternateScrollDelta !== 0) {
         this.queueScrollBy(alternateScrollDelta);
@@ -1215,6 +1242,56 @@ export class TerminalSplitCompositor {
     if (!location || location.area !== this.selectionArea) return false;
     const range = this.getSelectionRangeForLine(location.point.line, location.area);
     return Boolean(range && location.point.col >= range.startCol && location.point.col < range.endCol);
+  }
+
+  private bufferAmbiguousArrow(data: string, delta: number): void {
+    if (this.pendingAmbiguousArrow && this.pendingAmbiguousArrow.data !== data) {
+      this.flushAmbiguousArrow();
+    }
+
+    if (this.pendingAmbiguousArrow) {
+      clearTimeout(this.pendingAmbiguousArrow.timer);
+      this.pendingAmbiguousArrow.count += 1;
+      this.pendingAmbiguousArrow.timer = this.scheduleAmbiguousArrowFlush();
+      return;
+    }
+
+    this.pendingAmbiguousArrow = {
+      data,
+      delta,
+      count: 1,
+      timer: this.scheduleAmbiguousArrowFlush(),
+    };
+  }
+
+  private scheduleAmbiguousArrowFlush(): ReturnType<typeof setTimeout> {
+    const timer = setTimeout(() => this.flushAmbiguousArrow(), AMBIGUOUS_ARROW_SETTLE_MS);
+    if (typeof timer === "object" && "unref" in timer) timer.unref();
+    return timer;
+  }
+
+  private flushAmbiguousArrow(): void {
+    const pending = this.pendingAmbiguousArrow;
+    if (!pending) return;
+
+    clearTimeout(pending.timer);
+    this.pendingAmbiguousArrow = null;
+    if (this.disposed) return;
+
+    if (pending.count > 1) {
+      this.queueScrollDeltas(Array.from({ length: pending.count }, () => pending.delta));
+      return;
+    }
+
+    const handleInput = Reflect.get(this.tui, "handleInput");
+    if (typeof handleInput !== "function") return;
+
+    this.replayingAmbiguousArrow = true;
+    try {
+      handleInput.call(this.tui, pending.data);
+    } finally {
+      this.replayingAmbiguousArrow = false;
+    }
   }
 
   private queueScrollBy(delta: number): void {

@@ -598,6 +598,79 @@ test("terminal split keeps native links while using alternate scroll", () => {
   assert.ok(cleanup.includes("\x1b[?1007h"));
 });
 
+test("terminal split distinguishes Kitty wheel bursts from physical arrows", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+
+  const terminal = new FakeTerminal();
+  terminal.kittyProtocolActive = true;
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const replayedInput: string[] = [];
+  const rootLines = Array.from({ length: 15 }, (_, index) => `line-${index}`);
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    handleInput(data: string) {
+      replayedInput.push(data);
+    },
+    requestRender() {},
+    render() {
+      return rootLines;
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    mouseScroll: false,
+    scrollRepaintThrottleMs: 0,
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render(40);
+
+  const kittyUp = "\x1b[1;1:1A";
+  const kittyDown = "\x1b[1;1:1B";
+
+  assert.deepEqual(inputListener?.(kittyUp), { consume: true });
+  t.mock.timers.tick(12);
+  assert.deepEqual(replayedInput, [kittyUp]);
+  assert.deepEqual(tui.render(40), [
+    "line-5", "line-6", "line-7", "line-8", "line-9",
+    "line-10", "line-11", "line-12", "line-13", "line-14",
+  ]);
+
+  assert.deepEqual(inputListener?.(kittyUp), { consume: true });
+  assert.deepEqual(inputListener?.(kittyUp), { consume: true });
+  assert.deepEqual(inputListener?.(kittyUp), { consume: true });
+  t.mock.timers.tick(12);
+  assert.deepEqual(replayedInput, [kittyUp]);
+  assert.deepEqual(tui.render(40), [
+    "line-0", "line-1", "line-2", "line-3", "line-4",
+    "line-5", "line-6", "line-7", "line-8", "line-9",
+  ]);
+
+  assert.deepEqual(inputListener?.(kittyDown), { consume: true });
+  t.mock.timers.tick(12);
+  assert.deepEqual(replayedInput, [kittyUp, kittyDown]);
+
+  assert.deepEqual(inputListener?.(kittyDown), { consume: true });
+  assert.deepEqual(inputListener?.(kittyDown), { consume: true });
+  assert.deepEqual(inputListener?.(kittyDown), { consume: true });
+  t.mock.timers.tick(12);
+  assert.deepEqual(tui.render(40), [
+    "line-5", "line-6", "line-7", "line-8", "line-9",
+    "line-10", "line-11", "line-12", "line-13", "line-14",
+  ]);
+
+  compositor.dispose();
+});
+
 test("terminal split passes arrow keys through after keyboard capability reset", () => {
   const terminal = new FakeTerminal();
   terminal.kittyProtocolActive = true;
