@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { CustomEditor } from "@earendil-works/pi-coding-agent";
-import { isKeyRelease, matchesKey, visibleWidth, truncateToWidth } from "@earendil-works/pi-tui";
+import { isKeyRelease, matchesKey, Key, visibleWidth, truncateToWidth } from "@earendil-works/pi-tui";
 import type { KeybindingsManager } from "@earendil-works/pi-coding-agent/dist/core/keybindings.js";
 import type { AutocompleteProvider } from "@earendil-works/pi-tui";
 import { matchesConfiguredShortcut } from "../shortcuts.ts";
@@ -224,7 +224,7 @@ export class BashModeEditor extends CustomEditor {
         return;
       }
 
-      if (!bashMode && this.keybindingsRef.matches(data, "tui.editor.cursorUp") && this.isPromptHistoryRecallPosition()) {
+      if (!bashMode && matchesKey(data, Key.up) && this.isPromptHistoryRecallPosition()) {
         const navigateHistory = Reflect.get(this, "navigateHistory");
         if (typeof navigateHistory === "function") {
           if (Reflect.get(this, "historyIndex") === -1) {
@@ -235,7 +235,7 @@ export class BashModeEditor extends CustomEditor {
         }
       }
 
-      if (!bashMode && this.keybindingsRef.matches(data, "tui.editor.cursorDown") && Reflect.get(this, "historyIndex") > -1) {
+      if (!bashMode && matchesKey(data, Key.down) && Reflect.get(this, "historyIndex") > -1) {
         const isOnLastVisualLine = Reflect.get(this, "isOnLastVisualLine");
         if (typeof isOnLastVisualLine !== "function" || isOnLastVisualLine.call(this)) {
           const navigateHistory = Reflect.get(this, "navigateHistory");
