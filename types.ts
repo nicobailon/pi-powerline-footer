@@ -2,7 +2,7 @@ import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 
 // Theme color - either a pi theme color name or a custom hex color
 export type ColorValue = ThemeColor | `#${string}`;
-export type ThemeLike = Pick<Theme, "fg">;
+export type ThemeLike = Pick<Theme, "fg"> & Pick<Theme, "name">;
 
 // Semantic color names for segments
 export type SemanticColor =

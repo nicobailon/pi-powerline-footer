@@ -18,7 +18,7 @@ export interface PowerlineThemeConfig {
   icons?: unknown;
 }
 
-// Default color scheme (uses pi theme colors)
+// Default dark color scheme (uses pi theme colors where possible)
 const DEFAULT_COLORS: Required<ColorScheme> = {
   model: "#d787af",  // Pink/mauve (matching original colors.ts)
   shellMode: "accent",
@@ -38,11 +38,27 @@ const DEFAULT_COLORS: Required<ColorScheme> = {
   border: "borderMuted",
 };
 
+// The original fixed colors are tuned for dark terminals. Pi exposes the active
+// theme name, so keep those colors while using higher-contrast variants for its
+// built-in light theme. Semantic Pi colors already adapt through theme.fg().
+const LIGHT_COLOR_OVERRIDES: ColorScheme = {
+  model: "#8f3f71",
+  path: "#007070",
+};
+
 // Rainbow colors for high thinking levels
-const RAINBOW_COLORS = [
-  "#b281d6", "#d787af", "#febc38", "#e4c00f", 
+const DARK_RAINBOW_COLORS = [
+  "#b281d6", "#d787af", "#febc38", "#e4c00f",
   "#89d281", "#00afaf", "#178fb9", "#b281d6",
 ];
+const LIGHT_RAINBOW_COLORS = [
+  "#6f42c1", "#9b3a6a", "#9a6200", "#7a6500",
+  "#3f7d3a", "#007070", "#176b87", "#6f42c1",
+];
+
+function usesLightPalette(theme?: ThemeLike): boolean {
+  return theme?.name === "light";
+}
 
 // Cache for user theme overrides
 let userThemeCache: ColorScheme | null = null;
@@ -134,14 +150,25 @@ function loadUserTheme(): ColorScheme {
  */
 export function resolveColor(
   semantic: SemanticColor,
-  presetColors?: ColorScheme
+  presetColors?: ColorScheme,
+  theme?: ThemeLike,
 ): ColorValue {
   const userTheme = loadUserTheme();
-  
+  const userColor = userTheme[semantic];
+  if (userColor !== undefined) {
+    return userColor;
+  }
+
+  const presetColor = presetColors?.[semantic];
+  if (
+    usesLightPalette(theme)
+    && (presetColor === undefined || presetColor === DEFAULT_COLORS[semantic])
+  ) {
+    return LIGHT_COLOR_OVERRIDES[semantic] ?? DEFAULT_COLORS[semantic];
+  }
+
   // Priority: user overrides > preset colors > defaults
-  return userTheme[semantic] 
-    ?? presetColors?.[semantic] 
-    ?? DEFAULT_COLORS[semantic];
+  return presetColor ?? DEFAULT_COLORS[semantic];
 }
 
 /**
@@ -198,21 +225,22 @@ export function fg(
   text: string,
   presetColors?: ColorScheme
 ): string {
-  const color = resolveColor(semantic, presetColors);
+  const color = resolveColor(semantic, presetColors, theme);
   return applyColor(theme, color, text);
 }
 
 /**
  * Apply rainbow gradient to text (for high thinking levels)
  */
-export function rainbow(text: string): string {
+export function rainbow(theme: ThemeLike, text: string): string {
+  const colors = usesLightPalette(theme) ? LIGHT_RAINBOW_COLORS : DARK_RAINBOW_COLORS;
   let result = "";
   let colorIndex = 0;
   for (const char of text) {
     if (char === " " || char === ":") {
       result += char;
     } else {
-      result += hexToAnsi(RAINBOW_COLORS[colorIndex % RAINBOW_COLORS.length]) + char;
+      result += hexToAnsi(colors[colorIndex % colors.length]) + char;
       colorIndex++;
     }
   }

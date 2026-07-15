@@ -196,7 +196,7 @@ const thinkingSegment: StatusLineSegment = {
     const content = `think:${label}`;
 
     if (level === "high" || level === "xhigh" || level === "max") {
-      return { content: rainbow(content), visible: true };
+      return { content: rainbow(ctx.theme, content), visible: true };
     }
 
     if (level === "minimal") {
