@@ -79,7 +79,9 @@ test("chat jump shortcuts are configurable and route through fixed editor scroll
   assert.match(source, /let resolvedShortcuts = resolveShortcutConfig\(startupSettings\)/);
   assert.match(source, /resolvedShortcuts = resolveShortcutConfig\(settings\)/);
   assert.match(source, /keyboardScrollShortcuts: \{\n\s+up: resolvedShortcuts\.scrollChatUp,\n\s+down: resolvedShortcuts\.scrollChatDown,/);
-  assert.match(source, /scrollAwayNavigationCard: \{/);
+  assert.match(source, /scrollAwayNavigationCard: config\.scrollAwayCard \? \{/);
+  assert.match(source, /const scrollAwayCardMatch = \/\^scroll-away-card/);
+  assert.match(source, /writePowerlineOptionSetting\(ctx\.cwd, \{ scrollAwayCard: config\.scrollAwayCard \}, config\.preset\)/);
   assert.match(source, /shortcuts: \[/);
   assert.match(source, /scrollAwayShortcutEntry\("bottom", resolvedShortcuts\.jumpChatBottom\)/);
   assert.match(source, /onClickBottom: resolvedShortcuts\.jumpChatBottom \? \(\) => jumpChatToBottom\(ctx\) : undefined/);
@@ -171,7 +173,7 @@ test("fixed editor captures Pi status messages with the editor cluster", () => {
 });
 
 test("primary powerline placement applies in fixed and regular editor modes", () => {
-  assert.match(source, /Partial<Pick<PowerlineConfig, "mouseScroll" \| "fixedEditor" \| "welcome" \| "stashSharpSShortcut" \| "placement">>/);
+  assert.match(source, /Partial<Pick<PowerlineConfig, "mouseScroll" \| "fixedEditor" \| "scrollAwayCard" \| "welcome" \| "stashSharpSShortcut" \| "placement">>/);
   assert.match(source, /primaryLines: renderPowerlinePrimaryLines\(width, theme\)/);
   assert.match(source, /placement: config\.placement/);
   assert.match(source, /\{ placement: config\.placement === "below" \? "belowEditor" : "aboveEditor" \}/);

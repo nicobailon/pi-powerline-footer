@@ -78,6 +78,7 @@ let config: PowerlineConfig = {
   segmentOptions: {},
   mouseScroll: true,
   fixedEditor: true,
+  scrollAwayCard: true,
   placement: "above",
   invalidPlacement: null,
   welcome: true,
@@ -638,7 +639,7 @@ function writePowerlinePresetSetting(preset: StatusLinePreset, cwd: string = pro
 
 function writePowerlineOptionSetting(
   cwd: string,
-  updates: Partial<Pick<PowerlineConfig, "mouseScroll" | "fixedEditor" | "welcome" | "stashSharpSShortcut" | "placement">>,
+  updates: Partial<Pick<PowerlineConfig, "mouseScroll" | "fixedEditor" | "scrollAwayCard" | "welcome" | "stashSharpSShortcut" | "placement">>,
   currentPreset: StatusLinePreset,
 ): boolean {
   return writePowerlineSetting(cwd, (existingPowerlineSetting) => (
@@ -1918,6 +1919,22 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         return;
       }
 
+      const scrollAwayCardMatch = /^scroll-away-card(?:\s+(on|off|toggle))?$/.exec(normalizedArgs);
+      if (scrollAwayCardMatch) {
+        const mode = scrollAwayCardMatch[1] ?? "toggle";
+        config.scrollAwayCard = mode === "toggle" ? !config.scrollAwayCard : mode === "on";
+        if (enabled && ctx.hasUI && config.fixedEditor && tuiRef && currentEditor) {
+          installFixedEditorCompositor(ctx, tuiRef);
+        }
+
+        if (writePowerlineOptionSetting(ctx.cwd, { scrollAwayCard: config.scrollAwayCard }, config.preset)) {
+          ctx.ui.notify(`Powerline scroll-away card ${config.scrollAwayCard ? "enabled" : "disabled"}`, "info");
+        } else {
+          ctx.ui.notify(`Powerline scroll-away card ${config.scrollAwayCard ? "enabled" : "disabled"} (not persisted; check settings.json)`, "warning");
+        }
+        return;
+      }
+
       const placementMatch = /^placement(?:\s+(above|below|toggle))?$/.exec(normalizedArgs);
       if (placementMatch) {
         const requestedPlacement = placementMatch[1];
@@ -2441,7 +2458,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         down: resolvedShortcuts.scrollChatDown,
       },
       scrollRepaintThrottleMs: DEFAULT_SCROLL_REPAINT_THROTTLE_MS,
-      scrollAwayNavigationCard: {
+      scrollAwayNavigationCard: config.scrollAwayCard ? {
         shortcuts: [
           scrollAwayShortcutEntry("bottom", resolvedShortcuts.jumpChatBottom),
           scrollAwayShortcutEntry("previousUser", resolvedShortcuts.jumpPreviousUserMessage),
@@ -2450,7 +2467,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           scrollAwayShortcutEntry("nextAssistant", resolvedShortcuts.jumpNextLlmMessage),
         ].filter((shortcut): shortcut is { id: ScrollAwayShortcutId; shortcutLabel: string } => shortcut !== null),
         onClickBottom: resolvedShortcuts.jumpChatBottom ? () => jumpChatToBottom(ctx) : undefined,
-      },
+      } : undefined,
       onCopySelection: (text) => copyTextToClipboard(ctx, text),
       getShowHardwareCursor: () => typeof tui.getShowHardwareCursor === "function" && tui.getShowHardwareCursor(),
       renderCluster: (width, terminalRows) => {

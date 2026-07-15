@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- **Scroll-away card toggle** — Added `powerline.scrollAwayCard` and `/powerline scroll-away-card on|off|toggle` so the fixed editor and chat navigation shortcuts can remain enabled while the scroll-away hint card is hidden. Thanks to Alexander Gerdes (@Avg8888), Whisperfall, and Bruno Orsolon (@brunoorsolon) for #97/#108/#99.
+
 ### Changed
 - **Fixed-editor scrolling performance** — Uses terminal row shifts, cached transcript lines, an 8 ms repaint cadence, and transient shortcut-card hiding during active wheel movement to cut scroll latency and terminal output churn.
 

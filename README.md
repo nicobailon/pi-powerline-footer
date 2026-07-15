@@ -46,13 +46,16 @@ Restart pi to activate.
 
 ## Usage
 
-Activates automatically. Toggle with `/powerline`, switch presets with `/powerline <name>`, fixed-editor mode with `/powerline fixed-editor on|off|toggle`, primary-row placement with `/powerline placement above|below|toggle`, and wheel mode with `/powerline mouse-scroll on|off|toggle`.
+Activates automatically. Toggle with `/powerline`, switch presets with `/powerline <name>`, fixed-editor mode with `/powerline fixed-editor on|off|toggle`, the scroll-away card with `/powerline scroll-away-card on|off|toggle`, primary-row placement with `/powerline placement above|below|toggle`, and wheel mode with `/powerline mouse-scroll on|off|toggle`.
 
 Fixed editor is on by default.
 
 - `/powerline fixed-editor off` — return to Pi’s regular scrolling layout
 - `/powerline fixed-editor on` — re-enable the fixed editor
 - `/powerline fixed-editor toggle` — switch between the two
+- `/powerline scroll-away-card off` — hide the navigation hint card while keeping the fixed editor and its shortcuts
+- `/powerline scroll-away-card on` — show the navigation hint card when scrolled away from the bottom
+- `/powerline scroll-away-card toggle` — switch the hint card between shown and hidden
 - `/powerline placement below` — move the primary powerline row below the editor
 - `/powerline placement above` — restore the default placement
 - `/powerline placement toggle` — switch between above and below
@@ -64,6 +67,7 @@ You can also set it in the agent settings file (`~/.pi/agent/settings.json` by d
   "powerline": {
     "preset": "default",
     "fixedEditor": false,
+    "scrollAwayCard": true,
     "placement": "below",
     "welcome": true,
     "mouseScroll": true
@@ -71,7 +75,7 @@ You can also set it in the agent settings file (`~/.pi/agent/settings.json` by d
 }
 ```
 
-Use `"fixedEditor": true` to enable it again. `"placement"` accepts `"above"` (default) or `"below"` in both fixed and regular editor modes. It moves only the primary powerline row; notifications and Pi working status stay above, while responsive overflow, bash transcript, and the last-prompt reminder stay below. Set `"welcome": false` to skip the startup welcome overlay/header while leaving powerline itself enabled. Add `"mouseScroll": false` if you want native terminal selection instead of fixed-editor mouse handling. In Herdr, tmux, and other terminal multiplexers, fixed-editor scrolling is Pi-owned while fixed-editor mode is on; keep mouse scrolling enabled for the fixed-editor viewport, or use `/powerline fixed-editor off` when you want the host multiplexer scrollback to own the experience. While fixed-editor mouse reporting is enabled, hold Shift during your terminal’s normal modifier-click to bypass capture for OSC 8 links; otherwise use `/powerline mouse-scroll off` or `/powerline fixed-editor off` for native link handling.
+Use `"fixedEditor": true` to enable it again. Set `"scrollAwayCard": false` to keep the fixed editor and navigation shortcuts while hiding the scroll-away hint card. `"placement"` accepts `"above"` (default) or `"below"` in both fixed and regular editor modes. It moves only the primary powerline row; notifications and Pi working status stay above, while responsive overflow, bash transcript, and the last-prompt reminder stay below. Set `"welcome": false` to skip the startup welcome overlay/header while leaving powerline itself enabled. Add `"mouseScroll": false` if you want native terminal selection instead of fixed-editor mouse handling. In Herdr, tmux, and other terminal multiplexers, fixed-editor scrolling is Pi-owned while fixed-editor mode is on; keep mouse scrolling enabled for the fixed-editor viewport, or use `/powerline fixed-editor off` when you want the host multiplexer scrollback to own the experience. While fixed-editor mouse reporting is enabled, hold Shift during your terminal’s normal modifier-click to bypass capture for OSC 8 links; otherwise use `/powerline mouse-scroll off` or `/powerline fixed-editor off` for native link handling.
 
 | Preset | Description |
 |--------|-------------|
@@ -274,7 +278,7 @@ Selecting an entry inserts it into the editor. If the editor already has text, y
 - `ctrl+alt+.` — jump the fixed-editor chat viewport to the next LLM message
 - `ctrl+alt+g` — jump the fixed-editor chat viewport to the bottom
 
-Copy/cut actions do not modify stash state or stash history. Dragging files, folders, images, or screenshots from Finder into the custom editor inserts their path strings. Chat jumps require fixed-editor mode because they use its app-owned scroll viewport. When fixed-editor chat is scrolled away from the bottom, the viewport shows a shortcut hint card with these configured shortcut labels; with mouse scrolling enabled, clicking anywhere in the card jumps to the bottom. Submitting editor text also returns that viewport to the bottom so new output stays in view.
+Copy/cut actions do not modify stash state or stash history. Dragging files, folders, images, or screenshots from Finder into the custom editor inserts their path strings. Chat jumps require fixed-editor mode because they use its app-owned scroll viewport. When fixed-editor chat is scrolled away from the bottom, the viewport shows a shortcut hint card with these configured shortcut labels unless `powerline.scrollAwayCard` is `false`; with mouse scrolling enabled, clicking anywhere in the card jumps to the bottom. Submitting editor text also returns that viewport to the bottom so new output stays in view.
 
 ### Shortcut configuration
 
