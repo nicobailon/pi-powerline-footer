@@ -66,9 +66,10 @@ test("thinking segment uses rainbow styling for high through max", () => {
   const colors: ColorScheme = { thinking: "#111111" };
 
   for (const level of ["high", "xhigh", "max"]) {
-    const rendered = renderSegment("thinking", createSegmentContext(level, colors));
+    const ctx = createSegmentContext(level, colors);
+    const rendered = renderSegment("thinking", ctx);
     assert.deepEqual(rendered, {
-      content: rainbow(`think:${level}`),
+      content: rainbow(ctx.theme, `think:${level}`),
       visible: true,
     });
   }

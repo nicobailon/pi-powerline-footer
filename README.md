@@ -24,7 +24,7 @@ The screenshot is illustrative and may differ from current Pi versions. The supp
 
 **Live thinking level indicator** — Shows current thinking level (`think:off`, `think:med`, etc.) with per-level colors. High, xhigh, and max levels use a rainbow effect inspired by Claude Code's ultrathink.
 
-**Smart defaults** — Nerd Font auto-detection for iTerm, WezTerm, Kitty, Ghostty, and Alacritty with ASCII fallbacks. Colors matched to oh-my-pi's dark theme.
+**Smart defaults** — Nerd Font auto-detection for iTerm, WezTerm, Kitty, Ghostty, and Alacritty with ASCII fallbacks. Colors preserve the oh-my-pi-inspired dark palette and automatically use higher-contrast variants with Pi's built-in light theme.
 
 **Git integration** — Async status fetching with 1s cache TTL. Automatically invalidates on file writes/edits. Shows branch, staged (+), unstaged (*), and untracked (?) counts.
 
@@ -46,7 +46,7 @@ Restart pi to activate.
 
 ## Usage
 
-Activates automatically. Toggle with `/powerline`, switch presets with `/powerline <name>`, fixed-editor mode with `/powerline fixed-editor on|off|toggle`, primary-row placement with `/powerline placement above|below|toggle`, and wheel mode with `/powerline mouse-scroll on|off|toggle`.
+Activates automatically. Toggle with `/powerline`, switch presets with `/powerline <name>`, fixed-editor mode with `/powerline fixed-editor on|off|toggle`, primary-row placement with `/powerline placement above|below|toggle`, wheel mode with `/powerline mouse-scroll on|off|toggle`, and the scroll-away shortcut card with `/powerline scroll-away-card on|off|toggle`.
 
 Fixed editor is on by default.
 
@@ -65,13 +65,14 @@ You can also set it in the agent settings file (`~/.pi/agent/settings.json` by d
     "preset": "default",
     "fixedEditor": false,
     "placement": "below",
+    "scrollAwayCard": true,
     "welcome": true,
     "mouseScroll": true
   }
 }
 ```
 
-Use `"fixedEditor": true` to enable it again. `"placement"` accepts `"above"` (default) or `"below"` in both fixed and regular editor modes. It moves only the primary powerline row; notifications and Pi working status stay above, while responsive overflow, bash transcript, and the last-prompt reminder stay below. Set `"welcome": false` to skip the startup welcome overlay/header while leaving powerline itself enabled. Add `"mouseScroll": false` if you want native terminal selection instead of fixed-editor mouse handling. In Herdr, tmux, and other terminal multiplexers, fixed-editor scrolling is Pi-owned while fixed-editor mode is on; keep mouse scrolling enabled for the fixed-editor viewport, or use `/powerline fixed-editor off` when you want the host multiplexer scrollback to own the experience. While fixed-editor mouse reporting is enabled, hold Shift during your terminal’s normal modifier-click to bypass capture for OSC 8 links; otherwise use `/powerline mouse-scroll off` or `/powerline fixed-editor off` for native link handling.
+Use `"fixedEditor": true` to enable it again. `"placement"` accepts `"above"` (default) or `"below"` in both fixed and regular editor modes. It moves only the primary powerline row; notifications and Pi working status stay above, while responsive overflow, bash transcript, and the last-prompt reminder stay below. Set `"scrollAwayCard": false` to hide the shortcut card without disabling the fixed editor, scrolling, or jump shortcuts. Set `"welcome": false` to skip the startup welcome overlay/header while leaving powerline itself enabled. Add `"mouseScroll": false` if you want native terminal selection instead of fixed-editor mouse handling. In Herdr, tmux, and other terminal multiplexers, fixed-editor scrolling is Pi-owned while fixed-editor mode is on; keep mouse scrolling enabled for the fixed-editor viewport, or use `/powerline fixed-editor off` when you want the host multiplexer scrollback to own the experience. While fixed-editor mouse reporting is enabled, hold Shift during your terminal’s normal modifier-click to bypass capture for OSC 8 links; otherwise use `/powerline mouse-scroll off` or `/powerline fixed-editor off` for native link handling.
 
 | Preset | Description |
 |--------|-------------|
@@ -274,7 +275,7 @@ Selecting an entry inserts it into the editor. If the editor already has text, y
 - `ctrl+alt+.` — jump the fixed-editor chat viewport to the next LLM message
 - `ctrl+alt+g` — jump the fixed-editor chat viewport to the bottom
 
-Copy/cut actions do not modify stash state or stash history. Dragging files, folders, images, or screenshots from Finder into the custom editor inserts their path strings. Chat jumps require fixed-editor mode because they use its app-owned scroll viewport. When fixed-editor chat is scrolled away from the bottom, the viewport shows a shortcut hint card with these configured shortcut labels; with mouse scrolling enabled, clicking anywhere in the card jumps to the bottom. Submitting editor text also returns that viewport to the bottom so new output stays in view.
+Copy/cut actions do not modify stash state or stash history. Dragging files, folders, images, or screenshots from Finder into the custom editor inserts their path strings. Chat jumps require fixed-editor mode because they use its app-owned scroll viewport. When fixed-editor chat is scrolled away from the bottom, the viewport shows a shortcut hint card with these configured shortcut labels; with mouse scrolling enabled, clicking anywhere in the card jumps to the bottom. Hide it with `/powerline scroll-away-card off` or `"scrollAwayCard": false`; scrolling and jump shortcuts remain enabled. Submitting editor text also returns that viewport to the bottom so new output stays in view.
 
 ### Shortcut configuration
 
@@ -426,22 +427,24 @@ Colors are configurable via pi's theme system. Each preset defines its own color
 
 ### Default Colors
 
-| Semantic | Theme Color | Description |
-|----------|-------------|-------------|
-| `model` | `#d787af` | Model name |
-| `shellMode` | `accent` | Bash mode segment |
-| `path` | `#00afaf` | Directory path |
-| `gitClean` | `success` | Git branch (clean) |
-| `gitDirty` | `warning` | Git branch (dirty) |
-| `thinking` | `thinkingOff` | Thinking level (`off`) |
-| `thinkingMinimal` | `thinkingMinimal` | Thinking level (`minimal`) |
-| `thinkingLow` | `thinkingLow` | Thinking level (`low`) |
-| `thinkingMedium` | `thinkingMedium` | Thinking level (`medium`) |
-| `context` | `dim` | Context usage |
-| `contextWarn` | `warning` | Context usage >70% |
-| `contextError` | `error` | Context usage >90% |
-| `cost` | `text` | Cost display |
-| `tokens` | `muted` | Token counts |
+| Semantic | Dark | Light | Description |
+|----------|------|-------|-------------|
+| `model` | `#d787af` | `#8f3f71` | Model name |
+| `shellMode` | `accent` | `accent` | Bash mode segment |
+| `path` | `#00afaf` | `#007070` | Directory path |
+| `gitClean` | `success` | `success` | Git branch (clean) |
+| `gitDirty` | `warning` | `warning` | Git branch (dirty) |
+| `thinking` | `thinkingOff` | `thinkingOff` | Thinking level (`off`) |
+| `thinkingMinimal` | `thinkingMinimal` | `thinkingMinimal` | Thinking level (`minimal`) |
+| `thinkingLow` | `thinkingLow` | `thinkingLow` | Thinking level (`low`) |
+| `thinkingMedium` | `thinkingMedium` | `thinkingMedium` | Thinking level (`medium`) |
+| `context` | `dim` | `dim` | Context usage |
+| `contextWarn` | `warning` | `warning` | Context usage >70% |
+| `contextError` | `error` | `error` | Context usage >90% |
+| `cost` | `text` | `text` | Cost display |
+| `tokens` | `muted` | `muted` | Token counts |
+
+High and extra-high thinking rainbows also switch to a darker palette in Pi's built-in light theme. `theme.json` color overrides still take precedence over these adaptive defaults.
 
 ### Custom Theme Override
 

@@ -2,10 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+- **Light-theme footer colors** — Uses higher-contrast model, path, and thinking-rainbow colors with Pi's built-in light theme while preserving the existing dark palette and `theme.json` overrides.
+- **Scroll-away card toggle** — Added `powerline.scrollAwayCard` and `/powerline scroll-away-card on|off|toggle` to hide the shortcut card while keeping fixed-editor scrolling and jump shortcuts.
+
 ## [0.7.0] - 2026-07-14
 
 ### Added
-- **Fixed-editor scroll-away shortcut hint card** — Shows a stacked bottom/user/assistant shortcut card when chat is scrolled away from the bottom; clicking anywhere in the card jumps back to the bottom when fixed-editor mouse handling is enabled.
 - **Welcome toggle** — Added `powerline.welcome` so the startup welcome UI can be disabled without disabling the footer. Thanks to OCPdev25, miloslavnosek, vzeazy, and Florian Kinder (@fank) for #48/#89.
 - **Display options** — Added `powerline.cost.subscriptionDisplay` and `powerline.model.display` for subscription cost and provider-qualified model names. Thanks to Alexandr Burdiyan (@burdiyan), Meidhy (@dymayday), Mathu Mounasamy (@Mathuv), and pserey for #3/#83/#50.
 - **Legacy sharp-S stash opt-in** — Added `powerline.stashSharpSShortcut` for users who intentionally want printable `ß` to trigger stash. Thanks to SebastianRuettiRuettger and Filip (@filipores) for #39/#84.
