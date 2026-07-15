@@ -5,6 +5,7 @@
 ## [0.7.0] - 2026-07-14
 
 ### Added
+- **Scroll hint toggle** — Added `powerline.scrollHintCard` and `/powerline scroll-hint on|off|toggle` to hide the fixed-editor scroll-away shortcut card without disabling scrolling or chat-jump shortcuts.
 - **Fixed-editor scroll-away shortcut hint card** — Shows a stacked bottom/user/assistant shortcut card when chat is scrolled away from the bottom; clicking anywhere in the card jumps back to the bottom when fixed-editor mouse handling is enabled.
 - **Welcome toggle** — Added `powerline.welcome` so the startup welcome UI can be disabled without disabling the footer. Thanks to OCPdev25, miloslavnosek, vzeazy, and Florian Kinder (@fank) for #48/#89.
 - **Display options** — Added `powerline.cost.subscriptionDisplay` and `powerline.model.display` for subscription cost and provider-qualified model names. Thanks to Alexandr Burdiyan (@burdiyan), Meidhy (@dymayday), Mathu Mounasamy (@Mathuv), and pserey for #3/#83/#50.

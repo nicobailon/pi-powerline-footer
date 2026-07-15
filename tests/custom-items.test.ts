@@ -33,6 +33,7 @@ test("parsePowerlineConfig supports object config with custom items", () => {
   assert.equal(config.fixedEditor, true);
   assert.equal(config.placement, "above");
   assert.equal(config.invalidPlacement, null);
+  assert.equal(config.scrollHintCard, true);
   assert.equal(config.welcome, true);
   assert.equal(config.stashSharpSShortcut, false);
 });
@@ -117,15 +118,17 @@ test("parsePowerlineConfig supports disabling fixed editor", () => {
   assert.equal(config.fixedEditor, false);
 });
 
-test("parsePowerlineConfig supports welcome and legacy sharp-S toggles", () => {
+test("parsePowerlineConfig supports scroll hint, welcome, and legacy sharp-S toggles", () => {
   const disabled = parsePowerlineConfig(
-    { preset: "compact", welcome: false, stashSharpSShortcut: true },
+    { preset: "compact", scrollHintCard: false, welcome: false, stashSharpSShortcut: true },
     ["default", "compact"],
   );
   const shorthand = parsePowerlineConfig("compact", ["default", "compact"]);
 
+  assert.equal(disabled.scrollHintCard, false);
   assert.equal(disabled.welcome, false);
   assert.equal(disabled.stashSharpSShortcut, true);
+  assert.equal(shorthand.scrollHintCard, true);
   assert.equal(shorthand.welcome, true);
   assert.equal(shorthand.stashSharpSShortcut, false);
 });
@@ -254,7 +257,7 @@ test("nextPowerlineSettingWithPreset preserves object settings", () => {
 test("nextPowerlineSettingWithOptions preserves object settings", () => {
   const updated = nextPowerlineSettingWithOptions(
     { preset: "default", customItems: [{ id: "ci" }], mouseScroll: false },
-    { fixedEditor: false, placement: "below" },
+    { fixedEditor: false, placement: "below", scrollHintCard: false },
     "compact",
   );
   if (typeof updated !== "object" || updated === null || Array.isArray(updated)) {
@@ -263,6 +266,7 @@ test("nextPowerlineSettingWithOptions preserves object settings", () => {
 
   assert.equal(updated.preset, "default");
   assert.equal(updated.fixedEditor, false);
+  assert.equal(updated.scrollHintCard, false);
   assert.equal(updated.mouseScroll, false);
   assert.equal(updated.placement, "below");
   assert.deepEqual(updated.customItems, [{ id: "ci" }]);

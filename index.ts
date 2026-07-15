@@ -80,6 +80,7 @@ let config: PowerlineConfig = {
   fixedEditor: true,
   placement: "above",
   invalidPlacement: null,
+  scrollHintCard: true,
   welcome: true,
   stashSharpSShortcut: false,
 };
@@ -638,7 +639,7 @@ function writePowerlinePresetSetting(preset: StatusLinePreset, cwd: string = pro
 
 function writePowerlineOptionSetting(
   cwd: string,
-  updates: Partial<Pick<PowerlineConfig, "mouseScroll" | "fixedEditor" | "welcome" | "stashSharpSShortcut" | "placement">>,
+  updates: Partial<Pick<PowerlineConfig, "mouseScroll" | "fixedEditor" | "scrollHintCard" | "welcome" | "stashSharpSShortcut" | "placement">>,
   currentPreset: StatusLinePreset,
 ): boolean {
   return writePowerlineSetting(cwd, (existingPowerlineSetting) => (
@@ -1957,6 +1958,22 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         return;
       }
 
+      const scrollHintMatch = /^scroll-hint(?:\s+(on|off|toggle))?$/.exec(normalizedArgs);
+      if (scrollHintMatch) {
+        const mode = scrollHintMatch[1] ?? "toggle";
+        config.scrollHintCard = mode === "toggle" ? !config.scrollHintCard : mode === "on";
+        if (enabled && ctx.hasUI && config.fixedEditor && tuiRef && currentEditor) {
+          installFixedEditorCompositor(ctx, tuiRef);
+        }
+
+        if (writePowerlineOptionSetting(ctx.cwd, { scrollHintCard: config.scrollHintCard }, config.preset)) {
+          ctx.ui.notify(`Powerline scroll hint ${config.scrollHintCard ? "enabled" : "disabled"}`, "info");
+        } else {
+          ctx.ui.notify(`Powerline scroll hint ${config.scrollHintCard ? "enabled" : "disabled"} (not persisted; check settings.json)`, "warning");
+        }
+        return;
+      }
+
       const preset = normalizePreset(args);
       if (preset) {
         config.preset = preset;
@@ -2441,16 +2458,18 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         down: resolvedShortcuts.scrollChatDown,
       },
       scrollRepaintThrottleMs: DEFAULT_SCROLL_REPAINT_THROTTLE_MS,
-      scrollAwayNavigationCard: {
-        shortcuts: [
-          scrollAwayShortcutEntry("bottom", resolvedShortcuts.jumpChatBottom),
-          scrollAwayShortcutEntry("previousUser", resolvedShortcuts.jumpPreviousUserMessage),
-          scrollAwayShortcutEntry("nextUser", resolvedShortcuts.jumpNextUserMessage),
-          scrollAwayShortcutEntry("previousAssistant", resolvedShortcuts.jumpPreviousLlmMessage),
-          scrollAwayShortcutEntry("nextAssistant", resolvedShortcuts.jumpNextLlmMessage),
-        ].filter((shortcut): shortcut is { id: ScrollAwayShortcutId; shortcutLabel: string } => shortcut !== null),
-        onClickBottom: resolvedShortcuts.jumpChatBottom ? () => jumpChatToBottom(ctx) : undefined,
-      },
+      scrollAwayNavigationCard: config.scrollHintCard
+        ? {
+            shortcuts: [
+              scrollAwayShortcutEntry("bottom", resolvedShortcuts.jumpChatBottom),
+              scrollAwayShortcutEntry("previousUser", resolvedShortcuts.jumpPreviousUserMessage),
+              scrollAwayShortcutEntry("nextUser", resolvedShortcuts.jumpNextUserMessage),
+              scrollAwayShortcutEntry("previousAssistant", resolvedShortcuts.jumpPreviousLlmMessage),
+              scrollAwayShortcutEntry("nextAssistant", resolvedShortcuts.jumpNextLlmMessage),
+            ].filter((shortcut): shortcut is { id: ScrollAwayShortcutId; shortcutLabel: string } => shortcut !== null),
+            onClickBottom: resolvedShortcuts.jumpChatBottom ? () => jumpChatToBottom(ctx) : undefined,
+          }
+        : undefined,
       onCopySelection: (text) => copyTextToClipboard(ctx, text),
       getShowHardwareCursor: () => typeof tui.getShowHardwareCursor === "function" && tui.getShowHardwareCursor(),
       renderCluster: (width, terminalRows) => {
