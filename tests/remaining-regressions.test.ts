@@ -124,11 +124,14 @@ test("startup welcome predicate respects powerline.welcome false", () => {
   assert.match(source, /setupCustomEditor\(ctx\);\n\s+if \(shouldShowStartupWelcome\(event\.reason, config\.welcome\)\)/);
 });
 
-test("reload preserves extended keyboard modes but quit resets them", () => {
-  assert.equal(shouldResetExtendedKeyboardModesOnShutdown("quit"), true);
-  assert.equal(shouldResetExtendedKeyboardModesOnShutdown("reload"), false);
-  assert.equal(shouldResetExtendedKeyboardModesOnShutdown("resume"), false);
+test("only UI quit resets extended keyboard modes", () => {
+  assert.equal(shouldResetExtendedKeyboardModesOnShutdown(true, "quit"), true);
+  assert.equal(shouldResetExtendedKeyboardModesOnShutdown(true, "reload"), false);
+  assert.equal(shouldResetExtendedKeyboardModesOnShutdown(true, "resume"), false);
+  assert.equal(shouldResetExtendedKeyboardModesOnShutdown(false, "quit"), false);
   assert.doesNotMatch(source, /event\?\.reason === "quit" \|\| event\?\.reason === "reload"/);
+  assert.match(source, /const hasUI = Boolean\(ctx\.hasUI\);/);
+  assert.match(source, /shouldResetExtendedKeyboardModesOnShutdown\(hasUI, event\?\.reason\)/);
   assert.match(source, /teardownFixedEditorCompositor\(isTerminalExit \? \{ resetExtendedKeyboardModes: true \} : undefined\)/);
 });
 

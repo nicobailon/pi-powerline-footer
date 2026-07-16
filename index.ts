@@ -1368,12 +1368,12 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   });
 
-  pi.on("session_shutdown", async (event) => {
-    // When switching sessions or reloading, preserve keyboard modes (Kitty
-    // protocol, modifyOtherKeys) so Shift+Enter and other modified keys keep
-    // working after the next session starts. Only a real quit should hard-reset
-    // the terminal back to plain keyboard mode.
-    const isTerminalExit = shouldResetExtendedKeyboardModesOnShutdown(event?.reason);
+  pi.on("session_shutdown", async (event, ctx) => {
+    // Session switches and reloads preserve keyboard modes (Kitty protocol,
+    // modifyOtherKeys), while non-UI modes must not emit terminal sequences.
+    // In the supported Pi extension API, ctx.hasUI is the available terminal/UI guard.
+    const hasUI = Boolean(ctx.hasUI);
+    const isTerminalExit = shouldResetExtendedKeyboardModesOnShutdown(hasUI, event?.reason);
 
     sessionGeneration++;
     dismissWelcomeOverlay?.();
@@ -1385,7 +1385,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     restoreFooterStatusRepaintHook?.();
     restoreFooterStatusRepaintHook = null;
     const hadFixedEditorCompositor = teardownFixedEditorCompositor(isTerminalExit ? { resetExtendedKeyboardModes: true } : undefined);
-    if (shouldRestoreInlineEditorCursorOnShutdown(event?.reason, config.fixedEditor, hadFixedEditorCompositor)) {
+    if (shouldRestoreInlineEditorCursorOnShutdown(hasUI, event?.reason, config.fixedEditor, hadFixedEditorCompositor)) {
       try {
         process.stdout.write(inlineEditorQuitCursorRestore({
           rows: tuiRef?.terminal?.rows ?? process.stdout.rows,

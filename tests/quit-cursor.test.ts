@@ -20,14 +20,15 @@ test("inline editor quit cursor restore clamps terminal rows", () => {
   assert.equal(inlineEditorQuitCursorRestore({ rows: 12, cursorRow: 5, previousViewportTop: 1 }), "\x1b[5;1H\x1b[2K\x1b[?25h\n");
 });
 
-test("inline editor cursor restore only runs on real quit without fixed editor cleanup", () => {
-  assert.equal(shouldRestoreInlineEditorCursorOnShutdown("quit", false, false), true);
-  assert.equal(shouldRestoreInlineEditorCursorOnShutdown("reload", false, false), false);
-  assert.equal(shouldRestoreInlineEditorCursorOnShutdown("switch", false, false), false);
-  assert.equal(shouldRestoreInlineEditorCursorOnShutdown("quit", true, false), false);
-  assert.equal(shouldRestoreInlineEditorCursorOnShutdown("quit", false, true), false);
+test("inline editor cursor restore only runs on UI quit without fixed editor cleanup", () => {
+  assert.equal(shouldRestoreInlineEditorCursorOnShutdown(true, "quit", false, false), true);
+  assert.equal(shouldRestoreInlineEditorCursorOnShutdown(true, "reload", false, false), false);
+  assert.equal(shouldRestoreInlineEditorCursorOnShutdown(true, "switch", false, false), false);
+  assert.equal(shouldRestoreInlineEditorCursorOnShutdown(true, "quit", true, false), false);
+  assert.equal(shouldRestoreInlineEditorCursorOnShutdown(true, "quit", false, true), false);
+  assert.equal(shouldRestoreInlineEditorCursorOnShutdown(false, "quit", false, false), false);
 
   assert.match(source, /const hadFixedEditorCompositor = teardownFixedEditorCompositor/);
-  assert.match(source, /shouldRestoreInlineEditorCursorOnShutdown\(event\?\.reason, config\.fixedEditor, hadFixedEditorCompositor\)/);
+  assert.match(source, /shouldRestoreInlineEditorCursorOnShutdown\(hasUI, event\?\.reason, config\.fixedEditor, hadFixedEditorCompositor\)/);
   assert.match(source, /inlineEditorQuitCursorRestore\(\{\n\s+rows: tuiRef\?\.terminal\?\.rows \?\? process\.stdout\.rows,\n\s+cursorRow: tuiRef\?\.cursorRow,\n\s+previousViewportTop: tuiRef\?\.previousViewportTop,/);
 });
