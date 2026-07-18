@@ -17,10 +17,13 @@ export type GitPollingMode = "full" | "branch" | "off";
 
 const CACHE_TTL_MS = 1000; // 1 second for file status
 const BRANCH_TTL_MS = 500; // Shorter TTL so branch updates quickly after invalidation
+const REMOTE_TTL_MS = 60_000; // Remote URL almost never changes
 let cachedStatus: CachedGitStatus | null = null;
 let cachedBranch: CachedBranch | null = null;
+let cachedRemote: { url: string | null; timestamp: number } | null = null;
 let pendingFetch: Promise<void> | null = null;
 let pendingBranchFetch: Promise<void> | null = null;
+let pendingRemoteFetch: Promise<void> | null = null;
 let invalidationCounter = 0; // Track invalidations to prevent stale updates
 let branchInvalidationCounter = 0;
 
@@ -151,6 +154,34 @@ export function getCurrentBranch(providerBranch: string | null): string | null {
 }
 
 /**
+ * Whether a git remote URL points at github.com
+ * (handles https and scp-style ssh URLs).
+ */
+export function isGitHubRemoteUrl(url: string | null | undefined): boolean {
+  return !!url && /(^|[@/:.])github\.com[:/]/.test(url);
+}
+
+/**
+ * Get the origin remote URL with long-lived caching (60s TTL).
+ * Used to pick host-specific icons (e.g. GitHub octocat).
+ */
+export function getGitRemoteUrl(): string | null {
+  const now = Date.now();
+  if (cachedRemote && now - cachedRemote.timestamp < REMOTE_TTL_MS) {
+    return cachedRemote.url;
+  }
+
+  if (!pendingRemoteFetch) {
+    pendingRemoteFetch = runGit(["remote", "get-url", "origin"], 300).then((output) => {
+      cachedRemote = { url: output?.trim() || null, timestamp: Date.now() };
+      pendingRemoteFetch = null;
+    });
+  }
+
+  return cachedRemote?.url ?? null;
+}
+
+/**
  * Get git status with caching.
  * Returns cached value if within TTL, otherwise triggers async fetch.
  * This is designed for synchronous render() calls - returns last known value
@@ -205,14 +236,24 @@ export function getGitStatus(providerBranch: string | null, pollingMode: GitPoll
  * Force refresh git status (call when you know files changed)
  */
 export function invalidateGitStatus(): void {
-  cachedStatus = null;
+  // Don't null the cache — just bump the counter to invalidate pending fetches
+  // and let the stale cache serve while the background refresh runs.
+  // This prevents the git segment from flashing invisible during the async fetch.
   invalidationCounter++; // Increment to invalidate any pending fetches
+  if (cachedStatus) {
+    // Force stale: next getGitStatus will trigger a background refresh
+    // but still return this value while waiting
+    cachedStatus = { ...cachedStatus, timestamp: 0 };
+  }
 }
 
 /**
  * Force refresh git branch (call when you know branch might have changed)
  */
 export function invalidateGitBranch(): void {
-  cachedBranch = null;
+  // Same as invalidateGitStatus: serve stale value while refreshing
   branchInvalidationCounter++;
+  if (cachedBranch) {
+    cachedBranch = { ...cachedBranch, timestamp: 0 };
+  }
 }

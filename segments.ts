@@ -3,10 +3,14 @@ import { basename } from "node:path";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import type { BuiltinStatusLineSegmentId, RenderedSegment, SegmentContext, SemanticColor, StatusLineSegment, StatusLineSegmentId } from "./types.ts";
 import { normalizeCompactExtensionStatus, normalizeExtensionStatusValue } from "./powerline-config.ts";
-import { fg, rainbow, applyColor } from "./theme.ts";
+import { getGitRemoteUrl, isGitHubRemoteUrl } from "./git-status.ts";
+import { fg, bg, rainbow, applyColor, applyBgColor } from "./theme.ts";
 import { getIcons, SEP_DOT, getThinkingText } from "./icons.ts";
 
 function color(ctx: SegmentContext, semantic: SemanticColor, text: string): string {
+  if (ctx.segmentStyle === "pill") {
+    return bg(ctx.theme, semantic, text, ctx.colors, ctx.pillTextColor);
+  }
   return fg(ctx.theme, semantic, text, ctx.colors);
 }
 
@@ -127,6 +131,8 @@ const pathSegment: StatusLineSegment = {
   },
 };
 
+const GITHUB_ICON = "\uF09B"; // nf-fa-github (octocat)
+
 const gitSegment: StatusLineSegment = {
   id: "git",
   render(ctx) {
@@ -142,15 +148,50 @@ const gitSegment: StatusLineSegment = {
     const isDirty = gitStatus && (gitStatus.staged > 0 || gitStatus.unstaged > 0 || gitStatus.untracked > 0);
     const showBranch = opts.showBranch !== false;
     const branchColor: SemanticColor = isDirty ? "gitDirty" : "gitClean";
+    const isPill = ctx.segmentStyle === "pill";
 
-    // Build content - color branch separately from indicators
-    let content = "";
+    // Host-specific icon: GitHub octocat when the origin remote is github.com
+    const branchIcon = isGitHubRemoteUrl(getGitRemoteUrl()) ? GITHUB_ICON : icons.branch;
+
+    // Build text content (without pill wrap first)
+    let text = "";
     if (showBranch && branch) {
-      // Color just the branch name (icon + branch text)
-      content = color(ctx, branchColor, withIcon(icons.branch, branch));
+      text = withIcon(branchIcon, branch);
     }
 
-    // Add status indicators (each with their own color, not wrapped)
+    // Build indicator parts (fg-only for pill, full wrap for fg mode)
+    if (gitStatus) {
+      const indicators: string[] = [];
+      if (opts.showUnstaged !== false && gitStatus.unstaged > 0) {
+        const part = `*${gitStatus.unstaged}`;
+        indicators.push(isPill ? part : applyColor(ctx.theme, "warning", part));
+      }
+      if (opts.showStaged !== false && gitStatus.staged > 0) {
+        const part = `+${gitStatus.staged}`;
+        indicators.push(isPill ? part : applyColor(ctx.theme, "success", part));
+      }
+      if (opts.showUntracked !== false && gitStatus.untracked > 0) {
+        const part = `?${gitStatus.untracked}`;
+        indicators.push(isPill ? part : applyColor(ctx.theme, "muted", part));
+      }
+      if (indicators.length > 0) {
+        const indicatorText = indicators.join(" ");
+        text = text ? `${text} ${indicatorText}` : indicatorText;
+      }
+    }
+
+    if (!text) return { content: "", visible: false };
+
+    // In pill mode, wrap entire segment in one background pill
+    if (isPill) {
+      return { content: color(ctx, branchColor, text), visible: true };
+    }
+
+    // Fg mode: branch and indicators colored separately
+    let content = "";
+    if (showBranch && branch) {
+      content = color(ctx, branchColor, withIcon(branchIcon, branch));
+    }
     if (gitStatus) {
       const indicators: string[] = [];
       if (opts.showUnstaged !== false && gitStatus.unstaged > 0) {
@@ -165,15 +206,12 @@ const gitSegment: StatusLineSegment = {
       if (indicators.length > 0) {
         const indicatorText = indicators.join(" ");
         if (!content && showBranch === false) {
-          // No branch shown, color the git icon with branch color
           content = color(ctx, branchColor, icons.git ? `${icons.git} ` : "") + indicatorText;
         } else {
           content += content ? ` ${indicatorText}` : indicatorText;
         }
       }
     }
-
-    if (!content) return { content: "", visible: false };
 
     return { content, visible: true };
   },
@@ -297,17 +335,33 @@ const contextPctSegment: StatusLineSegment = {
     const icons = getIcons();
     const { contextTokens, contextPercent, contextWindow } = ctx;
 
-    const autoIcon = ctx.autoCompactEnabled && icons.auto ? ` ${icons.auto}` : "";
-    const text = `${formatTokens(contextTokens)}/${formatTokens(contextWindow)} (${contextPercent.toFixed(1)}%)${autoIcon}`;
+    // "percent" format (default): bare rounded percentage, no icons
+    const percentOnly = (ctx.options.context?.format ?? "percent") === "percent";
+    const autoIcon = !percentOnly && ctx.autoCompactEnabled && icons.auto ? ` ${icons.auto}` : "";
+    const text = percentOnly
+      ? `${Math.round(contextPercent)}%`
+      : `${formatTokens(contextTokens)}/${formatTokens(contextWindow)} (${contextPercent.toFixed(1)}%)${autoIcon}`;
 
     // Icon outside color, text inside - use semantic colors for thresholds
+    // In pill mode, wrap icon+text together so icon is inside the pill
     let content: string;
-    if (contextPercent > 90) {
-      content = withIcon(icons.context, color(ctx, "contextError", text));
-    } else if (contextPercent > 70) {
-      content = withIcon(icons.context, color(ctx, "contextWarn", text));
+    if (ctx.segmentStyle === "pill") {
+      const body = percentOnly ? text : withIcon(icons.context, text);
+      if (contextPercent > 90) {
+        content = color(ctx, "contextError", body);
+      } else if (contextPercent > 70) {
+        content = color(ctx, "contextWarn", body);
+      } else {
+        content = color(ctx, "context", body);
+      }
     } else {
-      content = withIcon(icons.context, color(ctx, "context", text));
+      if (contextPercent > 90) {
+        content = percentOnly ? color(ctx, "contextError", text) : withIcon(icons.context, color(ctx, "contextError", text));
+      } else if (contextPercent > 70) {
+        content = percentOnly ? color(ctx, "contextWarn", text) : withIcon(icons.context, color(ctx, "contextWarn", text));
+      } else {
+        content = percentOnly ? color(ctx, "context", text) : withIcon(icons.context, color(ctx, "context", text));
+      }
     }
 
     return { content, visible: true };
@@ -390,11 +444,14 @@ const cacheReadSegment: StatusLineSegment = {
   id: "cache_read",
   render(ctx) {
     const icons = getIcons();
-    const { cacheRead } = ctx.usageStats;
+    const { cacheRead, input } = ctx.usageStats;
     if (!cacheRead) return { content: "", visible: false };
 
-    const parts = [icons.cache, icons.input, formatTokens(cacheRead)].filter(Boolean);
-    const content = parts.join(" ");
+    // Show cache hit rate: cacheRead / (input + cacheRead)
+    const hitRate = input + cacheRead > 0
+      ? ((cacheRead / (input + cacheRead)) * 100).toFixed(0)
+      : "0";
+    const content = `${icons.cache} ${hitRate}%`;
     return { content: color(ctx, "tokens", content), visible: true };
   },
 };
@@ -477,11 +534,22 @@ function renderCustomSegment(id: `custom:${string}`, ctx: SegmentContext): Rende
   }
 
   let content = normalizedStatus;
+  // In pill mode, strip ANSI resets, bg codes, and fg codes from extension
+  // content so the pill's own background and text color are not broken
+  if (ctx.segmentStyle === "pill") {
+    content = content
+      .replace(/\x1b\[0m/g, "")
+      .replace(/\x1b\[48;[0-9;]*m/g, "")
+      .replace(/\x1b\[38;[0-9;]*m/g, "")
+      .replace(/\x1b\[(?:3[0-9]|9[0-7])m/g, "");
+  }
   if (custom.prefix) {
     content = `${custom.prefix}${SEP_DOT}${content}`;
   }
   if (custom.color) {
-    content = applyColor(ctx.theme, custom.color, content);
+    content = ctx.segmentStyle === "pill"
+      ? applyBgColor(ctx.theme, custom.color, content, ctx.pillTextColor)
+      : applyColor(ctx.theme, custom.color, content);
   }
 
   return { content, visible: true };

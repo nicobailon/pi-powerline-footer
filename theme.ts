@@ -11,7 +11,7 @@ import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 import { existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ColorScheme, ColorValue, SemanticColor, ThemeLike } from "./types.ts";
+import type { ColorScheme, ColorValue, PillTextColor, SemanticColor, ThemeLike } from "./types.ts";
 
 export interface PowerlineThemeConfig {
   colors?: unknown;
@@ -21,21 +21,21 @@ export interface PowerlineThemeConfig {
 // Default color scheme (uses pi theme colors)
 const DEFAULT_COLORS: Required<ColorScheme> = {
   model: "#d787af",  // Pink/mauve (matching original colors.ts)
-  shellMode: "accent",
+  shellMode: "#fab387",  // Catppuccin Mocha peach
   path: "#00afaf",  // Teal/cyan (matching original colors.ts)
-  gitDirty: "warning",
-  gitClean: "success",
-  thinking: "thinkingOff",
-  thinkingMinimal: "thinkingMinimal",
-  thinkingLow: "thinkingLow",
-  thinkingMedium: "thinkingMedium",
-  context: "dim",
-  contextWarn: "warning",
-  contextError: "error",
-  cost: "text",
-  tokens: "muted",
-  separator: "dim",
-  border: "borderMuted",
+  gitDirty: "#fab387",  // Catppuccin peach (distinct from balance yellow)
+  gitClean: "#a6e3a1",  // success green
+  thinking: "#6c7086",  // dim gray
+  thinkingMinimal: "#89b4fa",  // blue
+  thinkingLow: "#74c7ec",  // light blue
+  thinkingMedium: "#f9e2af",  // yellow
+  context: "#6c7086",  // dim
+  contextWarn: "#f9e2af",  // warning
+  contextError: "#f38ba8",  // error red
+  cost: "#a6e3a1",  // green
+  tokens: "#bac2de",  // muted text (Catppuccin Mocha subtext1)
+  separator: "#585b70",  // surface0
+  border: "#45475a",  // surface1
 };
 
 // Rainbow colors for high thinking levels
@@ -79,6 +79,32 @@ function sanitizeUserThemeOverrides(value: unknown): ColorScheme {
   }
 
   return sanitized;
+}
+
+/** Sanitize a user-provided color override map (theme.json or settings.json powerline.colors) */
+export function sanitizeColorOverrides(value: unknown): ColorScheme {
+  return sanitizeUserThemeOverrides(value);
+}
+
+// Colors from settings.json powerline.colors (highest priority layer)
+let settingsColors: ColorScheme = {};
+
+/** Register color overrides coming from settings.json (powerline.colors) */
+export function setSettingsColors(colors: ColorScheme | undefined): void {
+  settingsColors = colors ?? {};
+}
+
+// Bold text inside pills (powerline.pillBold, default true)
+let pillBoldEnabled = true;
+
+/** Toggle bold text inside pills */
+export function setPillBold(enabled: boolean): void {
+  pillBoldEnabled = enabled;
+}
+
+/** Whether pill text is rendered bold */
+export function isPillBold(): boolean {
+  return pillBoldEnabled;
 }
 
 /**
@@ -138,8 +164,9 @@ export function resolveColor(
 ): ColorValue {
   const userTheme = loadUserTheme();
   
-  // Priority: user overrides > preset colors > defaults
-  return userTheme[semantic] 
+  // Priority: settings.json colors > theme.json overrides > preset colors > defaults
+  return settingsColors[semantic]
+    ?? userTheme[semantic] 
     ?? presetColors?.[semantic] 
     ?? DEFAULT_COLORS[semantic];
 }
@@ -152,14 +179,54 @@ function isHexColor(color: ColorValue): color is `#${string}` {
 }
 
 /**
- * Convert hex color to ANSI escape code
+ * Convert hex color to ANSI escape code (foreground)
  */
-function hexToAnsi(hex: string): string {
+export function hexToAnsi(hex: string): string {
   const h = hex.replace("#", "");
   const r = parseInt(h.slice(0, 2), 16);
   const g = parseInt(h.slice(2, 4), 16);
   const b = parseInt(h.slice(4, 6), 16);
   return `\x1b[38;2;${r};${g};${b}m`;
+}
+
+/**
+ * Convert hex color to ANSI background escape code
+ */
+export function hexToBgAnsi(hex: string): string {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `\x1b[48;2;${r};${g};${b}m`;
+}
+
+const PILL_DARK_FG = "#1e1e2e";   // Catppuccin base (near-black)
+const PILL_LIGHT_FG = "#cdd6f4"; // Catppuccin text
+
+/**
+ * Compute contrast foreground color for a given background hex.
+ * Light backgrounds get dark text, dark backgrounds get light text.
+ */
+function contrastFg(hex: string): string {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.slice(0, 2), 16) / 255;
+  const g = parseInt(h.slice(2, 4), 16) / 255;
+  const b = parseInt(h.slice(4, 6), 16) / 255;
+  // relative luminance
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return lum > 0.5 ? PILL_DARK_FG : PILL_LIGHT_FG;
+}
+
+/**
+ * Resolve the pill text (foreground) color.
+ * "dark"/"light" force a fixed color, "contrast" picks by background luminance,
+ * a hex string is used as-is.
+ */
+export function resolvePillTextColor(bgHex: string, textColor?: PillTextColor): string {
+  if (!textColor || textColor === "contrast") return contrastFg(bgHex);
+  if (textColor === "dark") return PILL_DARK_FG;
+  if (textColor === "light") return PILL_LIGHT_FG;
+  return isHexColor(textColor) ? textColor : contrastFg(bgHex);
 }
 
 /**
@@ -190,6 +257,28 @@ export function applyColor(
 }
 
 /**
+ * Apply a background color pill to text.
+ * Uses background ANSI + pill text color for hex colors;
+ * falls back to applyColor for semantic/theme colors.
+ */
+export function applyBgColor(
+  theme: ThemeLike,
+  color: ColorValue,
+  text: string,
+  textColor?: PillTextColor
+): string {
+  if (isHexColor(color)) {
+    const fg = resolvePillTextColor(color, textColor);
+    const fgAnsi = hexToAnsi(fg);
+    const bgAnsi = hexToBgAnsi(color);
+    const bold = pillBoldEnabled ? "\x1b[1m" : "";
+    return `${bgAnsi}${fgAnsi}${bold} ${text} \x1b[0m`;
+  }
+  // semantic colors fall back to foreground-only
+  return applyColor(theme, color, text);
+}
+
+/**
  * Apply a semantic color to text
  */
 export function fg(
@@ -200,6 +289,20 @@ export function fg(
 ): string {
   const color = resolveColor(semantic, presetColors);
   return applyColor(theme, color, text);
+}
+
+/**
+ * Apply a semantic color as a background pill to text
+ */
+export function bg(
+  theme: ThemeLike,
+  semantic: SemanticColor,
+  text: string,
+  presetColors?: ColorScheme,
+  textColor?: PillTextColor
+): string {
+  const color = resolveColor(semantic, presetColors);
+  return applyBgColor(theme, color, text, textColor);
 }
 
 /**

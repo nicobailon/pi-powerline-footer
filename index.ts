@@ -9,7 +9,7 @@ import { isKeyRelease, type AutocompleteProvider, type SelectItem, SelectList, t
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 
-import type { ColorScheme, SegmentContext, StatusLinePreset, StatusLineSegmentId } from "./types.ts";
+import type { ColorScheme, PowerlineCaps, SegmentContext, StatusLinePreset, StatusLineSegmentId, StatusLineSeparatorStyle } from "./types.ts";
 import type { PowerlineConfig } from "./powerline-config.ts";
 import { BashTranscriptStore } from "./bash-mode/transcript.ts";
 import {
@@ -27,6 +27,7 @@ import { getPreset, PRESETS } from "./presets.ts";
 import { getAgentPath } from "./paths.ts";
 import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, mergeSegmentOptions, mergeSegmentsWithCustomItems, nextPowerlineSettingWithOptions, nextPowerlineSettingWithPreset, parsePowerlineConfig } from "./powerline-config.ts";
 import { getSeparator } from "./separators.ts";
+import { hasNerdFonts } from "./icons.ts";
 import { renderSegment } from "./segments.ts";
 import { getGitStatus, invalidateGitStatus, invalidateGitBranch } from "./git-status.ts";
 import { ansi, getFgAnsiCode } from "./colors.ts";
@@ -39,7 +40,7 @@ import { isStaleExtensionContextError, shouldResetExtendedKeyboardModesOnShutdow
 import { renderFixedEditorCluster } from "./fixed-editor/cluster.ts";
 import { DEFAULT_SCROLL_REPAINT_THROTTLE_MS, emergencyTerminalModeReset, TerminalSplitCompositor } from "./fixed-editor/terminal-split.ts";
 import { inlineEditorQuitCursorRestore } from "./terminal-cursor.ts";
-import { getDefaultColors } from "./theme.ts";
+import { getDefaultColors, hexToAnsi, hexToBgAnsi, isPillBold, setPillBold, setSettingsColors } from "./theme.ts";
 import {
   isSupportedSuperShortcut,
   matchesConfiguredShortcut,
@@ -76,6 +77,17 @@ let config: PowerlineConfig = {
   layout: null,
   invalidLayoutSegments: [],
   segmentOptions: {},
+  segmentStyle: "fg",
+  separator: null,
+  caps: "round",
+  pillTextColor: "dark",
+  pillBold: true,
+  promptColor: "#cba6f7",
+  highlightBashCall: true,
+  scrollNavCard: false,
+  editorCursorBlink: true,
+  editorClickCursor: true,
+  colors: {},
   mouseScroll: true,
   fixedEditor: true,
   placement: "above",
@@ -951,16 +963,131 @@ function renderSegmentWithWidth(
   return { content: rendered.content, width: visibleWidth(rendered.content), visible: true };
 }
 
+/** Extract background RGB from a pill segment's ANSI content. Returns [r,g,b] or null. */
+function extractBgRgb(content: string): [number, number, number] | null {
+  const match = content.match(/^\x1b\[48;2;(\d+);(\d+);(\d+)m/);
+  if (!match) return null;
+  return [parseInt(match[1]), parseInt(match[2]), parseInt(match[3])];
+}
+
+/** Neutral background for segments that render fg-only content (e.g. rainbow thinking) */
+const NEUTRAL_PILL_BG = "#45475a"; // Catppuccin surface1
+
+/** Wrap a segment that produced no background in a neutral pill so the bar stays seamless. */
+export function ensurePillBg(content: string): string {
+  if (extractBgRgb(content)) return content;
+  const stripped = content.replace(/\x1b\[0m$/, "");
+  const bold = isPillBold() ? "\x1b[1m" : "";
+  return `${hexToBgAnsi(NEUTRAL_PILL_BG)}${bold} ${stripped} \x1b[0m`;
+}
+
+/**
+ * Convert a display column inside a logical line to a string index,
+ * walking graphemes from `fromIndex` and accumulating display widths.
+ */
+export function displayColumnToStringIndex(line: string, fromIndex: number, targetCol: number): number {
+  let col = 0;
+  let i = Math.max(0, Math.min(fromIndex, line.length));
+  while (i < line.length && col < targetCol) {
+    const cp = line.codePointAt(i) ?? 0;
+    const ch = String.fromCodePoint(cp);
+    col += Math.max(1, visibleWidth(ch));
+    i += ch.length;
+  }
+  return i;
+}
+
+/**
+ * Make the editor's software cursor blink: the pi-tui editor draws the
+ * cursor as reverse video (\x1b[7m); add SGR blink on top. Terminals
+ * without blink support degrade to the original reverse block.
+ */
+export function applyEditorCursorBlink(line: string): string {
+  return line.replace(/\x1b\[7m([\s\S]{1,2}?)\x1b\[0m/g, "\x1b[5;7m$1\x1b[0m");
+}
+
+/**
+ * Resolve which separator style to use.
+ * Explicit settings.json "separator" wins; pill mode needs solid powerline
+ * arrows for the color transitions, so it defaults to "powerline" instead of
+ * the preset's (often thin) separator.
+ */
+export function resolveSeparatorStyle(
+  presetDef: ReturnType<typeof getPreset>,
+  segmentStyle: "fg" | "pill",
+  configured: StatusLineSeparatorStyle | null = config.separator
+): StatusLineSeparatorStyle {
+  if (configured) return configured;
+  if (segmentStyle === "pill") return "powerline";
+  return presetDef.separator;
+}
+
+const ROUND_LEFT_CAP = "\uE0B6";  //  rounded bar start
+const ROUND_RIGHT_CAP = "\uE0B4"; //  rounded bar end
+
+/** Round caps need Nerd Font glyphs; without them fall back to flat ends. */
+function effectiveCaps(caps: PowerlineCaps): PowerlineCaps {
+  return caps === "round" && !hasNerdFonts() ? "flat" : caps;
+}
+
 /** Build content string from pre-rendered parts */
-function buildContentFromParts(
+export function buildContentFromParts(
   parts: string[],
-  presetDef: ReturnType<typeof getPreset>
+  separatorStyle: StatusLineSeparatorStyle,
+  segmentStyle: "fg" | "pill" = "fg",
+  caps: PowerlineCaps = "flat"
 ): string {
   if (parts.length === 0) return "";
-  const separatorDef = getSeparator(presetDef.separator);
-  const sepAnsi = getFgAnsiCode("sep");
+  const separatorDef = getSeparator(separatorStyle);
   const sep = separatorDef.left;
-  return " " + parts.join(` ${sepAnsi}${sep}${ansi.reset} `) + ansi.reset + " ";
+
+  // Original behavior: dim separator between segments
+  if (segmentStyle !== "pill") {
+    const sepAnsi = getFgAnsiCode("sep");
+    return " " + parts.join(` ${sepAnsi}${sep}${ansi.reset} `) + ansi.reset + " ";
+  }
+
+  // Pill mode: seamless powerline bar (starship style).
+  // Every segment must carry a background (fg-only segments get a neutral one),
+  // and each transition arrow gets bg=next pill color, fg=current pill color.
+  const pills = parts.map(ensurePillBg);
+  const bgRgbs = pills.map((p) => extractBgRgb(p) as [number, number, number]);
+  const capsStyle = effectiveCaps(caps);
+
+  // Start from a clean slate so no background/attribute leaks into the bar
+  let result = "\x1b[0m ";
+
+  // Left cap: rounded start in the first pill's color (bg is terminal default here)
+  if (capsStyle === "round") {
+    result += `\x1b[38;2;${bgRgbs[0].join(";")}m${ROUND_LEFT_CAP}`;
+  }
+
+  for (let i = 0; i < pills.length; i++) {
+    // Strip trailing reset so the transition ANSI can chain directly
+    result += pills[i].replace(/\x1b\[0m$/, "");
+
+    if (i < pills.length - 1) {
+      const curRgb = bgRgbs[i];
+      const nextRgb = bgRgbs[i + 1];
+      result += `\x1b[48;2;${nextRgb.join(";")}m\x1b[38;2;${curRgb.join(";")}m${sep}`;
+    }
+  }
+
+  // Right cap: rounded end, or closing arrow for powerline separators.
+  // The last pill's bg is still active at this point — reset it to the default
+  // background (\x1b[49m) first or the cap would be drawn fg-on-same-bg (invisible).
+  const lastRgb = bgRgbs[bgRgbs.length - 1];
+  if (capsStyle === "round") {
+    result += `\x1b[49m\x1b[38;2;${lastRgb.join(";")}m${ROUND_RIGHT_CAP}`;
+  } else if (
+    capsStyle === "arrow" &&
+    (separatorStyle === "powerline" || separatorStyle === "powerline-thin")
+  ) {
+    result += `\x1b[49m\x1b[38;2;${lastRgb.join(";")}m${sep}`;
+  }
+
+  result += ansi.reset + " ";
+  return result;
 }
 
 /**
@@ -973,8 +1100,11 @@ function computeResponsiveLayout(
   presetDef: ReturnType<typeof getPreset>,
   availableWidth: number
 ): { topContent: string; secondaryContent: string } {
-  const separatorDef = getSeparator(presetDef.separator);
-  const sepWidth = visibleWidth(separatorDef.left) + 2; // separator + spaces around it
+  const separatorStyle = resolveSeparatorStyle(presetDef, ctx.segmentStyle);
+  const separatorDef = getSeparator(separatorStyle);
+  const capsStyle = ctx.segmentStyle === "pill" ? effectiveCaps(config.caps) : "flat";
+  // fg mode pads separators with spaces; pill transitions are flush
+  const sepWidth = visibleWidth(separatorDef.left) + (ctx.segmentStyle === "pill" ? 0 : 2);
   
   // Get all segments: primary first, then secondary
   const mergedSegments = mergeSegmentsWithCustomItems(presetDef, config.customItems, {
@@ -999,8 +1129,9 @@ function computeResponsiveLayout(
   }
   
   // Calculate how many segments fit in top bar
-  // Account for: leading space (1) + trailing space (1) = 2 chars overhead
-  const baseOverhead = 2;
+  // Overhead: leading + trailing space (2) plus end caps (round: 2, arrow: 1)
+  const capsWidth = capsStyle === "round" ? 2 : capsStyle === "arrow" ? 1 : 0;
+  const baseOverhead = 2 + (ctx.segmentStyle === "pill" ? capsWidth : 0);
   let currentWidth = baseOverhead;
   let topSegments: string[] = [];
   let overflowSegments: { content: string; width: number }[] = [];
@@ -1034,8 +1165,8 @@ function computeResponsiveLayout(
   }
   
   return {
-    topContent: buildContentFromParts(topSegments, presetDef),
-    secondaryContent: buildContentFromParts(secondarySegments, presetDef),
+    topContent: buildContentFromParts(topSegments, separatorStyle, ctx.segmentStyle, capsStyle),
+    secondaryContent: buildContentFromParts(secondarySegments, separatorStyle, ctx.segmentStyle, capsStyle),
   };
 }
 
@@ -1068,6 +1199,10 @@ function warnInvalidSegmentSettings(ctx: any): void {
 export default function powerlineFooter(pi: ExtensionAPI) {
   const startupSettings = readSettings();
   config = parsePowerlineConfig(startupSettings.powerline, PRESET_NAMES);
+  setSettingsColors(config.colors);
+  setPillBold(config.pillBold);
+  if (config.highlightBashCall) {
+  }
   let resolvedShortcuts = resolveShortcutConfig(startupSettings);
   let bashModeSettings = parseBashModeSettings(startupSettings, resolvedShortcuts);
 
@@ -1130,6 +1265,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   const resetLayoutCache = () => {
     lastLayoutResult = null;
     layoutDirty = true;
+    cachedTokenStats = null;
   };
 
   const requestStatusRender = (delayMs?: number) => {
@@ -1335,6 +1471,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     bashModeSettings = parseBashModeSettings(settings, resolvedShortcuts);
     showLastPrompt = settings.showLastPrompt !== false;
     config = parsePowerlineConfig(settings.powerline, PRESET_NAMES);
+    setSettingsColors(config.colors);
+    setPillBold(config.pillBold);
     warnInvalidSegmentSettings(ctx);
     stashedPromptHistory = readPersistedStashHistory();
     bashModeActive = false;
@@ -2154,6 +2292,19 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     },
   });
 
+  // Cache for token counting: avoid re-scanning the full session event list
+  // on every render (250ms-1s cadence). Only recompute when the event count changes.
+  let cachedTokenStats: {
+    eventCount: number;
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+    cost: number;
+    lastAssistant: AssistantMessage | undefined;
+    thinkingLevelFromSession: string | null;
+  } | null = null;
+
   function buildSegmentContext(ctx: any, theme: Theme): SegmentContext {
     const presetDef = getPreset(config.preset);
     const colors: ColorScheme = presetDef.colors ?? getDefaultColors();
@@ -2164,32 +2315,46 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     let thinkingLevelFromSession: string | null = null;
     
     const sessionEvents = ctx.sessionManager?.getBranch?.() ?? [];
-    for (const e of sessionEvents) {
-      if (!isRecord(e)) {
-        continue;
-      }
+    const eventCount = sessionEvents.length;
 
-      // Check for thinking level change entries
-      if (e.type === "thinking_level_change" && typeof e.thinkingLevel === "string") {
-        thinkingLevelFromSession = e.thinkingLevel;
-      }
+    // Reuse cached token totals when session hasn't grown
+    if (cachedTokenStats && cachedTokenStats.eventCount === eventCount) {
+      input = cachedTokenStats.input;
+      output = cachedTokenStats.output;
+      cacheRead = cachedTokenStats.cacheRead;
+      cacheWrite = cachedTokenStats.cacheWrite;
+      cost = cachedTokenStats.cost;
+      lastAssistant = cachedTokenStats.lastAssistant;
+      thinkingLevelFromSession = cachedTokenStats.thinkingLevelFromSession;
+    } else {
+      for (const e of sessionEvents) {
+        if (!isRecord(e)) {
+          continue;
+        }
 
-      if (e.type !== "message" || !isSessionAssistantMessage(e.message)) {
-        continue;
-      }
+        // Check for thinking level change entries
+        if (e.type === "thinking_level_change" && typeof e.thinkingLevel === "string") {
+          thinkingLevelFromSession = e.thinkingLevel;
+        }
 
-      const m = e.message;
-      if (m.stopReason === "error" || m.stopReason === "aborted") {
-        continue;
+        if (e.type !== "message" || !isSessionAssistantMessage(e.message)) {
+          continue;
+        }
+
+        const m = e.message;
+        if (m.stopReason === "error" || m.stopReason === "aborted") {
+          continue;
+        }
+        input += m.usage.input;
+        output += m.usage.output;
+        cacheRead += m.usage.cacheRead;
+        cacheWrite += m.usage.cacheWrite;
+        cost += m.usage.cost.total;
+        if (getUsageTokenTotal(m.usage) > 0) {
+          lastAssistant = m;
+        }
       }
-      input += m.usage.input;
-      output += m.usage.output;
-      cacheRead += m.usage.cacheRead;
-      cacheWrite += m.usage.cacheWrite;
-      cost += m.usage.cost.total;
-      if (getUsageTokenTotal(m.usage) > 0) {
-        lastAssistant = m;
-      }
+      cachedTokenStats = { eventCount, input, output, cacheRead, cacheWrite, cost, lastAssistant, thinkingLevelFromSession };
     }
 
     // Calculate context percentage.
@@ -2239,6 +2404,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       options: segmentOptions,
       theme,
       colors,
+      segmentStyle: config.segmentStyle ?? "fg",
+      pillTextColor: config.pillTextColor,
     };
   }
 
@@ -2394,6 +2561,35 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   }
 
   function installFixedEditorCompositor(ctx: any, tui: any) {
+    /**
+     * Position the editor text cursor from editor-text coordinates
+     * (click-to-position inside the editor box). Uses the pi-tui editor's
+     * runtime state; returns false to let the click fall back to selection.
+     */
+    function positionEditorCursorAt(visualRow: number, visualCol: number): boolean {
+      if (!config.editorClickCursor) return false;
+      const editor: any = currentEditor;
+      if (!editor?.state || typeof editor.buildVisualLineMap !== "function") return false;
+      try {
+        const width = Math.max(1, editor.lastWidth ?? 80);
+        const visualLines = editor.buildVisualLineMap(width) as Array<{ logicalLine: number; startCol: number; length: number }>;
+        const row = visualRow + (editor.scrollOffset ?? 0);
+        if (row < 0 || row >= visualLines.length) return false;
+        const vl = visualLines[row]!;
+        const text: string = editor.state.lines[vl.logicalLine] ?? "";
+        const index = displayColumnToStringIndex(text, vl.startCol, visualCol);
+        editor.state.cursorLine = vl.logicalLine;
+        editor.state.cursorCol = Math.max(vl.startCol, Math.min(index, vl.startCol + vl.length));
+        editor.preferredVisualCol = null;
+        editor.snappedFromCursorCol = null;
+        if (typeof tui.requestRender === "function") tui.requestRender();
+        return true;
+      } catch (error) {
+        console.debug("[powerline-footer] editor click cursor failed:", error);
+        return false;
+      }
+    }
+
     teardownFixedEditorCompositor();
 
     if (!ctx.hasUI || !config.fixedEditor) return;
@@ -2441,16 +2637,19 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         down: resolvedShortcuts.scrollChatDown,
       },
       scrollRepaintThrottleMs: DEFAULT_SCROLL_REPAINT_THROTTLE_MS,
-      scrollAwayNavigationCard: {
-        shortcuts: [
-          scrollAwayShortcutEntry("bottom", resolvedShortcuts.jumpChatBottom),
-          scrollAwayShortcutEntry("previousUser", resolvedShortcuts.jumpPreviousUserMessage),
-          scrollAwayShortcutEntry("nextUser", resolvedShortcuts.jumpNextUserMessage),
-          scrollAwayShortcutEntry("previousAssistant", resolvedShortcuts.jumpPreviousLlmMessage),
-          scrollAwayShortcutEntry("nextAssistant", resolvedShortcuts.jumpNextLlmMessage),
-        ].filter((shortcut): shortcut is { id: ScrollAwayShortcutId; shortcutLabel: string } => shortcut !== null),
-        onClickBottom: resolvedShortcuts.jumpChatBottom ? () => jumpChatToBottom(ctx) : undefined,
-      },
+      scrollAwayNavigationCard: config.scrollNavCard
+        ? {
+            shortcuts: [
+              scrollAwayShortcutEntry("bottom", resolvedShortcuts.jumpChatBottom),
+              scrollAwayShortcutEntry("previousUser", resolvedShortcuts.jumpPreviousUserMessage),
+              scrollAwayShortcutEntry("nextUser", resolvedShortcuts.jumpNextUserMessage),
+              scrollAwayShortcutEntry("previousAssistant", resolvedShortcuts.jumpPreviousLlmMessage),
+              scrollAwayShortcutEntry("nextAssistant", resolvedShortcuts.jumpNextLlmMessage),
+            ].filter((shortcut): shortcut is { id: ScrollAwayShortcutId; shortcutLabel: string } => shortcut !== null),
+            onClickBottom: resolvedShortcuts.jumpChatBottom ? () => jumpChatToBottom(ctx) : undefined,
+          }
+        : undefined,
+      onEditorTextClick: (visualRow, visualCol) => positionEditorCursorAt(visualRow, visualCol),
       onCopySelection: (text) => copyTextToClipboard(ctx, text),
       getShowHardwareCursor: () => typeof tui.getShowHardwareCursor === "function" && tui.getShowHardwareCursor(),
       renderCluster: (width, terminalRows) => {
@@ -2803,16 +3002,18 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           return originalRender(width);
         }
 
+        // Border and prompt styling
         const bc = (s: string) => `${getFgAnsiCode("sep")}${s}${ansi.reset}`;
-        const promptGlyph = bashModeActive ? "$" : ">";
-        const prompt = `${ansi.getFgAnsi(200, 200, 200)}${promptGlyph}${ansi.reset}`;
-        const promptPrefix = ` ${prompt} `;
-        const contPrefix = "   ";
-        const contentWidth = Math.max(1, width - 3);
+        const accent = (s: string) => `${hexToAnsi(config.promptColor)}${s}${ansi.reset}`;
+        const promptGlyph = bashModeActive ? "$" : "❯";
+        const prompt = accent(promptGlyph);
+        const barW = Math.max(1, width - 4); // width for "─" between corners
+        const contentWidth = Math.max(1, width - 9); // " │ " (3) + " ❯ " (3) + " │" (2) = 8, +1 safe
         const lines = originalRender(contentWidth);
 
         if (lines.length === 0) return lines;
 
+        // Find the bottom border from original render (─ line)
         let bottomBorderIndex = lines.length - 1;
         for (let i = lines.length - 1; i >= 1; i--) {
           const stripped = lines[i]?.replace(/\x1b\[[0-9;]*m/g, "") || "";
@@ -2823,21 +3024,36 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         }
 
         const result: string[] = [];
-        result.push(" " + bc("─".repeat(width - 2)));
+        // Top border: ╭───╮
+        result.push(` ${bc("╭")}${bc("─".repeat(barW))}${bc("╮")}`);
 
+        // Content with side borders
         for (let i = 1; i < bottomBorderIndex; i++) {
-          const prefix = i === 1 ? promptPrefix : contPrefix;
-          result.push(`${prefix}${lines[i] || ""}`);
+          const isPrompt = i === 1;
+          const prefix = isPrompt ? ` ${prompt} ` : "   ";
+          const line = prefix + (lines[i] || "");
+          result.push(` ${bc("│")} ${line} ${bc("│")}`);
         }
 
+        // Empty prompt line if no content yet
         if (bottomBorderIndex === 1) {
-          result.push(`${promptPrefix}${" ".repeat(contentWidth)}`);
+          const pad = Math.max(0, width - 9);
+          result.push(` ${bc("│")} ${prompt} ${" ".repeat(pad)}${bc("│")}`);
         }
 
-        result.push(" " + bc("─".repeat(width - 2)));
+        // Bottom border: ╰───╯
+        result.push(` ${bc("╰")}${bc("─".repeat(barW))}${bc("╯")}`);
 
+        // Ghost suggestions / lines after border
         for (let i = bottomBorderIndex + 1; i < lines.length; i++) {
           result.push(lines[i] || "");
+        }
+
+        // Make the software cursor blink (reverse block → blinking reverse block)
+        if (config.editorCursorBlink) {
+          for (let i = 0; i < result.length; i++) {
+            result[i] = applyEditorCursorBlink(result[i] ?? "");
+          }
         }
 
         return result;

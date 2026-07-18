@@ -79,7 +79,7 @@ test("chat jump shortcuts are configurable and route through fixed editor scroll
   assert.match(source, /let resolvedShortcuts = resolveShortcutConfig\(startupSettings\)/);
   assert.match(source, /resolvedShortcuts = resolveShortcutConfig\(settings\)/);
   assert.match(source, /keyboardScrollShortcuts: \{\n\s+up: resolvedShortcuts\.scrollChatUp,\n\s+down: resolvedShortcuts\.scrollChatDown,/);
-  assert.match(source, /scrollAwayNavigationCard: \{/);
+  assert.match(source, /scrollAwayNavigationCard: config\.scrollNavCard/);
   assert.match(source, /shortcuts: \[/);
   assert.match(source, /scrollAwayShortcutEntry\("bottom", resolvedShortcuts\.jumpChatBottom\)/);
   assert.match(source, /onClickBottom: resolvedShortcuts\.jumpChatBottom \? \(\) => jumpChatToBottom\(ctx\) : undefined/);

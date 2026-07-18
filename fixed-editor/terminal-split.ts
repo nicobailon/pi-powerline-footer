@@ -34,6 +34,13 @@ interface TerminalSplitCompositorOptions {
   mouseScroll?: boolean;
   keyboardScrollShortcuts?: KeyboardScrollShortcuts;
   scrollAwayNavigationCard?: ScrollAwayNavigationCardOptions;
+  /**
+   * Called with editor-text coordinates (visual row/col inside the editor
+   * box) when the user left-clicks inside the editor text area.
+   * Return true to consume the click (e.g. position the text cursor)
+   * instead of starting a text selection.
+   */
+  onEditorTextClick?: (visualRow: number, visualCol: number) => boolean;
   onCopySelection?: (text: string) => void;
   scrollRepaintThrottleMs?: number;
 }
@@ -545,6 +552,7 @@ export class TerminalSplitCompositor {
   private readonly mouseScroll: boolean;
   private readonly keyboardScrollShortcuts: KeyboardScrollShortcuts;
   private readonly scrollAwayNavigationCard: ScrollAwayNavigationCardOptions | null;
+  private readonly onEditorTextClick: ((visualRow: number, visualCol: number) => boolean) | null;
   private readonly onCopySelection: ((text: string) => void) | null;
   private readonly scrollRepaintThrottleMs: number;
   private extendedKeyboardMode: ExtendedKeyboardMode | null = null;
@@ -593,6 +601,7 @@ export class TerminalSplitCompositor {
     this.mouseScroll = options.mouseScroll !== false;
     this.keyboardScrollShortcuts = options.keyboardScrollShortcuts ?? DEFAULT_KEYBOARD_SCROLL_SHORTCUTS;
     this.scrollAwayNavigationCard = options.scrollAwayNavigationCard ?? null;
+    this.onEditorTextClick = options.onEditorTextClick ?? null;
     this.onCopySelection = options.onCopySelection ?? null;
     this.scrollRepaintThrottleMs = Math.max(0, options.scrollRepaintThrottleMs ?? 0);
     this.rowsDescriptor = descriptorForRows(options.terminal);
@@ -931,6 +940,15 @@ export class TerminalSplitCompositor {
     if (!location) return;
 
     if (isLeftPress(packet)) {
+      // Click inside the editor text area: let the host position the text
+      // cursor instead of starting a selection.
+      if (location.area === "cluster") {
+        const editorPoint = this.editorTextLocationForClusterPoint(location.point.line, location.point.col);
+        if (editorPoint && this.onEditorTextClick?.(editorPoint.visualRow, editorPoint.visualCol)) {
+          this.lastLeftPress = null;
+          return;
+        }
+      }
       this.startSelection(location);
       return;
     }
@@ -1075,6 +1093,34 @@ export class TerminalSplitCompositor {
     this.preserveSelectionFocusOnRelease = false;
     this.lastLeftPress = { area: location.area, line, at: now };
     this.requestRender();
+  }
+
+  /**
+   * Map a cluster line/col to editor-text coordinates by locating the
+   * editor box borders in the visible cluster lines. Returns null when the
+   * point is not inside the editor text rows.
+   */
+  private editorTextLocationForClusterPoint(line: number, col: number): { visualRow: number; visualCol: number } | null {
+    if (!this.onEditorTextClick) return null;
+    const lines = this.visibleClusterLines;
+    const stripped = (index: number) => (lines[index] ?? "").replace(/\x1b\[[0-9;]*m/g, "");
+
+    // Editor text columns: " │ " (3) + " ❯ " (3) = text starts at col 6
+    const textCol = col - 6;
+    if (textCol < 0) return null;
+
+    // The clicked row must be a bordered content row
+    if (!/^ │ /.test(stripped(line))) return null;
+
+    // Find the nearest editor top border above the clicked row
+    for (let i = line - 1; i >= 0; i--) {
+      const s = stripped(i);
+      if (/^ ╰─+╯$/.test(s)) return null; // bottom border of a box above: not ours
+      if (/^ ╭─+╮$/.test(s)) {
+        return { visualRow: line - i - 1, visualCol: textCol };
+      }
+    }
+    return null;
   }
 
   private selectionLocationForPacket(packet: SgrMousePacket): SelectionLocation | null {

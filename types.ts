@@ -67,6 +67,12 @@ export type StatusLineSeparatorStyle =
   | "chevron"
   | "star";
 
+// Pill bar end-cap style (pill mode only)
+export type PowerlineCaps = "round" | "arrow" | "flat";
+
+// Pill text color: fixed dark/light, auto contrast, or a custom hex
+export type PillTextColor = "dark" | "light" | "contrast" | `#${string}`;
+
 // Preset names
 export type PowerlinePlacement = "above" | "below";
 
@@ -94,6 +100,7 @@ export interface StatusLineSegmentOptions {
   };
   time?: { format?: "12h" | "24h"; showSeconds?: boolean };
   cost?: { subscriptionDisplay?: "subscription" | "reported-cost" | "both" };
+  context?: { format?: "full" | "percent" };
 }
 
 export type CustomItemPosition = "left" | "right" | "secondary";
@@ -198,6 +205,12 @@ export interface SegmentContext {
   // Theming
   theme: ThemeLike;
   colors: ColorScheme;
+
+  // Rendering style
+  segmentStyle: "fg" | "pill";
+
+  // Text color inside pills (undefined = auto contrast)
+  pillTextColor?: PillTextColor;
 }
 
 // Rendered segment output

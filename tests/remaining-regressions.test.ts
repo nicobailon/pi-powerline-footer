@@ -51,6 +51,7 @@ function createSegmentContext(overrides: Partial<SegmentContext> = {}): SegmentC
     options: {},
     theme: { fg: plainThemeText },
     colors: {},
+    segmentStyle: "fg",
     ...overrides,
   };
 }
@@ -95,11 +96,12 @@ test("cost segment supports subscription display modes", () => {
     options: { cost: { subscriptionDisplay: "both" } },
   }));
 
-  assert.deepEqual(subscription, { content: "(sub)", visible: true });
-  assert.deepEqual(reportedCost, { content: "$0.42", visible: true });
-  assert.deepEqual(both, { content: "$0.42 (sub)", visible: true });
-  assert.deepEqual(zeroReported, { content: "(sub)", visible: true });
-  assert.deepEqual(zeroBoth, { content: "(sub)", visible: true });
+  const plain = (r: { content: string; visible: boolean }) => ({ content: stripAnsi(r.content), visible: r.visible });
+  assert.deepEqual(plain(subscription), { content: "(sub)", visible: true });
+  assert.deepEqual(plain(reportedCost), { content: "$0.42", visible: true });
+  assert.deepEqual(plain(both), { content: "$0.42 (sub)", visible: true });
+  assert.deepEqual(plain(zeroReported), { content: "(sub)", visible: true });
+  assert.deepEqual(plain(zeroBoth), { content: "(sub)", visible: true });
 });
 
 test("context segment shows used tokens, maximum, and percentage", () => {
@@ -107,6 +109,7 @@ test("context segment shows used tokens, maximum, and percentage", () => {
     contextTokens: 4_500,
     contextPercent: 1.7,
     contextWindow: 272_000,
+    options: { context: { format: "full" } },
   }));
 
   assert.equal(stripAnsi(context.content), "◫ 4.5k/272k (1.7%) AC");
