@@ -202,17 +202,20 @@ export function getGitStatus(providerBranch: string | null, pollingMode: GitPoll
 }
 
 /**
- * Force refresh git status (call when you know files changed)
+ * Force refresh git status (call when you know files changed).
+ * Serve-stale: keep the last known counts on screen while a background
+ * refresh runs, instead of blanking the segment to zeros (footer flicker).
  */
 export function invalidateGitStatus(): void {
-  cachedStatus = null;
+  if (cachedStatus) cachedStatus.timestamp = 0; // expire, but keep serving the stale value
   invalidationCounter++; // Increment to invalidate any pending fetches
 }
 
 /**
- * Force refresh git branch (call when you know branch might have changed)
+ * Force refresh git branch (call when you know branch might have changed).
+ * Serve-stale: keep showing the last known branch until the refresh lands.
  */
 export function invalidateGitBranch(): void {
-  cachedBranch = null;
+  if (cachedBranch) cachedBranch.timestamp = 0; // expire, but keep serving the stale value
   branchInvalidationCounter++;
 }

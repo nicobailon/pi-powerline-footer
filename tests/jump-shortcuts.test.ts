@@ -10,6 +10,7 @@ import {
 import { parseBashModeSettings, resolveShortcutConfig } from "../index.ts";
 
 const source = readFileSync(new URL("../index.ts", import.meta.url), "utf-8");
+const tokenStatsSource = readFileSync(new URL("../token-stats.ts", import.meta.url), "utf-8");
 
 const powerlineShortcutKeys = new Set([
   "stashHistory",
@@ -123,7 +124,8 @@ test("editor submits follow the fixed chat viewport to bottom", () => {
 test("thinking level changes invalidate powerline status rendering", () => {
   assert.match(source, /let currentThinkingLevel: string \| null = null/);
   assert.match(source, /pi\.on\("thinking_level_select", async \(event, ctx\) => \{\n\s+currentCtx = ctx;\n\s+currentThinkingLevel = getThinkingLevelFn\?\.\(\) \?\? \(typeof event\.level === "string" \? event\.level : null\);\n\s+requestImmediateStatusRender\(\{ deferDuringTyping: false \}\);\n\s+\}\);/);
-  assert.match(source, /if \(e\.type === "thinking_level_change" && typeof e\.thinkingLevel === "string"\) \{\n\s+thinkingLevelFromSession = e\.thinkingLevel;/);
+  assert.match(tokenStatsSource, /if \(e\.type === "thinking_level_change" && typeof e\.thinkingLevel === "string"\) \{\n\s+thinkingLevelFromSession = e\.thinkingLevel;/);
+  assert.match(source, /const thinkingLevelFromSession = tokenStats\.thinkingLevelFromSession/);
   assert.match(source, /const thinkingLevel = currentThinkingLevel \?\? thinkingLevelFromSession \?\? getThinkingLevelFn\?\.\(\) \?\? "off"/);
 });
 
@@ -141,7 +143,7 @@ test("context usage changes repaint from live streaming message usage", () => {
   assert.match(source, /pi\.on\("agent_end", async \(_event, ctx\) => \{\n\s+isStreaming = false;\n\s+liveAssistantUsage = null;\n\n\s+let hasUI = false;/);
   assert.match(source, /currentCtx = ctx;\n\s+try \{\n\s+if \(hasUI\)/);
   assert.match(source, /pi\.on\("session_tree", async \(_event, ctx\) => \{\n\s+currentCtx = ctx;\n\s+currentThinkingLevel = null;\n\s+liveAssistantUsage = null;\n\s+requestImmediateStatusRender\(\{ deferDuringTyping: false \}\);\n\s+\}\);/);
-  assert.match(source, /if \(getUsageTokenTotal\(m\.usage\) > 0\) \{\n\s+lastAssistant = m;\n\s+\}/);
+  assert.match(tokenStatsSource, /if \(getUsageTokenTotal\(m\.usage\) > 0\) \{\n\s+lastAssistant = m;\n\s+\}/);
   assert.match(source, /const coreContextUsage = isStreaming && liveAssistantUsage \? null : readCoreContextUsage\(ctx\)/);
   assert.match(source, /const contextTokens = coreContextUsage\?\.contextTokens \?\? \(latestUsage \? getUsageTokenTotal\(latestUsage\) : 0\)/);
 });
