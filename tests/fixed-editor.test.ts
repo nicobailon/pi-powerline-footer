@@ -1747,6 +1747,159 @@ test("terminal split copies chat and fixed cluster selections", () => {
   compositor.dispose();
 });
 
+test("terminal split with autoCopyOnSelect disabled keeps selection, shows hint, and copies via ctrl+c", () => {
+  const terminal = new FakeTerminal();
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const copied: Array<{ text: string; source: string }> = [];
+  const rootLines = [
+    "old-0", "old-1", "old-2", "old-3", "old-4",
+    "alpha one", "bravo two", "charlie three", "delta four", "echo five",
+    "foxtrot six", "golf seven", "hotel eight", "india nine", "juliet ten",
+  ];
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender() {},
+    render() {
+      return rootLines;
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    autoCopyOnSelect: false,
+    onCopySelection: (text, source) => copied.push({ text, source }),
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render(40);
+
+  assert.deepEqual(inputListener?.("\x1b[<0;2;2M"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[<32;7;4M"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[<0;7;4m"), { consume: true });
+
+  // release does not auto-copy and the selection stays highlighted
+  assert.deepEqual(copied, []);
+  assert.deepEqual(tui.render(40).slice(1, 4), [
+    "b\x1b[7mravo two\x1b[27m",
+    "\x1b[7mcharlie three\x1b[27m",
+    "\x1b[7mdelta \x1b[27mfour",
+  ]);
+
+  // the fixed cluster paints a copy hint while the selection is active
+  compositor.requestRepaint();
+  assert.ok(terminal.writes.at(-1)?.includes("28 characters selected, ctrl+c to copy"));
+
+  // ctrl+c copies the selection explicitly and clears it
+  assert.deepEqual(inputListener?.("\x03"), { consume: true });
+  assert.deepEqual(copied, [{ text: "ravo two\ncharlie three\ndelta", source: "explicit" }]);
+  assert.ok(!tui.render(40).some((line) => line.includes("\x1b[7m")));
+  compositor.requestRepaint();
+  assert.ok(!terminal.writes.at(-1)?.includes("characters selected"));
+
+  // ctrl+c without an active selection falls through to the app
+  assert.equal(inputListener?.("\x03"), undefined);
+
+  compositor.dispose();
+});
+
+test("terminal split with autoCopyOnSelect disabled still copies selection on right-click", () => {
+  const terminal = new FakeTerminal();
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const copied: Array<{ text: string; source: string }> = [];
+  const rootLines = [
+    "old-0", "old-1", "old-2", "old-3", "old-4",
+    "alpha one", "bravo two", "charlie three", "delta four", "echo five",
+    "foxtrot six", "golf seven", "hotel eight", "india nine", "juliet ten",
+  ];
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender() {},
+    render() {
+      return rootLines;
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    autoCopyOnSelect: false,
+    onCopySelection: (text, source) => copied.push({ text, source }),
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render(40);
+
+  assert.deepEqual(inputListener?.("\x1b[<0;2;2M"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[<32;7;4M"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[<0;7;4m"), { consume: true });
+  assert.deepEqual(copied, []);
+
+  // right-click inside the selection is an explicit copy
+  assert.deepEqual(inputListener?.("\x1b[<2;5;3M"), { consume: true });
+  assert.deepEqual(copied, [{ text: "ravo two\ncharlie three\ndelta", source: "explicit" }]);
+
+  compositor.dispose();
+});
+
+test("terminal split auto-copies on release by default without showing the hint", () => {
+  const terminal = new FakeTerminal();
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const copied: Array<{ text: string; source: string }> = [];
+  const rootLines = [
+    "old-0", "old-1", "old-2", "old-3", "old-4",
+    "alpha one", "bravo two", "charlie three", "delta four", "echo five",
+    "foxtrot six", "golf seven", "hotel eight", "india nine", "juliet ten",
+  ];
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender() {},
+    render() {
+      return rootLines;
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    onCopySelection: (text, source) => copied.push({ text, source }),
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render(40);
+
+  assert.deepEqual(inputListener?.("\x1b[<0;2;2M"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[<32;7;4M"), { consume: true });
+  assert.deepEqual(inputListener?.("\x1b[<0;7;4m"), { consume: true });
+
+  assert.deepEqual(copied, [{ text: "ravo two\ncharlie three\ndelta", source: "auto" }]);
+  compositor.requestRepaint();
+  assert.ok(!terminal.writes.at(-1)?.includes("characters selected"));
+
+  compositor.dispose();
+});
+
 test("terminal split selection scrolls when dragged to viewport edges", () => {
   const terminal = new FakeTerminal();
   let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;

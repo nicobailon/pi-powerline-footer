@@ -80,6 +80,7 @@ let config: PowerlineConfig = {
   mouseScroll: true,
   fixedEditor: true,
   scrollAwayCard: true,
+  copyOnSelect: true,
   placement: "above",
   invalidPlacement: null,
   welcome: true,
@@ -2450,7 +2451,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         ].filter((shortcut): shortcut is { id: ScrollAwayShortcutId; shortcutLabel: string } => shortcut !== null),
         onClickBottom: resolvedShortcuts.jumpChatBottom ? () => jumpChatToBottom(ctx) : undefined,
       } : undefined,
-      onCopySelection: (text) => copyTextToClipboard(ctx, text),
+      onCopySelection: (text, source) => copyTextToClipboard(ctx, text, source === "explicit" ? "Copied selection" : undefined),
+      autoCopyOnSelect: config.copyOnSelect !== false,
       getShowHardwareCursor: () => typeof tui.getShowHardwareCursor === "function" && tui.getShowHardwareCursor(),
       renderCluster: (width, terminalRows) => {
         const theme = readRenderTheme();
