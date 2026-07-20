@@ -9,7 +9,7 @@ import { isKeyRelease, type AutocompleteProvider, type SelectItem, SelectList, t
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 
-import type { ColorScheme, SegmentContext, StatusLinePreset, StatusLineSegmentId } from "./types.ts";
+import type { ColorScheme, PowerlineCaps, SegmentContext, StatusLinePreset, StatusLineSegmentId, StatusLineSeparatorStyle } from "./types.ts";
 import type { PowerlineConfig } from "./powerline-config.ts";
 import { BashTranscriptStore } from "./bash-mode/transcript.ts";
 import {
@@ -27,6 +27,7 @@ import { getPreset, PRESETS } from "./presets.ts";
 import { getAgentPath } from "./paths.ts";
 import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, mergeSegmentOptions, mergeSegmentsWithCustomItems, nextPowerlineSettingWithOptions, nextPowerlineSettingWithPreset, parsePowerlineConfig } from "./powerline-config.ts";
 import { getSeparator } from "./separators.ts";
+import { hasNerdFonts } from "./icons.ts";
 import { renderSegment } from "./segments.ts";
 import { getGitStatus, invalidateGitStatus, invalidateGitBranch } from "./git-status.ts";
 import { ansi, getFgAnsiCode } from "./colors.ts";
@@ -39,7 +40,7 @@ import { isStaleExtensionContextError, shouldResetExtendedKeyboardModesOnShutdow
 import { renderFixedEditorCluster } from "./fixed-editor/cluster.ts";
 import { DEFAULT_SCROLL_REPAINT_THROTTLE_MS, emergencyTerminalModeReset, TerminalSplitCompositor } from "./fixed-editor/terminal-split.ts";
 import { inlineEditorQuitCursorRestore } from "./terminal-cursor.ts";
-import { getDefaultColors } from "./theme.ts";
+import { bgAnsiToFgAnsi, extractBgAnsi, getDefaultColors, hexToBgAnsi, isPillBold, setPillBold, setSettingsColors } from "./theme.ts";
 import {
   isSupportedSuperShortcut,
   matchesConfiguredShortcut,
@@ -76,6 +77,12 @@ let config: PowerlineConfig = {
   layout: null,
   invalidLayoutSegments: [],
   segmentOptions: {},
+  segmentStyle: "fg",
+  separator: null,
+  caps: "round",
+  pillTextColor: "dark",
+  pillBold: true,
+  colors: {},
   mouseScroll: true,
   fixedEditor: true,
   placement: "above",
@@ -951,16 +958,99 @@ function renderSegmentWithWidth(
   return { content: rendered.content, width: visibleWidth(rendered.content), visible: true };
 }
 
+/** Neutral background for segments that render fg-only content (e.g. rainbow thinking) */
+const NEUTRAL_PILL_BG = "#45475a"; // Catppuccin surface1
+
+/** Wrap a segment that produced no background in a neutral pill so the bar stays seamless. */
+export function ensurePillBg(content: string): string {
+  if (extractBgAnsi(content)) return content;
+  const stripped = content.replace(/\x1b\[0m$/, "");
+  const bold = isPillBold() ? "\x1b[1m" : "";
+  return `${hexToBgAnsi(NEUTRAL_PILL_BG)}${bold} ${stripped} \x1b[0m`;
+}
+
+/**
+ * Resolve which separator style to use.
+ * Explicit settings.json "separator" wins; pill mode needs solid powerline
+ * arrows for the color transitions, so it defaults to "powerline" instead of
+ * the preset's (often thin) separator.
+ */
+export function resolveSeparatorStyle(
+  presetDef: ReturnType<typeof getPreset>,
+  segmentStyle: "fg" | "pill",
+  configured: StatusLineSeparatorStyle | null = config.separator
+): StatusLineSeparatorStyle {
+  if (configured) return configured;
+  if (segmentStyle === "pill") return "powerline";
+  return presetDef.separator;
+}
+
+const ROUND_LEFT_CAP = "\uE0B6";  //  rounded bar start
+const ROUND_RIGHT_CAP = "\uE0B4"; //  rounded bar end
+
+/** Round caps need Nerd Font glyphs; without them fall back to flat ends. */
+function effectiveCaps(caps: PowerlineCaps): PowerlineCaps {
+  return caps === "round" && !hasNerdFonts() ? "flat" : caps;
+}
+
 /** Build content string from pre-rendered parts */
-function buildContentFromParts(
+export function buildContentFromParts(
   parts: string[],
-  presetDef: ReturnType<typeof getPreset>
+  separatorStyle: StatusLineSeparatorStyle,
+  segmentStyle: "fg" | "pill" = "fg",
+  caps: PowerlineCaps = "flat"
 ): string {
   if (parts.length === 0) return "";
-  const separatorDef = getSeparator(presetDef.separator);
-  const sepAnsi = getFgAnsiCode("sep");
+  const separatorDef = getSeparator(separatorStyle);
   const sep = separatorDef.left;
-  return " " + parts.join(` ${sepAnsi}${sep}${ansi.reset} `) + ansi.reset + " ";
+
+  // Original behavior: dim separator between segments
+  if (segmentStyle !== "pill") {
+    const sepAnsi = getFgAnsiCode("sep");
+    return " " + parts.join(` ${sepAnsi}${sep}${ansi.reset} `) + ansi.reset + " ";
+  }
+
+  // Pill mode: seamless powerline bar (starship style).
+  // Every segment must carry a background (fg-only segments get a neutral one).
+  // Transition arrows and caps reuse each pill's background SGR sequence
+  // (48 -> 38 for the foreground counterpart), so both truecolor hex colors
+  // and theme-key colors (any color mode) chain seamlessly.
+  const pills = parts.map(ensurePillBg);
+  const bgSequences = pills.map((p) => extractBgAnsi(p) as string);
+  const capsStyle = effectiveCaps(caps);
+
+  // Start from a clean slate so no background/attribute leaks into the bar
+  let result = "\x1b[0m ";
+
+  // Left cap: rounded start in the first pill's color (bg is terminal default here)
+  if (capsStyle === "round") {
+    result += `${bgAnsiToFgAnsi(bgSequences[0])}${ROUND_LEFT_CAP}`;
+  }
+
+  for (let i = 0; i < pills.length; i++) {
+    // Strip trailing reset so the transition ANSI can chain directly
+    result += pills[i].replace(/\x1b\[0m$/, "");
+
+    if (i < pills.length - 1) {
+      result += `${bgSequences[i + 1]}${bgAnsiToFgAnsi(bgSequences[i])}${sep}`;
+    }
+  }
+
+  // Right cap: rounded end, or closing arrow for powerline separators.
+  // The last pill's bg is still active at this point — reset it to the default
+  // background (\x1b[49m) first or the cap would be drawn fg-on-same-bg (invisible).
+  const lastBgFg = bgAnsiToFgAnsi(bgSequences[bgSequences.length - 1]);
+  if (capsStyle === "round") {
+    result += `\x1b[49m${lastBgFg}${ROUND_RIGHT_CAP}`;
+  } else if (
+    capsStyle === "arrow" &&
+    (separatorStyle === "powerline" || separatorStyle === "powerline-thin")
+  ) {
+    result += `\x1b[49m${lastBgFg}${sep}`;
+  }
+
+  result += ansi.reset + " ";
+  return result;
 }
 
 /**
@@ -973,8 +1063,11 @@ function computeResponsiveLayout(
   presetDef: ReturnType<typeof getPreset>,
   availableWidth: number
 ): { topContent: string; secondaryContent: string } {
-  const separatorDef = getSeparator(presetDef.separator);
-  const sepWidth = visibleWidth(separatorDef.left) + 2; // separator + spaces around it
+  const separatorStyle = resolveSeparatorStyle(presetDef, ctx.segmentStyle);
+  const separatorDef = getSeparator(separatorStyle);
+  const capsStyle = ctx.segmentStyle === "pill" ? effectiveCaps(config.caps) : "flat";
+  // fg mode pads separators with spaces; pill transitions are flush
+  const sepWidth = visibleWidth(separatorDef.left) + (ctx.segmentStyle === "pill" ? 0 : 2);
   
   // Get all segments: primary first, then secondary
   const mergedSegments = mergeSegmentsWithCustomItems(presetDef, config.customItems, {
@@ -999,8 +1092,9 @@ function computeResponsiveLayout(
   }
   
   // Calculate how many segments fit in top bar
-  // Account for: leading space (1) + trailing space (1) = 2 chars overhead
-  const baseOverhead = 2;
+  // Overhead: leading + trailing space (2) plus end caps (round: 2, arrow: 1)
+  const capsWidth = capsStyle === "round" ? 2 : capsStyle === "arrow" ? 1 : 0;
+  const baseOverhead = 2 + (ctx.segmentStyle === "pill" ? capsWidth : 0);
   let currentWidth = baseOverhead;
   let topSegments: string[] = [];
   let overflowSegments: { content: string; width: number }[] = [];
@@ -1034,8 +1128,8 @@ function computeResponsiveLayout(
   }
   
   return {
-    topContent: buildContentFromParts(topSegments, presetDef),
-    secondaryContent: buildContentFromParts(secondarySegments, presetDef),
+    topContent: buildContentFromParts(topSegments, separatorStyle, ctx.segmentStyle, capsStyle),
+    secondaryContent: buildContentFromParts(secondarySegments, separatorStyle, ctx.segmentStyle, capsStyle),
   };
 }
 
@@ -1068,6 +1162,8 @@ function warnInvalidSegmentSettings(ctx: any): void {
 export default function powerlineFooter(pi: ExtensionAPI) {
   const startupSettings = readSettings();
   config = parsePowerlineConfig(startupSettings.powerline, PRESET_NAMES);
+  setSettingsColors(config.colors);
+  setPillBold(config.pillBold);
   let resolvedShortcuts = resolveShortcutConfig(startupSettings);
   let bashModeSettings = parseBashModeSettings(startupSettings, resolvedShortcuts);
 
@@ -1335,6 +1431,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     bashModeSettings = parseBashModeSettings(settings, resolvedShortcuts);
     showLastPrompt = settings.showLastPrompt !== false;
     config = parsePowerlineConfig(settings.powerline, PRESET_NAMES);
+    setSettingsColors(config.colors);
+    setPillBold(config.pillBold);
     warnInvalidSegmentSettings(ctx);
     stashedPromptHistory = readPersistedStashHistory();
     bashModeActive = false;
@@ -2239,6 +2337,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       options: segmentOptions,
       theme,
       colors,
+      segmentStyle: config.segmentStyle ?? "fg",
+      pillTextColor: config.pillTextColor,
     };
   }
 

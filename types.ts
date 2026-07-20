@@ -2,7 +2,14 @@ import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 
 // Theme color - either a pi theme color name or a custom hex color
 export type ColorValue = ThemeColor | `#${string}`;
-export type ThemeLike = Pick<Theme, "fg">;
+
+// Extensions only rely on fg rendering; pill mode additionally uses the raw
+// background ANSI sequence (when the runtime theme exposes it) so that both
+// hex and theme-key colors can render as seamless background pills.
+export type ThemeLike = Pick<Theme, "fg"> & {
+  getBgAnsi?: (color: string) => string;
+  getColorMode?: () => string;
+};
 
 // Semantic color names for segments
 export type SemanticColor =
@@ -66,6 +73,12 @@ export type StatusLineSeparatorStyle =
   | "dot"
   | "chevron"
   | "star";
+
+// Pill bar end-cap style (pill mode only)
+export type PowerlineCaps = "round" | "arrow" | "flat";
+
+// Pill text color: fixed dark/light, auto contrast, or a custom hex
+export type PillTextColor = "dark" | "light" | "contrast" | `#${string}`;
 
 // Preset names
 export type PowerlinePlacement = "above" | "below";
@@ -198,6 +211,12 @@ export interface SegmentContext {
   // Theming
   theme: ThemeLike;
   colors: ColorScheme;
+
+  // Rendering style
+  segmentStyle: "fg" | "pill";
+
+  // Text color inside pills (undefined = auto contrast)
+  pillTextColor?: PillTextColor;
 }
 
 // Rendered segment output

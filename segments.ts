@@ -3,10 +3,13 @@ import { basename } from "node:path";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import type { BuiltinStatusLineSegmentId, RenderedSegment, SegmentContext, SemanticColor, StatusLineSegment, StatusLineSegmentId } from "./types.ts";
 import { normalizeCompactExtensionStatus, normalizeExtensionStatusValue } from "./powerline-config.ts";
-import { fg, rainbow, applyColor } from "./theme.ts";
+import { fg, bg, rainbow, applyColor, applyBgColor } from "./theme.ts";
 import { getIcons, SEP_DOT, getThinkingText } from "./icons.ts";
 
 function color(ctx: SegmentContext, semantic: SemanticColor, text: string): string {
+  if (ctx.segmentStyle === "pill") {
+    return bg(ctx.theme, semantic, text, ctx.colors, ctx.pillTextColor);
+  }
   return fg(ctx.theme, semantic, text, ctx.colors);
 }
 
@@ -142,6 +145,23 @@ const gitSegment: StatusLineSegment = {
     const isDirty = gitStatus && (gitStatus.staged > 0 || gitStatus.unstaged > 0 || gitStatus.untracked > 0);
     const showBranch = opts.showBranch !== false;
     const branchColor: SemanticColor = isDirty ? "gitDirty" : "gitClean";
+
+    // In pill mode the whole segment is wrapped in a single background pill,
+    // so indicators stay plain text (per-part ANSI resets would break the pill).
+    if (ctx.segmentStyle === "pill") {
+      let text = showBranch && branch ? withIcon(icons.branch, branch) : "";
+      if (gitStatus) {
+        const indicators: string[] = [];
+        if (opts.showUnstaged !== false && gitStatus.unstaged > 0) indicators.push(`*${gitStatus.unstaged}`);
+        if (opts.showStaged !== false && gitStatus.staged > 0) indicators.push(`+${gitStatus.staged}`);
+        if (opts.showUntracked !== false && gitStatus.untracked > 0) indicators.push(`?${gitStatus.untracked}`);
+        if (indicators.length > 0) {
+          text = text ? `${text} ${indicators.join(" ")}` : indicators.join(" ");
+        }
+      }
+      if (!text) return { content: "", visible: false };
+      return { content: color(ctx, branchColor, text), visible: true };
+    }
 
     // Build content - color branch separately from indicators
     let content = "";
@@ -300,15 +320,12 @@ const contextPctSegment: StatusLineSegment = {
     const autoIcon = ctx.autoCompactEnabled && icons.auto ? ` ${icons.auto}` : "";
     const text = `${formatTokens(contextTokens)}/${formatTokens(contextWindow)} (${contextPercent.toFixed(1)}%)${autoIcon}`;
 
-    // Icon outside color, text inside - use semantic colors for thresholds
-    let content: string;
-    if (contextPercent > 90) {
-      content = withIcon(icons.context, color(ctx, "contextError", text));
-    } else if (contextPercent > 70) {
-      content = withIcon(icons.context, color(ctx, "contextWarn", text));
-    } else {
-      content = withIcon(icons.context, color(ctx, "context", text));
-    }
+    // Icon outside color, text inside - use semantic colors for thresholds.
+    // In pill mode the icon goes inside the pill so the background is unbroken.
+    const semantic: SemanticColor = contextPercent > 90 ? "contextError" : contextPercent > 70 ? "contextWarn" : "context";
+    const content = ctx.segmentStyle === "pill"
+      ? color(ctx, semantic, withIcon(icons.context, text))
+      : withIcon(icons.context, color(ctx, semantic, text));
 
     return { content, visible: true };
   },
@@ -480,8 +497,19 @@ function renderCustomSegment(id: `custom:${string}`, ctx: SegmentContext): Rende
   if (custom.prefix) {
     content = `${custom.prefix}${SEP_DOT}${content}`;
   }
+  // In pill mode, strip ANSI resets and color codes from extension content
+  // so the pill's own background and text color are not broken.
+  if (ctx.segmentStyle === "pill") {
+    content = content
+      .replace(/\x1b\[0m/g, "")
+      .replace(/\x1b\[48;[0-9;]*m/g, "")
+      .replace(/\x1b\[38;[0-9;]*m/g, "")
+      .replace(/\x1b\[(?:3[0-9]|9[0-7])m/g, "");
+  }
   if (custom.color) {
-    content = applyColor(ctx.theme, custom.color, content);
+    content = ctx.segmentStyle === "pill"
+      ? applyBgColor(ctx.theme, custom.color, content, ctx.pillTextColor)
+      : applyColor(ctx.theme, custom.color, content);
   }
 
   return { content, visible: true };

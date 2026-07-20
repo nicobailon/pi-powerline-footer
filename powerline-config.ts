@@ -1,6 +1,7 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
+import { sanitizeColorOverrides } from "./theme.ts";
 import { BUILTIN_STATUS_LINE_SEGMENT_IDS } from "./types.ts";
-import type { ColorValue, CustomItemPosition, CustomStatusItem, PowerlinePlacement, PresetDef, StatusLineLayout, StatusLinePreset, StatusLineSegmentId, StatusLineSegmentOptions } from "./types.ts";
+import type { ColorScheme, ColorValue, CustomItemPosition, CustomStatusItem, PillTextColor, PowerlineCaps, PowerlinePlacement, PresetDef, StatusLineLayout, StatusLinePreset, StatusLineSegmentId, StatusLineSegmentOptions, StatusLineSeparatorStyle } from "./types.ts";
 
 export interface PowerlineConfig {
   preset: StatusLinePreset;
@@ -10,6 +11,12 @@ export interface PowerlineConfig {
   layout: StatusLineLayout | null;
   invalidLayoutSegments: string[];
   segmentOptions: StatusLineSegmentOptions;
+  segmentStyle: "fg" | "pill";
+  separator: StatusLineSeparatorStyle | null;
+  caps: PowerlineCaps;
+  pillTextColor: PillTextColor;
+  pillBold: boolean;
+  colors: ColorScheme;
   mouseScroll: boolean;
   fixedEditor: boolean;
   placement: PowerlinePlacement;
@@ -26,6 +33,40 @@ function normalizePreset(value: unknown, presets: readonly StatusLinePreset[]): 
   if (typeof value !== "string") return null;
   const normalized = value.trim().toLowerCase();
   return (presets as readonly string[]).includes(normalized) ? (normalized as StatusLinePreset) : null;
+}
+
+const SEPARATOR_STYLES: readonly StatusLineSeparatorStyle[] = [
+  "powerline",
+  "powerline-thin",
+  "slash",
+  "pipe",
+  "block",
+  "none",
+  "ascii",
+  "dot",
+  "chevron",
+  "star",
+];
+
+function normalizeSeparator(value: unknown): StatusLineSeparatorStyle | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return (SEPARATOR_STYLES as readonly string[]).includes(normalized)
+    ? (normalized as StatusLineSeparatorStyle)
+    : null;
+}
+
+function normalizeCaps(value: unknown): PowerlineCaps {
+  if (value === "round" || value === "arrow" || value === "flat") return value;
+  return "round";
+}
+
+function normalizePillTextColor(value: unknown): PillTextColor {
+  if (value === "dark" || value === "light" || value === "contrast") return value;
+  if (typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value.trim())) {
+    return value.trim() as PillTextColor;
+  }
+  return "dark";
 }
 
 function normalizePlacement(value: unknown): { placement: PowerlinePlacement; invalidPlacement: string | null } {
@@ -259,6 +300,12 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     layout: null,
     invalidLayoutSegments: [],
     segmentOptions: {},
+    segmentStyle: "fg",
+    separator: null,
+    caps: "round",
+    pillTextColor: "dark",
+    pillBold: true,
+    colors: {},
     mouseScroll: true,
     fixedEditor: true,
     placement: "above",
@@ -285,6 +332,12 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     layout,
     invalidLayoutSegments,
     segmentOptions: normalizeSegmentOptions(value),
+    segmentStyle: value.segmentStyle === "pill" ? "pill" : "fg",
+    separator: normalizeSeparator(value.separator),
+    caps: normalizeCaps(value.caps),
+    pillTextColor: normalizePillTextColor(value.pillTextColor),
+    pillBold: value.pillBold !== false,
+    colors: sanitizeColorOverrides(value.colors),
     mouseScroll: value.mouseScroll !== false,
     fixedEditor: value.fixedEditor !== false,
     placement,
