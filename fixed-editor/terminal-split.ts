@@ -30,6 +30,7 @@ interface TerminalSplitCompositorOptions {
   tui: any;
   terminal: TerminalLike;
   renderCluster: (width: number, terminalRows: number) => FixedEditorClusterRender;
+  canRepaintClusterOnly?: () => boolean;
   getShowHardwareCursor?: () => boolean;
   mouseScroll?: boolean;
   keyboardScrollShortcuts?: KeyboardScrollShortcuts;
@@ -557,6 +558,7 @@ export class TerminalSplitCompositor {
   private readonly tui: any;
   private readonly terminal: TerminalLike;
   private readonly renderCluster: (width: number, terminalRows: number) => FixedEditorClusterRender;
+  private readonly canRepaintClusterOnly: () => boolean;
   private readonly getShowHardwareCursor: () => boolean;
   private readonly mouseScroll: boolean;
   private readonly keyboardScrollShortcuts: KeyboardScrollShortcuts;
@@ -591,6 +593,7 @@ export class TerminalSplitCompositor {
   private rootLines: string[] = [];
   private visibleRootStart = 0;
   private visibleScrollableRows = 0;
+  private visibleRootWidth = 0;
   private visibleRootLines: string[] = [];
   private visibleClusterLines: string[] = [];
   private selectionArea: SelectionArea | null = null;
@@ -607,6 +610,7 @@ export class TerminalSplitCompositor {
     this.tui = options.tui;
     this.terminal = options.terminal;
     this.renderCluster = options.renderCluster;
+    this.canRepaintClusterOnly = options.canRepaintClusterOnly ?? (() => false);
     this.getShowHardwareCursor = options.getShowHardwareCursor ?? (() => false);
     this.mouseScroll = options.mouseScroll !== false;
     this.keyboardScrollShortcuts = options.keyboardScrollShortcuts ?? DEFAULT_KEYBOARD_SCROLL_SHORTCUTS;
@@ -657,6 +661,10 @@ export class TerminalSplitCompositor {
     this.terminal.write = (data: string) => this.write(data);
     if (this.originalDoRender) {
       this.tui.doRender = () => {
+        if (this.canRepaintClusterOnly() && this.repaintClusterOnlyIfStable()) {
+          return;
+        }
+
         this.renderPassActive = true;
         this.renderPassCluster = null;
         try {
@@ -757,6 +765,41 @@ export class TerminalSplitCompositor {
     this.updateScrollBounds(Math.max(1, rawRows - cluster.lines.length));
     if (cluster.lines.length === 0) return;
 
+    this.paintCluster(cluster, rawRows, width);
+  }
+
+  private repaintClusterOnlyIfStable(): boolean {
+    if (
+      this.disposed
+      || this.hasVisibleOverlay()
+      || this.rootLines.length === 0
+      || Reflect.get(this.tui, "renderRequested") === true
+    ) {
+      return false;
+    }
+
+    const rawRows = this.getRawRows();
+    const width = Math.max(1, this.terminal.columns || 80);
+    const previousLineCount = this.visibleClusterLines.length;
+    const cluster = this.getCluster(width, rawRows);
+    const scrollableRows = Math.max(1, rawRows - cluster.lines.length);
+    const maxScrollOffset = Math.max(0, this.rootLines.length - scrollableRows);
+    if (
+      cluster.lines.length === 0
+      || cluster.lines.length !== previousLineCount
+      || this.visibleRootWidth !== width
+      || this.visibleScrollableRows !== scrollableRows
+      || this.visibleRootLines.length !== scrollableRows
+      || this.maxScrollOffset !== maxScrollOffset
+    ) {
+      return false;
+    }
+
+    this.paintCluster(cluster, rawRows, width);
+    return true;
+  }
+
+  private paintCluster(cluster: FixedEditorClusterRender, rawRows: number, width: number): void {
     this.originalWrite(
       beginSynchronizedOutput()
       + disableAutoWrap()
@@ -996,6 +1039,7 @@ export class TerminalSplitCompositor {
   }
 
   private renderVisibleRootLines(start: number, width: number, scrollableRows: number): string[] {
+    this.visibleRootWidth = width;
     const renderedLines = this.visibleRootLines.map((line, index) => {
       return this.renderSelectionHighlight(line, start + index, "root");
     });

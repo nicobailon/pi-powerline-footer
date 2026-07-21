@@ -2359,6 +2359,95 @@ test("terminal split can disable mouse reporting for normal selection", () => {
   assert.ok(!terminal.writes.at(-1)?.includes("\x1b[?1002l"));
 });
 
+test("terminal split cluster-only repaint falls back when root render width changes", () => {
+  const terminal = new FakeTerminal();
+  terminal.columns = 40;
+  let appRenderCalls = 0;
+  const rootRenderWidths: number[] = [];
+  const tui = {
+    terminal,
+    render(width: number) {
+      rootRenderWidths.push(width);
+      return [`root:${width}`, "root-b"];
+    },
+    doRender() {
+      appRenderCalls += 1;
+      this.render(this.terminal.columns);
+      this.terminal.write("body");
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    canRepaintClusterOnly: () => true,
+    renderCluster: (width) => ({ lines: [`cluster:${width}`], cursor: null }),
+  });
+
+  compositor.install();
+  tui.doRender();
+  assert.equal(appRenderCalls, 1);
+  assert.deepEqual(rootRenderWidths, [40]);
+
+  terminal.writes = [];
+  tui.doRender();
+  assert.equal(appRenderCalls, 1);
+  assert.equal(rootRenderWidths.length, 1);
+  assert.ok(terminal.writes.at(-1)?.includes("cluster:40"));
+  assert.ok(!terminal.writes.at(-1)?.includes("body"));
+
+  terminal.columns = 30;
+  terminal.writes = [];
+  tui.doRender();
+  assert.equal(appRenderCalls, 2);
+  assert.deepEqual(rootRenderWidths, [40, 30]);
+  assert.ok(terminal.writes.some((write) => write.includes("body")));
+  assert.ok(terminal.writes.at(-1)?.includes("cluster:30"));
+
+  compositor.dispose();
+});
+
+test("terminal split cluster-only repaint falls back when root render is requested", () => {
+  const terminal = new FakeTerminal();
+  let rootLines = ["old-root", "root-b"];
+  let appRenderCalls = 0;
+  const tui = {
+    terminal,
+    renderRequested: false,
+    render() {
+      return rootLines;
+    },
+    doRender() {
+      appRenderCalls += 1;
+      this.renderRequested = false;
+      this.render(this.terminal.columns);
+      this.terminal.write("body");
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    canRepaintClusterOnly: () => true,
+    renderCluster: () => ({ lines: ["cluster"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.doRender();
+  assert.equal(appRenderCalls, 1);
+
+  terminal.writes = [];
+  rootLines = ["new-root", "root-b"];
+  tui.renderRequested = true;
+  tui.doRender();
+
+  assert.equal(appRenderCalls, 2);
+  assert.equal(tui.renderRequested, false);
+  assert.ok(terminal.writes.some((write) => write.includes("body")));
+
+  compositor.dispose();
+});
+
 test("terminal split reuses the fixed cluster during one render pass", () => {
   const terminal = new FakeTerminal();
   let renderClusterCount = 0;

@@ -10,6 +10,7 @@
 - **Scroll-away card toggle** — Added `powerline.scrollAwayCard` and `/powerline scroll-away-card on|off|toggle` so the fixed editor and chat navigation shortcuts can remain enabled while the scroll-away hint card is hidden. Thanks to Alexander Gerdes (@Avg8888), Whisperfall, and Bruno Orsolon (@brunoorsolon) for #97/#108/#99.
 
 ### Changed
+- **Inline custom UI repainting** — Avoids rerendering static chat while fixed-editor inline custom UI clusters repaint with unchanged viewport geometry. Thanks to JMHSV for #111.
 - **Status render caching** — Caches session token aggregation between unchanged render inputs and keeps stale git segment values visible during background refreshes, reducing long-session redraw work and git flicker. Thanks to Andy8647 for #107.
 - **Fixed-editor scrolling performance** — Uses terminal row shifts, cached transcript lines, an 8 ms repaint cadence, and transient shortcut-card hiding during active wheel movement to cut scroll latency and terminal output churn.
 
