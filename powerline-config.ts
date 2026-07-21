@@ -235,6 +235,18 @@ function normalizeSegmentOptions(raw: Record<string, unknown>): StatusLineSegmen
     };
   }
 
+  if (isRecord(raw.context)) {
+    options.context = {
+      ...(raw.context.format === "full" || raw.context.format === "percent" ? { format: raw.context.format } : {}),
+    };
+  }
+
+  if (isRecord(raw.cache_read)) {
+    options.cache_read = {
+      ...(raw.cache_read.format === "tokens" || raw.cache_read.format === "percent" ? { format: raw.cache_read.format } : {}),
+    };
+  }
+
   return options;
 }
 
@@ -250,6 +262,8 @@ export function mergeSegmentOptions(
     git: { ...defaults.git, ...overrides.git },
     time: { ...defaults.time, ...overrides.time },
     cost: { ...defaults.cost, ...overrides.cost },
+    context: { ...defaults.context, ...overrides.context },
+    cache_read: { ...defaults.cache_read, ...overrides.cache_read },
   };
 }
 

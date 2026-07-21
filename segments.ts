@@ -298,16 +298,23 @@ const contextPctSegment: StatusLineSegment = {
     const { contextTokens, contextPercent, contextWindow } = ctx;
 
     const autoIcon = ctx.autoCompactEnabled && icons.auto ? ` ${icons.auto}` : "";
-    const text = `${formatTokens(contextTokens)}/${formatTokens(contextWindow)} (${contextPercent.toFixed(1)}%)${autoIcon}`;
+    const percentOnly = ctx.options.context?.format === "percent";
+    // "full" (default): tokens/window + one-decimal percentage + auto-compact icon.
+    // "percent": bare rounded percentage, threshold-colored, no icons.
+    const text = percentOnly
+      ? `${Math.round(contextPercent)}%`
+      : `${formatTokens(contextTokens)}/${formatTokens(contextWindow)} (${contextPercent.toFixed(1)}%)${autoIcon}`;
 
     // Icon outside color, text inside - use semantic colors for thresholds
     let content: string;
+    const colored = (semantic: "context" | "contextWarn" | "contextError") =>
+      percentOnly ? color(ctx, semantic, text) : withIcon(icons.context, color(ctx, semantic, text));
     if (contextPercent > 90) {
-      content = withIcon(icons.context, color(ctx, "contextError", text));
+      content = colored("contextError");
     } else if (contextPercent > 70) {
-      content = withIcon(icons.context, color(ctx, "contextWarn", text));
+      content = colored("contextWarn");
     } else {
-      content = withIcon(icons.context, color(ctx, "context", text));
+      content = colored("context");
     }
 
     return { content, visible: true };
@@ -390,11 +397,21 @@ const cacheReadSegment: StatusLineSegment = {
   id: "cache_read",
   render(ctx) {
     const icons = getIcons();
-    const { cacheRead } = ctx.usageStats;
+    const { cacheRead, input } = ctx.usageStats;
     if (!cacheRead) return { content: "", visible: false };
 
-    const parts = [icons.cache, icons.input, formatTokens(cacheRead)].filter(Boolean);
-    const content = parts.join(" ");
+    let content: string;
+    if (ctx.options.cache_read?.format === "percent") {
+      // Cache hit rate: cacheRead / (input + cacheRead)
+      const hitRate = input + cacheRead > 0
+        ? ((cacheRead / (input + cacheRead)) * 100).toFixed(0)
+        : "0";
+      content = [icons.cache, `${hitRate}%`].filter(Boolean).join(" ");
+    } else {
+      // "tokens" (default): raw cache-read token count
+      const parts = [icons.cache, icons.input, formatTokens(cacheRead)].filter(Boolean);
+      content = parts.join(" ");
+    }
     return { content: color(ctx, "tokens", content), visible: true };
   },
 };

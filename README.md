@@ -199,6 +199,22 @@ Subscription cost display accepts:
 | `reported-cost` | `$0.12` | `(sub)` |
 | `both` | `$0.12 (sub)` | `(sub)` |
 
+Segment display formats (opt-in; defaults match the historical rendering):
+
+| Segment option | Values | Default | Effect |
+|---|---|---|---|
+| `"context": { "format" }` | `"full"` / `"percent"` | `"full"` | `"percent"` shows a bare rounded `83%` (threshold-colored, no icon) instead of `12k/200k (6.2%)` |
+| `"cache_read": { "format" }` | `"tokens"` / `"percent"` | `"tokens"` | `"percent"` shows the cache hit rate `cacheRead / (input + cacheRead)` instead of the raw token count |
+
+```json
+{
+  "powerline": {
+    "context": { "format": "percent" },
+    "cache_read": { "format": "percent" }
+  }
+}
+```
+
 ## Bash mode
 
 Toggle bash mode with either:
