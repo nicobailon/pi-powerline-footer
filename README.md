@@ -432,6 +432,20 @@ By default the git segment polls both branch and dirty state. If background `git
 
 Use `"off"` to disable extension-owned git polling entirely and only show the branch reported by Pi when available.
 
+## Git host icon
+
+Set `git.hostIcon` to replace the branch icon with the origin remote's host logo:
+
+```json
+{
+  "powerline": {
+    "git": { "hostIcon": true }
+  }
+}
+```
+
+The origin remote is detected (SSH or HTTPS) and mapped to an icon: GitHub (), GitLab (), Bitbucket (), or a generic git logo () for any other remote (self-hosted, Gitea, Codeberg, …). Repositories without an origin remote keep the plain branch icon (), as do ASCII (non–Nerd Font) setups. The remote is read once and cached, so this adds no per-render cost. Default is `false` (branch icon unchanged).
+
 ## Segments
 
 `model` · `thinking` · `shell_mode` · `path` · `git` · `subagents` · `token_in` · `token_out` · `token_total` · `cost` · `context_pct` · `context_total` · `time_spent` · `time` · `session` · `hostname` · `cache_read` · `cache_write` · `extension_statuses`

@@ -6,6 +6,9 @@ export interface IconSet {
   folder: string;
   branch: string;
   git: string;
+  github: string;
+  gitlab: string;
+  bitbucket: string;
   tokens: string;
   context: string;
   cost: string;
@@ -56,6 +59,9 @@ export const NERD_ICONS: IconSet = {
   folder: "\uF115",     // nf-fa-folder_open
   branch: "\uF126",     // nf-fa-code_fork (git branch)
   git: "\uF1D3",        // nf-fa-git (git logo)
+  github: "\uF09B",     // nf-fa-github (octocat)
+  gitlab: "\uF296",     // nf-fa-gitlab (tanuki)
+  bitbucket: "\uF171",  // nf-fa-bitbucket
   tokens: "\uE26B",     // nf-seti-html (tokens symbol)
   context: "\uF1C0",    // nf-fa-database (stable Nerd Fonts v3 database)
   cost: "\uF155",       // nf-fa-dollar
@@ -77,6 +83,9 @@ export const ASCII_ICONS: IconSet = {
   folder: "dir",
   branch: "⎇",
   git: "⎇",
+  github: "⎇",
+  gitlab: "⎇",
+  bitbucket: "⎇",
   tokens: "⊛",
   context: "◫",
   cost: "$",

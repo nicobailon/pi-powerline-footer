@@ -147,7 +147,7 @@ test("parsePowerlineConfig extracts supported segment options", () => {
       preset: "default",
       model: { showThinkingLevel: true, display: "qualified" },
       path: { mode: "full", maxLength: 120 },
-      git: { showBranch: false, showStaged: false, showUnstaged: true, showUntracked: false, polling: "branch" },
+      git: { showBranch: false, showStaged: false, showUnstaged: true, showUntracked: false, polling: "branch", hostIcon: true },
       time: { format: "12h", showSeconds: true },
       cost: { subscriptionDisplay: "both" },
     },
@@ -157,7 +157,7 @@ test("parsePowerlineConfig extracts supported segment options", () => {
   assert.deepEqual(config.segmentOptions, {
     model: { showThinkingLevel: true, display: "qualified" },
     path: { mode: "full", maxLength: 120 },
-    git: { showBranch: false, showStaged: false, showUnstaged: true, showUntracked: false, polling: "branch" },
+    git: { showBranch: false, showStaged: false, showUnstaged: true, showUntracked: false, polling: "branch", hostIcon: true },
     time: { format: "12h", showSeconds: true },
     cost: { subscriptionDisplay: "both" },
   });

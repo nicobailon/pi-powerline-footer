@@ -91,6 +91,9 @@ export interface StatusLineSegmentOptions {
     showUnstaged?: boolean;
     showUntracked?: boolean;
     polling?: "full" | "branch" | "off";
+    /** Replace the branch icon with the origin remote's host logo
+     * (GitHub/GitLab/Bitbucket, or a generic git logo). Default false. */
+    hostIcon?: boolean;
   };
   time?: { format?: "12h" | "24h"; showSeconds?: boolean };
   cost?: { subscriptionDisplay?: "subscription" | "reported-cost" | "both" };

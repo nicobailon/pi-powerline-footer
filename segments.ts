@@ -5,6 +5,9 @@ import type { BuiltinStatusLineSegmentId, RenderedSegment, SegmentContext, Seman
 import { normalizeCompactExtensionStatus, normalizeExtensionStatusValue } from "./powerline-config.ts";
 import { fg, rainbow, applyColor } from "./theme.ts";
 import { getIcons, SEP_DOT, getThinkingText } from "./icons.ts";
+import { getGitRemoteHost } from "./git-status.ts";
+import type { IconSet } from "./icons.ts";
+import type { GitHost } from "./git-status.ts";
 
 function color(ctx: SegmentContext, semantic: SemanticColor, text: string): string {
   return fg(ctx.theme, semantic, text, ctx.colors);
@@ -127,6 +130,23 @@ const pathSegment: StatusLineSegment = {
   },
 };
 
+/**
+ * Icon for the branch label: the origin remote's host logo when hostIcon is
+ * enabled and a remote is known, otherwise the plain branch icon. An
+ * unrecognized remote falls back to the generic git logo.
+ */
+function resolveBranchIcon(icons: IconSet, hostIcon: boolean): string {
+  if (!hostIcon) return icons.branch;
+  const host = getGitRemoteHost();
+  const byHost: Record<GitHost, string> = {
+    github: icons.github,
+    gitlab: icons.gitlab,
+    bitbucket: icons.bitbucket,
+    other: icons.git,
+  };
+  return host ? byHost[host] : icons.branch;
+}
+
 const gitSegment: StatusLineSegment = {
   id: "git",
   render(ctx) {
@@ -147,7 +167,8 @@ const gitSegment: StatusLineSegment = {
     let content = "";
     if (showBranch && branch) {
       // Color just the branch name (icon + branch text)
-      content = color(ctx, branchColor, withIcon(icons.branch, branch));
+      const branchIcon = resolveBranchIcon(icons, opts.hostIcon === true);
+      content = color(ctx, branchColor, withIcon(branchIcon, branch));
     }
 
     // Add status indicators (each with their own color, not wrapped)

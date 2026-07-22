@@ -215,6 +215,7 @@ function normalizeSegmentOptions(raw: Record<string, unknown>): StatusLineSegmen
       ...(typeof raw.git.showUnstaged === "boolean" ? { showUnstaged: raw.git.showUnstaged } : {}),
       ...(typeof raw.git.showUntracked === "boolean" ? { showUntracked: raw.git.showUntracked } : {}),
       ...(raw.git.polling === "full" || raw.git.polling === "branch" || raw.git.polling === "off" ? { polling: raw.git.polling } : {}),
+      ...(typeof raw.git.hostIcon === "boolean" ? { hostIcon: raw.git.hostIcon } : {}),
     };
   }
 

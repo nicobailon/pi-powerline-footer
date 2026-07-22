@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- **Git host icon** — Added opt-in `powerline.git.hostIcon` to replace the git branch icon with a detected GitHub, GitLab, Bitbucket, or generic git host icon when an origin remote is available. Thanks to Andy8647 for #113.
 - **Segment display formats** — Added opt-in `powerline.context.format` and `powerline.cache_read.format` settings for compact percentage-style context and cache-read segments. Thanks to Andy8647 for #109.
 - **copyOnSelect toggle** — Added `powerline.copyOnSelect` (default `true`) to control whether mouse text selection auto-copies to clipboard on release. Set to `false` to disable auto-copy; the selection then stays highlighted with a `N characters selected, ctrl+c to copy` hint, and copies explicitly via `ctrl+c` or right-click. Thanks to Andy8647 for #105.
 - **Scroll-away card toggle** — Added `powerline.scrollAwayCard` and `/powerline scroll-away-card on|off|toggle` so the fixed editor and chat navigation shortcuts can remain enabled while the scroll-away hint card is hidden. Thanks to Alexander Gerdes (@Avg8888), Whisperfall, and Bruno Orsolon (@brunoorsolon) for #97/#108/#99.
