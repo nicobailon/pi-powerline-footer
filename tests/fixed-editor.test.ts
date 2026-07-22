@@ -1330,6 +1330,27 @@ test("terminal split still selects editor text on drag instead of clicking", () 
   compositor.dispose();
 });
 
+test("terminal split dismisses the drag highlight when the editor is typed into", () => {
+  const { inputListener, compositor, copied, clusterRowPacket } = editorClickHarness({
+    startRow: 0,
+    lineOffset: 0,
+    lineCount: 3,
+  });
+
+  const row = clusterRowPacket(1);
+  assert.deepEqual(inputListener()(`\x1b[<0;3;${row}M`), { consume: true });
+  assert.deepEqual(inputListener()(`\x1b[<32;9;${row}M`), { consume: true });
+  assert.deepEqual(inputListener()(`\x1b[<0;9;${row}m`), { consume: true });
+
+  // A backspace goes to the editor (not consumed) and clears the selection.
+  assert.equal(inputListener()("\x7f"), undefined);
+  // With the selection gone, ctrl+c no longer copies anything.
+  assert.equal(inputListener()("\x03"), undefined);
+  assert.equal(copied.length, 1);
+
+  compositor.dispose();
+});
+
 test("terminal split ignores clicks outside the editor region", () => {
   const { inputListener, compositor, clicks, clusterRowPacket } = editorClickHarness({
     startRow: 1,

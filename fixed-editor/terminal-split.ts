@@ -897,7 +897,16 @@ export class TerminalSplitCompositor {
     }
 
     const keyboardDelta = parseKeyboardScrollDelta(data, this.keyboardScrollShortcuts);
-    if (keyboardDelta === 0) return undefined;
+    if (keyboardDelta === 0) {
+      // Any other keystroke goes to the editor. The drag highlight is only a
+      // copy selection, not a live editor selection, so dismiss it instead of
+      // letting it linger over text that is being edited underneath.
+      if (this.selectionArea) {
+        this.clearSelection();
+        this.requestRender();
+      }
+      return undefined;
+    }
 
     this.flushQueuedScroll();
     this.scrollBy(keyboardDelta);
