@@ -1,6 +1,6 @@
 import { deleteAllKittyImages, isKeyRelease, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { matchesConfiguredShortcut } from "../shortcuts.ts";
-import type { FixedEditorClusterRender } from "./cluster.ts";
+import type { FixedEditorClusterRender, FixedEditorRegion } from "./cluster.ts";
 
 export interface TerminalLike {
   columns: number;
@@ -35,6 +35,14 @@ interface TerminalSplitCompositorOptions {
   keyboardScrollShortcuts?: KeyboardScrollShortcuts;
   scrollAwayNavigationCard?: ScrollAwayNavigationCardOptions;
   onCopySelection?: (text: string) => void;
+  /**
+   * Called when a left click lands on the editor without dragging, so the
+   * host can move the text cursor there. Coordinates are into the editor's
+   * own render (line index including its borders, screen column), because
+   * only the host knows how it laid the editor out. Dragging is unaffected
+   * and still produces a normal selection.
+   */
+  onEditorTextClick?: (editorLine: number, editorCol: number) => boolean;
   scrollRepaintThrottleMs?: number;
 }
 
@@ -546,6 +554,7 @@ export class TerminalSplitCompositor {
   private readonly keyboardScrollShortcuts: KeyboardScrollShortcuts;
   private readonly scrollAwayNavigationCard: ScrollAwayNavigationCardOptions | null;
   private readonly onCopySelection: ((text: string) => void) | null;
+  private readonly onEditorTextClick: ((editorLine: number, editorCol: number) => boolean) | null;
   private readonly scrollRepaintThrottleMs: number;
   private extendedKeyboardMode: ExtendedKeyboardMode | null = null;
   private readonly rowsDescriptor: PropertyDescriptor | undefined;
@@ -576,6 +585,7 @@ export class TerminalSplitCompositor {
   private visibleScrollableRows = 0;
   private visibleRootLines: string[] = [];
   private visibleClusterLines: string[] = [];
+  private visibleEditorRegion: FixedEditorRegion | null = null;
   private selectionArea: SelectionArea | null = null;
   private selectionAnchor: SelectionPoint | null = null;
   private selectionFocus: SelectionPoint | null = null;
@@ -594,6 +604,7 @@ export class TerminalSplitCompositor {
     this.keyboardScrollShortcuts = options.keyboardScrollShortcuts ?? DEFAULT_KEYBOARD_SCROLL_SHORTCUTS;
     this.scrollAwayNavigationCard = options.scrollAwayNavigationCard ?? null;
     this.onCopySelection = options.onCopySelection ?? null;
+    this.onEditorTextClick = options.onEditorTextClick ?? null;
     this.scrollRepaintThrottleMs = Math.max(0, options.scrollRepaintThrottleMs ?? 0);
     this.rowsDescriptor = descriptorForRows(options.terminal);
     this.originalWrite = options.terminal.write.bind(options.terminal);
@@ -1030,6 +1041,19 @@ export class TerminalSplitCompositor {
     return null;
   }
 
+  /**
+   * Map a row in the rendered cluster back to a line index in the editor's
+   * own render, or null when the row belongs to the status bar or a widget.
+   */
+  private editorLineForClusterRow(clusterRow: number): number | null {
+    const region = this.visibleEditorRegion;
+    if (!region || !this.onEditorTextClick) return null;
+
+    const offsetInRegion = clusterRow - region.startRow;
+    if (offsetInRegion < 0 || offsetInRegion >= region.lineCount) return null;
+    return region.lineOffset + offsetInRegion;
+  }
+
   private finishSelection(packet: SgrMousePacket, location: SelectionLocation | null): void {
     if (!this.preserveSelectionFocusOnRelease) {
       this.selectionFocus = location?.area === this.selectionArea
@@ -1044,7 +1068,16 @@ export class TerminalSplitCompositor {
       this.lastLeftPress = null;
       this.onCopySelection?.(selectedText);
     } else {
+      // Releasing without having dragged is a plain click. Inside the editor
+      // text that means "put the cursor here"; the selection is resolved on
+      // release rather than on press so dragging still selects text.
+      const clickArea = this.selectionArea;
+      const clickPoint = this.selectionAnchor;
       this.clearSelection();
+      if (clickArea === "cluster" && clickPoint) {
+        const editorLine = this.editorLineForClusterRow(clickPoint.line);
+        if (editorLine !== null) this.onEditorTextClick?.(editorLine, clickPoint.col);
+      }
     }
     this.requestRender();
   }
@@ -1481,6 +1514,7 @@ export class TerminalSplitCompositor {
 
     const cluster = this.withClusterRender(() => this.renderCluster(width, terminalRows));
     this.visibleClusterLines = cluster.lines;
+    this.visibleEditorRegion = cluster.editorRegion ?? null;
     if (this.renderPassActive) {
       this.renderPassCluster = { width, terminalRows, cluster };
     }

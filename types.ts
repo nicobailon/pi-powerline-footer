@@ -70,6 +70,15 @@ export type StatusLineSeparatorStyle =
 // Preset names
 export type PowerlinePlacement = "above" | "below";
 
+/**
+ * How the editor's text cursor is drawn.
+ * - "block": pi-tui's software cursor (reverse video), the default
+ * - "underline": software cursor drawn as an underline instead
+ * - "terminal": hide the software cursor and let the real terminal cursor
+ *   show through, so its shape and blinking follow the terminal's own config
+ */
+export type EditorCursorStyle = "block" | "underline" | "terminal";
+
 export type StatusLinePreset =
   | "default"
   | "minimal"

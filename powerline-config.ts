@@ -1,6 +1,6 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { BUILTIN_STATUS_LINE_SEGMENT_IDS } from "./types.ts";
-import type { ColorValue, CustomItemPosition, CustomStatusItem, PowerlinePlacement, PresetDef, StatusLineLayout, StatusLinePreset, StatusLineSegmentId, StatusLineSegmentOptions } from "./types.ts";
+import type { ColorValue, CustomItemPosition, CustomStatusItem, EditorCursorStyle, PowerlinePlacement, PresetDef, StatusLineLayout, StatusLinePreset, StatusLineSegmentId, StatusLineSegmentOptions } from "./types.ts";
 
 export interface PowerlineConfig {
   preset: StatusLinePreset;
@@ -16,6 +16,9 @@ export interface PowerlineConfig {
   invalidPlacement: string | null;
   welcome: boolean;
   stashSharpSShortcut: boolean;
+  editorCursor: EditorCursorStyle;
+  editorClickCursor: boolean;
+  scrollNavCard: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -40,6 +43,14 @@ function normalizePlacement(value: unknown): { placement: PowerlinePlacement; in
     placement: "above",
     invalidPlacement: typeof value === "string" ? value.trim() : String(value),
   };
+}
+
+function normalizeEditorCursor(value: unknown): EditorCursorStyle | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "block" || normalized === "underline" || normalized === "terminal"
+    ? normalized
+    : null;
 }
 
 function normalizeCustomItemId(value: unknown): string | null {
@@ -265,6 +276,9 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     invalidPlacement: null,
     welcome: true,
     stashSharpSShortcut: false,
+    editorCursor: "block",
+    editorClickCursor: false,
+    scrollNavCard: true,
   };
 
   const directPreset = normalizePreset(value, presets);
@@ -291,6 +305,9 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     invalidPlacement,
     welcome: value.welcome !== false,
     stashSharpSShortcut: value.stashSharpSShortcut === true,
+    editorCursor: normalizeEditorCursor(value.editorCursor) ?? defaultConfig.editorCursor,
+    editorClickCursor: value.editorClickCursor === true,
+    scrollNavCard: value.scrollNavCard !== false,
   };
 }
 

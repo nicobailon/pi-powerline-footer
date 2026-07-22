@@ -130,6 +130,34 @@ test("parsePowerlineConfig supports welcome and legacy sharp-S toggles", () => {
   assert.equal(shorthand.stashSharpSShortcut, false);
 });
 
+test("parsePowerlineConfig defaults editor mouse options to upstream behavior", () => {
+  const config = parsePowerlineConfig({ preset: "compact" }, ["default", "compact"]);
+
+  assert.equal(config.editorCursor, "block");
+  assert.equal(config.editorClickCursor, false);
+  assert.equal(config.scrollNavCard, true);
+});
+
+test("parsePowerlineConfig parses editor mouse options", () => {
+  const config = parsePowerlineConfig(
+    { preset: "compact", editorCursor: "terminal", editorClickCursor: true, scrollNavCard: false },
+    ["default", "compact"],
+  );
+
+  assert.equal(config.editorCursor, "terminal");
+  assert.equal(config.editorClickCursor, true);
+  assert.equal(config.scrollNavCard, false);
+});
+
+test("parsePowerlineConfig rejects an unknown editor cursor style", () => {
+  const config = parsePowerlineConfig(
+    { preset: "compact", editorCursor: "beam" },
+    ["default", "compact"],
+  );
+
+  assert.equal(config.editorCursor, "block");
+});
+
 test("parsePowerlineConfig extracts supported segment options", () => {
   const config = parsePowerlineConfig(
     {

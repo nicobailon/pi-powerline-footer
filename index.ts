@@ -9,7 +9,7 @@ import { isKeyRelease, type AutocompleteProvider, type SelectItem, SelectList, t
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 
-import type { ColorScheme, SegmentContext, StatusLinePreset, StatusLineSegmentId } from "./types.ts";
+import type { ColorScheme, EditorCursorStyle, SegmentContext, StatusLinePreset, StatusLineSegmentId } from "./types.ts";
 import type { PowerlineConfig } from "./powerline-config.ts";
 import { BashTranscriptStore } from "./bash-mode/transcript.ts";
 import {
@@ -82,6 +82,9 @@ let config: PowerlineConfig = {
   invalidPlacement: null,
   welcome: true,
   stashSharpSShortcut: false,
+  editorCursor: "block",
+  editorClickCursor: false,
+  scrollNavCard: true,
 };
 
 const CUSTOM_COMPACTION_STATUS_KEY = "compact-policy";
@@ -933,6 +936,44 @@ export function parseBashModeSettings(settings: Record<string, unknown>, powerli
     transcriptMaxLines,
     transcriptMaxBytes,
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Editor Cursor
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Column where editor text starts: one space, the prompt glyph, one space.
+ * Continuation rows are padded to match.
+ */
+const EDITOR_TEXT_COLUMN = 3;
+
+/**
+ * Convert a display column inside a logical line to a string index, walking
+ * code points from `fromIndex` and accumulating display widths so wide
+ * characters count as the columns they actually occupy.
+ */
+export function displayColumnToStringIndex(line: string, fromIndex: number, targetCol: number): number {
+  let col = 0;
+  let i = Math.max(0, Math.min(fromIndex, line.length));
+  while (i < line.length && col < targetCol) {
+    const ch = String.fromCodePoint(line.codePointAt(i) ?? 0);
+    col += Math.max(1, visibleWidth(ch));
+    i += ch.length;
+  }
+  return i;
+}
+
+/**
+ * Restyle the editor's software cursor, which pi-tui draws as reverse video.
+ * "block" keeps it as-is, "underline" trades the reverse block for an
+ * underline, and "terminal" removes it entirely so the real terminal cursor
+ * (already parked on the same cell) is what the user sees.
+ */
+export function applyEditorCursorStyle(line: string, style: EditorCursorStyle): string {
+  if (style === "block") return line;
+  const replacement = style === "underline" ? "\x1b[4m$1\x1b[0m" : "$1";
+  return line.replace(/\x1b\[7m([\s\S]{1,2}?)\x1b\[0m/g, replacement);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2393,6 +2434,53 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     return { container: children[index], index };
   }
 
+  /**
+   * "terminal" cursor mode drops the software cursor, so the real terminal
+   * cursor has to be visible for anything to mark the caret position. The
+   * other modes leave pi's own default alone.
+   */
+  function applyEditorCursorMode(tui: any): void {
+    if (config.editorCursor !== "terminal") return;
+    tui?.setShowHardwareCursor?.(true);
+  }
+
+  /**
+   * Move the editor's text cursor to a point the user clicked. Coordinates
+   * come from the compositor as a line index into this extension's editor
+   * render, so the box borders and prompt prefix are undone here.
+   */
+  function positionEditorCursorAt(tui: any, editorLine: number, editorCol: number): boolean {
+    if (!config.editorClickCursor) return false;
+
+    // Line 0 is the top border; every text row carries a 3-column prefix.
+    const visualRow = editorLine - 1;
+    const visualCol = editorCol - EDITOR_TEXT_COLUMN;
+    if (visualRow < 0 || visualCol < 0) return false;
+
+    const editor: any = currentEditor;
+    if (!editor?.state || typeof editor.buildVisualLineMap !== "function") return false;
+
+    try {
+      const width = Math.max(1, editor.lastWidth ?? 80);
+      const visualLines = editor.buildVisualLineMap(width) as Array<{ logicalLine: number; startCol: number; length: number }>;
+      const row = visualRow + (editor.scrollOffset ?? 0);
+      const visualLine = visualLines[row];
+      if (!visualLine) return false;
+
+      const text: string = editor.state.lines[visualLine.logicalLine] ?? "";
+      const index = displayColumnToStringIndex(text, visualLine.startCol, visualCol);
+      editor.state.cursorLine = visualLine.logicalLine;
+      editor.state.cursorCol = Math.max(visualLine.startCol, Math.min(index, visualLine.startCol + visualLine.length));
+      editor.preferredVisualCol = null;
+      editor.snappedFromCursorCol = null;
+      tui?.requestRender?.();
+      return true;
+    } catch (error) {
+      console.debug("[powerline-footer] editor click cursor failed:", error);
+      return false;
+    }
+  }
+
   function installFixedEditorCompositor(ctx: any, tui: any) {
     teardownFixedEditorCompositor();
 
@@ -2441,17 +2529,20 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         down: resolvedShortcuts.scrollChatDown,
       },
       scrollRepaintThrottleMs: DEFAULT_SCROLL_REPAINT_THROTTLE_MS,
-      scrollAwayNavigationCard: {
-        shortcuts: [
-          scrollAwayShortcutEntry("bottom", resolvedShortcuts.jumpChatBottom),
-          scrollAwayShortcutEntry("previousUser", resolvedShortcuts.jumpPreviousUserMessage),
-          scrollAwayShortcutEntry("nextUser", resolvedShortcuts.jumpNextUserMessage),
-          scrollAwayShortcutEntry("previousAssistant", resolvedShortcuts.jumpPreviousLlmMessage),
-          scrollAwayShortcutEntry("nextAssistant", resolvedShortcuts.jumpNextLlmMessage),
-        ].filter((shortcut): shortcut is { id: ScrollAwayShortcutId; shortcutLabel: string } => shortcut !== null),
-        onClickBottom: resolvedShortcuts.jumpChatBottom ? () => jumpChatToBottom(ctx) : undefined,
-      },
+      scrollAwayNavigationCard: config.scrollNavCard
+        ? {
+          shortcuts: [
+            scrollAwayShortcutEntry("bottom", resolvedShortcuts.jumpChatBottom),
+            scrollAwayShortcutEntry("previousUser", resolvedShortcuts.jumpPreviousUserMessage),
+            scrollAwayShortcutEntry("nextUser", resolvedShortcuts.jumpNextUserMessage),
+            scrollAwayShortcutEntry("previousAssistant", resolvedShortcuts.jumpPreviousLlmMessage),
+            scrollAwayShortcutEntry("nextAssistant", resolvedShortcuts.jumpNextLlmMessage),
+          ].filter((shortcut): shortcut is { id: ScrollAwayShortcutId; shortcutLabel: string } => shortcut !== null),
+          onClickBottom: resolvedShortcuts.jumpChatBottom ? () => jumpChatToBottom(ctx) : undefined,
+        }
+        : undefined,
       onCopySelection: (text) => copyTextToClipboard(ctx, text),
+      onEditorTextClick: (editorLine, editorCol) => positionEditorCursorAt(tui, editorLine, editorCol),
       getShowHardwareCursor: () => typeof tui.getShowHardwareCursor === "function" && tui.getShowHardwareCursor(),
       renderCluster: (width, terminalRows) => {
         const theme = readRenderTheme();
@@ -2840,6 +2931,12 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           result.push(lines[i] || "");
         }
 
+        if (config.editorCursor !== "block") {
+          for (let i = 0; i < result.length; i++) {
+            result[i] = applyEditorCursorStyle(result[i] ?? "", config.editorCursor);
+          }
+        }
+
         return result;
       };
 
@@ -2851,6 +2948,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     ctx.ui.setFooter((tui: any, _theme: Theme, footerData: ReadonlyFooterDataProvider) => {
       footerDataRef = footerData;
       tuiRef = tui;
+      applyEditorCursorMode(tui);
       installFooterStatusRepaintHook(footerData);
       const unsub = footerData.onBranchChange(() => requestStatusRender());
 

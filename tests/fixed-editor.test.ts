@@ -64,6 +64,8 @@ test("fixed cluster keeps the editor visible before optional rows", () => {
 
   assert.deepEqual(rendered.lines, ["top", "edit-a", "edit-b ", "edit-c", "secondary"]);
   assert.deepEqual(rendered.cursor, { row: 2, col: 7 });
+  // Editor rows sit after the primary powerline row, none dropped.
+  assert.deepEqual(rendered.editorRegion, { startRow: 1, lineOffset: 0, lineCount: 3 });
 });
 
 test("fixed cluster places only the primary powerline below the editor", () => {
@@ -81,6 +83,8 @@ test("fixed cluster places only the primary powerline below the editor", () => {
 
   assert.deepEqual(rendered.lines, ["notification", "working", "edit ", "primary", "overflow", "transcript", "last"]);
   assert.deepEqual(rendered.cursor, { row: 2, col: 5 });
+  // Below placement puts the editor right after the status lines.
+  assert.deepEqual(rendered.editorRegion, { startRow: 2, lineOffset: 0, lineCount: 1 });
 });
 
 test("fixed cluster keeps primary and overflow priority when placement is below", () => {
@@ -112,6 +116,21 @@ test("fixed cluster caps oversized editor around the cursor", () => {
 
   assert.deepEqual(rendered.lines, ["edit-a", "edit-b", "edit-c "]);
   assert.deepEqual(rendered.cursor, { row: 2, col: 7 });
+  // Two trailing editor lines were dropped to keep the cursor row visible, but
+  // no leading lines, so the region still starts at offset 0.
+  assert.deepEqual(rendered.editorRegion, { startRow: 0, lineOffset: 0, lineCount: 3 });
+});
+
+test("fixed cluster reports the dropped leading editor lines as an offset", () => {
+  const rendered = renderFixedEditorCluster({
+    width: 80,
+    terminalRows: 4,
+    placement: "above",
+    editorLines: ["edit-a", "edit-b", "edit-c", `edit-d ${CURSOR_MARKER}`, "edit-e"],
+  });
+
+  assert.deepEqual(rendered.lines, ["edit-b", "edit-c", "edit-d "]);
+  assert.deepEqual(rendered.editorRegion, { startRow: 0, lineOffset: 1, lineCount: 3 });
 });
 
 test("fixed cluster caps selector-style editor replacements around the selected row", () => {
@@ -1214,6 +1233,115 @@ test("terminal split pauses mouse reporting on right click for the terminal cont
   assert.deepEqual(inputListener?.("\x1b[<0;5;5m"), { consume: true });
   assert.deepEqual(copied, []);
   assert.deepEqual(renderRequests, [undefined, undefined, undefined, undefined]);
+
+  compositor.dispose();
+});
+
+function editorClickHarness(editorRegion: { startRow: number; lineOffset: number; lineCount: number }) {
+  const terminal = new FakeTerminal();
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const copied: string[] = [];
+  const clicks: Array<{ editorLine: number; editorCol: number }> = [];
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => {
+        inputListener = null;
+      };
+    },
+    requestRender() {},
+    render() {
+      return Array.from({ length: 20 }, (_, index) => `line-${index}`);
+    },
+  };
+
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    onCopySelection: (text) => copied.push(text),
+    onEditorTextClick: (editorLine, editorCol) => {
+      clicks.push({ editorLine, editorCol });
+      return true;
+    },
+    renderCluster: () => ({
+      lines: ["editor-top", "editor-body-a", "editor-body-b"],
+      cursor: null,
+      editorRegion,
+    }),
+  });
+
+  compositor.install();
+  tui.render(40);
+  // 12 terminal rows minus 3 cluster lines leaves a 9-row root viewport, so the
+  // first cluster row is packet row 10.
+  const clusterRowPacket = (clusterRow: number) => 10 + clusterRow;
+  return { inputListener: () => inputListener!, compositor, copied, clicks, clusterRowPacket };
+}
+
+test("terminal split moves the editor cursor on a plain click without selecting", () => {
+  const { inputListener, compositor, copied, clicks, clusterRowPacket } = editorClickHarness({
+    startRow: 0,
+    lineOffset: 0,
+    lineCount: 3,
+  });
+
+  const row = clusterRowPacket(1);
+  assert.deepEqual(inputListener()(`\x1b[<0;7;${row}M`), { consume: true });
+  assert.deepEqual(inputListener()(`\x1b[<0;7;${row}m`), { consume: true });
+
+  assert.deepEqual(clicks, [{ editorLine: 1, editorCol: 6 }]);
+  assert.deepEqual(copied, []);
+
+  compositor.dispose();
+});
+
+test("terminal split applies the editor line offset when mapping clicks", () => {
+  const { inputListener, compositor, clicks, clusterRowPacket } = editorClickHarness({
+    startRow: 0,
+    lineOffset: 4,
+    lineCount: 3,
+  });
+
+  const row = clusterRowPacket(2);
+  assert.deepEqual(inputListener()(`\x1b[<0;3;${row}M`), { consume: true });
+  assert.deepEqual(inputListener()(`\x1b[<0;3;${row}m`), { consume: true });
+
+  assert.deepEqual(clicks, [{ editorLine: 6, editorCol: 2 }]);
+
+  compositor.dispose();
+});
+
+test("terminal split still selects editor text on drag instead of clicking", () => {
+  const { inputListener, compositor, copied, clicks, clusterRowPacket } = editorClickHarness({
+    startRow: 0,
+    lineOffset: 0,
+    lineCount: 3,
+  });
+
+  const row = clusterRowPacket(1);
+  assert.deepEqual(inputListener()(`\x1b[<0;3;${row}M`), { consume: true });
+  assert.deepEqual(inputListener()(`\x1b[<32;9;${row}M`), { consume: true });
+  assert.deepEqual(inputListener()(`\x1b[<0;9;${row}m`), { consume: true });
+
+  assert.deepEqual(clicks, []);
+  assert.equal(copied.length, 1);
+
+  compositor.dispose();
+});
+
+test("terminal split ignores clicks outside the editor region", () => {
+  const { inputListener, compositor, clicks, clusterRowPacket } = editorClickHarness({
+    startRow: 1,
+    lineOffset: 0,
+    lineCount: 2,
+  });
+
+  const row = clusterRowPacket(0);
+  assert.deepEqual(inputListener()(`\x1b[<0;5;${row}M`), { consume: true });
+  assert.deepEqual(inputListener()(`\x1b[<0;5;${row}m`), { consume: true });
+
+  assert.deepEqual(clicks, []);
 
   compositor.dispose();
 });
