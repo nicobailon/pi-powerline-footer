@@ -164,6 +164,11 @@ test("extension status changes invalidate powerline status rendering", () => {
   assert.match(source, /restoreFooterStatusRepaintHook\?\.\(\);\n\s+restoreFooterStatusRepaintHook = null;/);
 });
 
+test("fixed editor passes top-level outputPad to the compositor", () => {
+  assert.match(source, /function readOutputPadSetting\(cwd: string = process\.cwd\(\)\): number \{\n\s+return readSettings\(cwd\)\.outputPad === 0 \? 0 : 1;\n\}/);
+  assert.match(source, /outputPad: readOutputPadSetting\(ctx\.cwd\)/);
+});
+
 test("fixed editor captures Pi status messages with the editor cluster", () => {
   assert.match(source, /let fixedStatusContainer: any = null/);
   assert.match(source, /const statusContainerCandidate = tuiChildren\[editorContainerMatch\.index - 2\] \?\? null/);

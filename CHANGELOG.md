@@ -15,6 +15,7 @@
 - **Fixed-editor scrolling performance** — Uses terminal row shifts, cached transcript lines, an 8 ms repaint cadence, and transient shortcut-card hiding during active wheel movement to cut scroll latency and terminal output churn.
 
 ### Fixed
+- **Fixed-editor output padding** — Applies top-level `outputPad` as the fixed-editor outer inset so fixed-editor mode matches Pi’s regular output spacing. Thanks to Gabriel Dehan for #104.
 - **Fixed-editor keyboard negotiation** — Retries extended keyboard mode setup briefly after entering the alternate screen so late Kitty/modifyOtherKeys negotiation is enabled on the active screen. Thanks to Raymond Ko for #102.
 - **Theme override path** — Loads `theme.json` from the documented agent-dir `extensions/powerline-footer` path before falling back to the loaded package directory, and clarifies setup docs for `showLastPrompt` and layout rows. Thanks to MeisterP for #117.
 - **Print-mode terminal cleanup** — Terminal reset and cursor restoration sequences run only during interactive TUI shutdowns, keeping `pi -p` output visible. Thanks to Sergey Konkin (@sergeykonkin) for #101.

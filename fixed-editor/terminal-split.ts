@@ -39,6 +39,7 @@ interface TerminalSplitCompositorOptions {
   /** When false, mouse release does not auto-copy; explicit copy (right-click, ctrl+c) still works. Default true. */
   autoCopyOnSelect?: boolean;
   scrollRepaintThrottleMs?: number;
+  outputPad?: number;
 }
 
 interface PatchedRenderable {
@@ -568,6 +569,7 @@ export class TerminalSplitCompositor {
   private readonly onCopySelection: ((text: string, source: "auto" | "explicit") => void) | null;
   private readonly autoCopyOnSelect: boolean;
   private readonly scrollRepaintThrottleMs: number;
+  private readonly outputPad: number;
   private extendedKeyboardMode: ExtendedKeyboardMode | null = null;
   private readonly rowsDescriptor: PropertyDescriptor | undefined;
   private readonly originalWrite: (data: string) => void;
@@ -621,6 +623,7 @@ export class TerminalSplitCompositor {
     this.onCopySelection = options.onCopySelection ?? null;
     this.autoCopyOnSelect = options.autoCopyOnSelect !== false;
     this.scrollRepaintThrottleMs = Math.max(0, options.scrollRepaintThrottleMs ?? 0);
+    this.outputPad = Number.isFinite(options.outputPad) ? Math.max(0, Math.floor(options.outputPad ?? 0)) : 0;
     this.rowsDescriptor = descriptorForRows(options.terminal);
     this.originalWrite = options.terminal.write.bind(options.terminal);
     this.originalDoRender = typeof options.tui.doRender === "function" ? options.tui.doRender.bind(options.tui) : null;
@@ -907,14 +910,41 @@ export class TerminalSplitCompositor {
     }
   }
 
+  private outerPadding(width: number): number {
+    return Math.min(this.outputPad, Math.max(0, Math.floor((width - 1) / 2)));
+  }
+
+  private innerWidth(width: number): number {
+    return Math.max(1, width - this.outerPadding(width) * 2);
+  }
+
+  private insetLine(line: string, width: number): string {
+    const padding = this.outerPadding(width);
+    if (padding === 0) return sanitizeLine(line, width);
+
+    return `${" ".repeat(padding)}${sanitizeLine(line, this.innerWidth(width))}${" ".repeat(padding)}`;
+  }
+
+  private contentCol(packet: SgrMousePacket, width: number): number | null {
+    const padding = this.outerPadding(width);
+    const col = packet.col - 1 - padding;
+    return col >= 0 && col < this.innerWidth(width) ? col : null;
+  }
+
+  private clampedContentCol(packet: SgrMousePacket, width: number): number {
+    const padding = this.outerPadding(width);
+    return Math.max(0, Math.min(packet.col - 1 - padding, this.innerWidth(width)));
+  }
+
   private refreshRootWindow(width: number): number {
     if (!this.originalRender) return this.updateVisibleRootWindow();
 
     const rawRows = this.getRawRows();
     const renderWidth = Math.max(1, Number.isFinite(width) ? width : this.terminal.columns || 80);
+    const contentWidth = this.innerWidth(renderWidth);
     const cluster = this.getCluster(renderWidth, rawRows);
     const scrollableRows = Math.max(1, rawRows - cluster.lines.length);
-    const lines = this.originalRender(renderWidth);
+    const lines = this.originalRender(contentWidth);
     this.rootLines = lines;
     if (this.scrollOffset > 0 && this.lastRootLineCount > 0 && lines.length > this.lastRootLineCount) {
       this.scrollOffset += lines.length - this.lastRootLineCount;
@@ -1051,20 +1081,21 @@ export class TerminalSplitCompositor {
 
   private renderVisibleRootLines(start: number, width: number, scrollableRows: number): string[] {
     this.visibleRootWidth = width;
+    const contentWidth = this.innerWidth(width);
     const renderedLines = this.visibleRootLines.map((line, index) => {
       return this.renderSelectionHighlight(line, start + index, "root");
     });
-    const card = this.computeScrollAwayNavigationCard(width, scrollableRows);
-    if (!card) return renderedLines;
+    const card = this.computeScrollAwayNavigationCard(contentWidth, scrollableRows);
+    if (!card) return renderedLines.map((line) => this.insetLine(line, width));
 
     const firstCardRow = scrollableRows - card.lines.length;
     for (let index = 0; index < card.lines.length; index++) {
       const row = firstCardRow + index;
       if (row < 0 || row >= renderedLines.length) continue;
-      renderedLines[row] = this.composeScrollAwayCardLine(renderedLines[row] ?? "", card.lines[index] ?? "", card.startCol, card.width, width);
+      renderedLines[row] = this.composeScrollAwayCardLine(renderedLines[row] ?? "", card.lines[index] ?? "", card.startCol, card.width, contentWidth);
     }
 
-    return renderedLines;
+    return renderedLines.map((line) => this.insetLine(line, width));
   }
 
   private composeScrollAwayCardLine(baseLine: string, overlayLine: string, startCol: number, overlayWidth: number, totalWidth: number): string {
@@ -1088,10 +1119,12 @@ export class TerminalSplitCompositor {
   }
 
   private isScrollAwayCardClick(packet: SgrMousePacket, width: number): boolean {
-    const card = this.computeScrollAwayNavigationCard(width, this.visibleScrollableRows);
+    const card = this.computeScrollAwayNavigationCard(this.innerWidth(width), this.visibleScrollableRows);
     if (!card) return false;
 
-    const col = Math.max(0, packet.col - 1);
+    const col = this.contentCol(packet, width);
+    if (col === null) return false;
+
     return card.bounds.some((bound) => {
       return packet.row === bound.row && col >= bound.startCol && col < bound.endCol;
     });
@@ -1186,7 +1219,9 @@ export class TerminalSplitCompositor {
   private selectionLocationForPacket(packet: SgrMousePacket): SelectionLocation | null {
     if (packet.row < 1) return null;
 
-    const col = Math.max(0, packet.col - 1);
+    const col = this.contentCol(packet, Math.max(1, this.terminal.columns || 80));
+    if (col === null) return null;
+
     if (packet.row <= this.visibleScrollableRows) {
       return {
         area: "root",
@@ -1220,24 +1255,25 @@ export class TerminalSplitCompositor {
     const edgeLine = delta > 0 ? start : start + Math.max(0, this.visibleScrollableRows - 1);
     this.selectionFocus = {
       line: edgeLine,
-      col: Math.max(0, packet.col - 1),
+      col: this.clampedContentCol(packet, Math.max(1, this.terminal.columns || 80)),
     };
     this.requestRender();
     return true;
   }
 
   private clampedSelectionPointForPacket(packet: SgrMousePacket, area: SelectionArea | null): SelectionPoint {
+    const col = this.clampedContentCol(packet, Math.max(1, this.terminal.columns || 80));
     if (area === "cluster") {
       return {
         line: Math.max(0, Math.min(packet.row - this.visibleScrollableRows - 1, this.visibleClusterLines.length - 1)),
-        col: Math.max(0, packet.col - 1),
+        col,
       };
     }
 
     const row = Math.max(1, Math.min(packet.row, this.visibleScrollableRows));
     return {
       line: this.visibleRootStart + row - 1,
-      col: Math.max(0, packet.col - 1),
+      col,
     };
   }
 
@@ -1432,8 +1468,9 @@ export class TerminalSplitCompositor {
     const previousScrollableRows = this.visibleScrollableRows;
     const previousRootStart = this.visibleRootStart;
     const previousVisibleRootLines = this.visibleRootLines;
+    const contentWidth = this.innerWidth(width);
     const previousCard = previousCardVisible
-      ? this.computeScrollAwayNavigationCard(width, previousScrollableRows, previousScrollOffset, true)
+      ? this.computeScrollAwayNavigationCard(contentWidth, previousScrollableRows, previousScrollOffset, true)
       : null;
     const start = this.updateVisibleRootWindow(scrollableRows);
     const visibleLines = this.renderVisibleRootLines(start, width, scrollableRows);
@@ -1454,7 +1491,7 @@ export class TerminalSplitCompositor {
           const row = bound.row - 1;
           buffer += moveCursor(bound.row, 1);
           buffer += clearLine();
-          buffer += sanitizeLine(previousVisibleRootLines[row] ?? "", width);
+          buffer += this.insetLine(previousVisibleRootLines[row] ?? "", width);
         }
       }
 
@@ -1466,10 +1503,10 @@ export class TerminalSplitCompositor {
       for (let row = firstExposedRow; row < lastExposedRow; row++) {
         buffer += moveCursor(row + 1, 1);
         buffer += clearLine();
-        buffer += sanitizeLine(this.visibleRootLines[row] ?? "", width);
+        buffer += sanitizeLine(visibleLines[row] ?? "", width);
       }
 
-      const card = this.computeScrollAwayNavigationCard(width, scrollableRows);
+      const card = this.computeScrollAwayNavigationCard(contentWidth, scrollableRows);
       if (card) {
         for (const bound of card.bounds) {
           const row = bound.row - 1;
@@ -1670,7 +1707,7 @@ export class TerminalSplitCompositor {
       return this.renderPassCluster.cluster;
     }
 
-    const cluster = this.withClusterRender(() => this.renderCluster(width, terminalRows));
+    const cluster = this.withClusterRender(() => this.renderCluster(this.innerWidth(width), terminalRows));
     this.visibleClusterLines = cluster.lines;
     if (this.renderPassActive) {
       this.renderPassCluster = { width, terminalRows, cluster };
@@ -1679,13 +1716,17 @@ export class TerminalSplitCompositor {
   }
 
   private decorateCluster(cluster: FixedEditorClusterRender, width: number): FixedEditorClusterRender {
+    const contentWidth = this.innerWidth(width);
     const lines = this.selectionArea === "cluster"
       ? cluster.lines.map((line, index) => this.renderSelectionHighlight(line, index, "cluster"))
       : cluster.lines;
+    const paddedLines = this.overlaySelectionHint(lines, contentWidth).map((line) => this.insetLine(line, width));
+    const padding = this.outerPadding(width);
 
     return {
       ...cluster,
-      lines: this.overlaySelectionHint(lines, width),
+      cursor: cluster.cursor ? { ...cluster.cursor, col: cluster.cursor.col + padding } : null,
+      lines: paddedLines,
     };
   }
 

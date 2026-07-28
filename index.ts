@@ -607,6 +607,10 @@ function readSettings(cwd: string = process.cwd()): Record<string, unknown> {
   return mergeSettings(readSettingsFile(getSettingsPath()), readSettingsFile(getProjectSettingsPath(cwd)));
 }
 
+function readOutputPadSetting(cwd: string = process.cwd()): number {
+  return readSettings(cwd).outputPad === 0 ? 0 : 1;
+}
+
 function writePowerlineSetting(cwd: string, update: (existingPowerlineSetting: unknown) => unknown): boolean {
   const globalSettingsPath = getSettingsPath();
   const projectSettingsPath = getProjectSettingsPath(cwd);
@@ -2449,6 +2453,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         down: resolvedShortcuts.scrollChatDown,
       },
       scrollRepaintThrottleMs: DEFAULT_SCROLL_REPAINT_THROTTLE_MS,
+      outputPad: readOutputPadSetting(ctx.cwd),
       scrollAwayNavigationCard: config.scrollAwayCard ? {
         shortcuts: [
           scrollAwayShortcutEntry("bottom", resolvedShortcuts.jumpChatBottom),
