@@ -4,6 +4,7 @@ import { TUI, visibleWidth } from "@earendil-works/pi-tui";
 import { CURSOR_MARKER, renderFixedEditorCluster } from "../fixed-editor/cluster.ts";
 import {
   buildFixedClusterPaint,
+  DEFAULT_SCROLL_REPAINT_THROTTLE_MS,
   emergencyTerminalModeReset,
   endSynchronizedOutput,
   beginSynchronizedOutput,
@@ -588,6 +589,180 @@ test("terminal split renders chat through an app-owned scroll viewport", () => {
   assert.equal(inputListener, null);
 });
 
+test("terminal split scrolls the viewport with terminal row shifts", () => {
+  const terminal = new FakeTerminal();
+  terminal.columns = 40;
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  let rootRenderCalls = 0;
+  const rootLines = Array.from({ length: 30 }, (_, index) => `line-${index}`);
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => { inputListener = null; };
+    },
+    requestRender() {},
+    render() {
+      rootRenderCalls += 1;
+      return rootLines;
+    },
+  };
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render(40);
+  terminal.writes = [];
+
+  assert.deepEqual(inputListener?.("\x1b[<64;1;1M"), { consume: true });
+  assert.equal(rootRenderCalls, 1);
+  assert.equal(terminal.writes.length, 1);
+  assert.match(terminal.writes[0] ?? "", /\x1b\[3T/);
+  assert.equal((terminal.writes[0]?.match(/\x1b\[2K/g) ?? []).length, 5);
+  assert.deepEqual(tui.render(40).slice(0, 3), ["line-17", "line-18", "line-19"]);
+
+  terminal.writes = [];
+  assert.deepEqual(inputListener?.("\x1b[<65;1;1M"), { consume: true });
+  assert.equal(terminal.writes.length, 1);
+  assert.match(terminal.writes[0] ?? "", /\x1b\[3S/);
+  assert.equal((terminal.writes[0]?.match(/\x1b\[2K/g) ?? []).length, 5);
+  assert.deepEqual(tui.render(40).slice(0, 3), ["line-20", "line-21", "line-22"]);
+
+  compositor.dispose();
+});
+
+test("terminal split refreshes root lines when Pi has a render pending", () => {
+  const terminal = new FakeTerminal();
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  let rootLines = Array.from({ length: 30 }, (_, index) => `old-${index}`);
+  const tui = {
+    terminal,
+    renderRequested: false,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => { inputListener = null; };
+    },
+    requestRender() {},
+    render() {
+      return rootLines;
+    },
+  };
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render(40);
+  rootLines = Array.from({ length: 31 }, (_, index) => `new-${index}`);
+  tui.renderRequested = true;
+
+  inputListener?.("\x1b[<64;1;1M");
+  assert.ok(tui.render(40).every((line) => line.startsWith("new-")));
+
+  compositor.dispose();
+});
+
+test("terminal split removes the old navigation card before shifting rows", () => {
+  const terminal = new FakeTerminal();
+  terminal.columns = 80;
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const rootLines = Array.from({ length: 40 }, (_, index) => `line-${index}`);
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => { inputListener = null; };
+    },
+    requestRender() {},
+    render() {
+      return rootLines;
+    },
+  };
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    scrollAwayNavigationCard: navigationCardOptions(),
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render(80);
+  inputListener?.("\x1b[<64;1;1M");
+  terminal.writes = [];
+  inputListener?.("\x1b[<64;1;1M");
+
+  const paint = terminal.writes[0] ?? "";
+  const shiftIndex = paint.indexOf("\x1b[3T");
+  assert.notEqual(shiftIndex, -1);
+  assert.ok(paint.indexOf("line-", 0) < shiftIndex, "old card rows should be restored before the terminal shift");
+  assert.ok(paint.indexOf("Jump to bottom") > shiftIndex, "the card should be repainted after the terminal shift");
+  assert.ok(tui.render(80).some((line) => line.includes("Jump to bottom")));
+
+  compositor.dispose();
+});
+
+test("terminal split defers the navigation card while wheel scrolling is active", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+
+  const terminal = new FakeTerminal();
+  terminal.columns = 80;
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const renderRequests: Array<boolean | undefined> = [];
+  const rootLines = Array.from({ length: 40 }, (_, index) => `line-${index}`);
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => { inputListener = null; };
+    },
+    requestRender(force?: boolean) {
+      renderRequests.push(force);
+    },
+    render() {
+      return rootLines;
+    },
+  };
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    scrollRepaintThrottleMs: DEFAULT_SCROLL_REPAINT_THROTTLE_MS,
+    scrollAwayNavigationCard: navigationCardOptions(),
+    renderCluster: () => ({ lines: ["cluster-a", "cluster-b"], cursor: null }),
+  });
+
+  compositor.install();
+  tui.render(80);
+  terminal.writes = [];
+  inputListener?.("\x1b[<64;1;1M");
+
+  t.mock.timers.tick(7);
+  assert.equal(terminal.writes.length, 0);
+  t.mock.timers.tick(1);
+  assert.equal(terminal.writes.length, 1);
+  assert.doesNotMatch(terminal.writes[0] ?? "", /Jump to bottom/);
+  assert.equal((terminal.writes[0]?.match(/\x1b\[2K/g) ?? []).length, 5);
+  assert.ok(!tui.render(80).some((line) => line.includes("Jump to bottom")));
+
+  t.mock.timers.tick(80);
+  assert.deepEqual(renderRequests, [undefined]);
+  assert.ok(tui.render(80).some((line) => line.includes("Jump to bottom")));
+
+  terminal.writes = [];
+  inputListener?.("\x1b[<64;1;1M");
+  t.mock.timers.tick(8);
+  const paint = terminal.writes[0] ?? "";
+  assert.match(paint, /\x1b\[3T/);
+  assert.ok(paint.indexOf("line-") < paint.indexOf("\x1b[3T"));
+  assert.doesNotMatch(paint, /Jump to bottom/);
+
+  compositor.dispose();
+});
+
 test("terminal split coalesces throttled wheel bursts", (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
 
@@ -1081,7 +1256,6 @@ test("terminal split refreshes scroll bounds after fixed status rows appear", ()
   assert.deepEqual(tui.render(40), rootLines);
 
   statusVisible = true;
-  compositor.requestRepaint();
 
   assert.deepEqual(inputListener?.("\x1b[<64;1;1M"), { consume: true });
   assert.deepEqual(renderRequests, [undefined]);
@@ -1091,6 +1265,46 @@ test("terminal split refreshes scroll bounds after fixed status rows appear", ()
     "line-0", "line-1", "line-2", "line-3", "line-4",
     "line-5", "line-6", "line-7", "line-8", "line-9",
   ]);
+
+  compositor.dispose();
+});
+
+test("terminal split clamps a stale offset when fixed rows disappear before repaint", () => {
+  const terminal = new FakeTerminal();
+  let inputListener: ((data: string) => { consume?: boolean; data?: string } | undefined) | null = null;
+  const rootLines = Array.from({ length: 12 }, (_, index) => `line-${index}`);
+  let statusVisible = true;
+  const tui = {
+    terminal,
+    addInputListener(listener: (data: string) => { consume?: boolean; data?: string } | undefined) {
+      inputListener = listener;
+      return () => { inputListener = null; };
+    },
+    requestRender() {},
+    render() {
+      return rootLines;
+    },
+  };
+  const compositor = new TerminalSplitCompositor({
+    tui,
+    terminal,
+    renderCluster: () => ({
+      lines: statusVisible ? ["⠏ fixed status", "editor"] : ["editor"],
+      cursor: null,
+    }),
+  });
+
+  compositor.install();
+  tui.render(40);
+  inputListener?.("\x1b[5~");
+  assert.deepEqual(tui.render(40).slice(0, 2), ["line-0", "line-1"]);
+
+  statusVisible = false;
+  terminal.writes = [];
+  assert.deepEqual(inputListener?.("\x1b[<64;1;1M"), { consume: true });
+  assert.equal(terminal.writes.length, 1);
+  assert.deepEqual(tui.render(40).slice(0, 2), ["line-0", "line-1"]);
+  assert.match(terminal.writes[0] ?? "", /editor/);
 
   compositor.dispose();
 });

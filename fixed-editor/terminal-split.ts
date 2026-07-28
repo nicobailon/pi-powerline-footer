@@ -53,6 +53,12 @@ interface RenderPassCluster {
   cluster: FixedEditorClusterRender;
 }
 
+interface ScrollableViewportLayout {
+  rawRows: number;
+  cluster: FixedEditorClusterRender;
+  scrollableRows: number;
+}
+
 type CompositeLineAt = (
   baseLine: string,
   overlayLine: string,
@@ -117,7 +123,7 @@ type ExtendedKeyboardMode = "kitty" | "modifyOtherKeys";
 const CONTEXT_MENU_MOUSE_REPORTING_PAUSE_MS = 1200;
 const CONTEXT_MENU_SELECTION_RESTORE_WINDOW_MS = 5000;
 const CONTEXT_MENU_CLIPBOARD_RESTORE_INTERVAL_MS = 100;
-export const DEFAULT_SCROLL_REPAINT_THROTTLE_MS = 16;
+export const DEFAULT_SCROLL_REPAINT_THROTTLE_MS = 8;
 const SCROLL_SETTLED_RENDER_MS = 80;
 const DOUBLE_CLICK_MS = 500;
 const DEFAULT_KEYBOARD_SCROLL_SHORTCUTS: KeyboardScrollShortcuts = {
@@ -139,6 +145,14 @@ export function setScrollRegion(top: number, bottom: number): string {
 
 export function resetScrollRegion(): string {
   return "\x1b[r";
+}
+
+export function scrollUpLines(lines: number): string {
+  return `\x1b[${Math.max(1, lines)}S`;
+}
+
+export function scrollDownLines(lines: number): string {
+  return `\x1b[${Math.max(1, lines)}T`;
 }
 
 export function moveCursor(row: number, col: number): string {
@@ -584,6 +598,7 @@ export class TerminalSplitCompositor {
   private lastLeftPress: { area: SelectionArea; line: number; at: number } | null = null;
   private pendingImageCleanup = false;
   private pendingScrollDeltas: number[] = [];
+  private scrollAwayCardHidden = false;
 
   constructor(options: TerminalSplitCompositorOptions) {
     this.tui = options.tui;
@@ -735,6 +750,7 @@ export class TerminalSplitCompositor {
     const rawRows = this.getRawRows();
     const width = Math.max(1, this.terminal.columns || 80);
     const cluster = this.getCluster(width, rawRows);
+    this.updateScrollBounds(Math.max(1, rawRows - cluster.lines.length));
     if (cluster.lines.length === 0) return;
 
     this.originalWrite(
@@ -846,15 +862,19 @@ export class TerminalSplitCompositor {
       this.scrollOffset += lines.length - this.lastRootLineCount;
     }
     this.lastRootLineCount = lines.length;
-    const previousMaxScrollOffset = this.maxScrollOffset;
-    this.maxScrollOffset = Math.max(0, lines.length - scrollableRows);
-    const nextScrollOffset = Math.max(0, Math.min(this.scrollOffset, this.maxScrollOffset));
-    if (nextScrollOffset !== this.scrollOffset || this.maxScrollOffset !== previousMaxScrollOffset) {
-      this.pendingImageCleanup = true;
-    }
-    this.scrollOffset = nextScrollOffset;
+    this.updateScrollBounds(scrollableRows);
 
     return this.updateVisibleRootWindow(scrollableRows);
+  }
+
+  private updateScrollBounds(scrollableRows: number): boolean {
+    const previousMaxScrollOffset = this.maxScrollOffset;
+    this.maxScrollOffset = Math.max(0, this.rootLines.length - scrollableRows);
+    const nextScrollOffset = Math.max(0, Math.min(this.scrollOffset, this.maxScrollOffset));
+    const changed = nextScrollOffset !== this.scrollOffset || this.maxScrollOffset !== previousMaxScrollOffset;
+    if (changed) this.pendingImageCleanup = true;
+    this.scrollOffset = nextScrollOffset;
+    return changed;
   }
 
   private handleInput(data: string): { consume?: boolean; data?: string } | undefined {
@@ -877,6 +897,7 @@ export class TerminalSplitCompositor {
         const hadQueuedScroll = this.pendingScrollDeltas.length > 0;
         if (this.handleScrollAwayCardClick(packet, width)) continue;
         const flushedQueuedScroll = this.flushQueuedScroll();
+        if (flushedQueuedScroll) this.scrollAwayCardHidden = false;
         this.handleMousePacket(packet, { skipScrollAwayCard: hadQueuedScroll || flushedQueuedScroll });
       }
       if (wheelDeltas.length > 0) {
@@ -1005,8 +1026,20 @@ export class TerminalSplitCompositor {
     });
   }
 
-  private computeScrollAwayNavigationCard(width: number, scrollableRows: number): ScrollAwayCardLayout | null {
-    if (!this.scrollAwayNavigationCard || this.scrollAwayNavigationCard.shortcuts.length === 0 || this.scrollOffset <= 0 || scrollableRows < 1 || width < 1) {
+  private computeScrollAwayNavigationCard(
+    width: number,
+    scrollableRows: number,
+    scrollOffset = this.scrollOffset,
+    includeWhenHidden = false,
+  ): ScrollAwayCardLayout | null {
+    if (
+      !this.scrollAwayNavigationCard
+      || this.scrollAwayNavigationCard.shortcuts.length === 0
+      || (this.scrollAwayCardHidden && !includeWhenHidden)
+      || scrollOffset <= 0
+      || scrollableRows < 1
+      || width < 1
+    ) {
       return null;
     }
 
@@ -1233,6 +1266,7 @@ export class TerminalSplitCompositor {
       this.scrollRepaintTimer = null;
     }
     this.pendingScrollDeltas = [];
+    this.scrollAwayCardHidden = false;
   }
 
   private flushQueuedScroll(): boolean {
@@ -1256,19 +1290,32 @@ export class TerminalSplitCompositor {
 
   private scrollByDeltas(deltas: number[], options: { deferRender?: boolean } = {}): void {
     const width = Math.max(1, this.terminal.columns || 80);
-    this.refreshRootWindow(width);
+    if (this.rootLines.length === 0 || Reflect.get(this.tui, "renderRequested") === true) {
+      this.refreshRootWindow(width);
+    }
 
+    const rawRows = this.getRawRows();
+    const cluster = this.getCluster(width, rawRows);
+    const layout: ScrollableViewportLayout = {
+      rawRows,
+      cluster,
+      scrollableRows: Math.max(1, rawRows - cluster.lines.length),
+    };
+    const previousScrollOffset = this.scrollOffset;
+    const previousCardVisible = !this.scrollAwayCardHidden;
+    const boundsChanged = this.updateScrollBounds(layout.scrollableRows);
     let nextOffset = this.scrollOffset;
     for (const delta of deltas) {
       nextOffset = Math.max(0, Math.min(nextOffset + delta, this.maxScrollOffset));
     }
-    if (nextOffset === this.scrollOffset) return;
+    if (nextOffset === this.scrollOffset && !boundsChanged) return;
 
     this.clearSelection();
     this.lastLeftPress = null;
     this.scrollOffset = nextOffset;
+    this.scrollAwayCardHidden = options.deferRender === true;
     this.pendingImageCleanup = true;
-    this.repaintScrollableViewport(width);
+    this.repaintScrollableViewport(width, layout, previousScrollOffset, previousCardVisible);
     if (options.deferRender) {
       this.scheduleScrollSettledRender();
     } else {
@@ -1290,6 +1337,7 @@ export class TerminalSplitCompositor {
     this.scrollSettledRenderTimer = setTimeout(() => {
       this.scrollSettledRenderTimer = null;
       if (!this.disposed) {
+        this.scrollAwayCardHidden = false;
         this.requestRender();
       }
     }, SCROLL_SETTLED_RENDER_MS);
@@ -1299,24 +1347,72 @@ export class TerminalSplitCompositor {
     }
   }
 
-  private repaintScrollableViewport(width: number): void {
+  private repaintScrollableViewport(
+    width: number,
+    layout: ScrollableViewportLayout,
+    previousScrollOffset = this.scrollOffset,
+    previousCardVisible = !this.scrollAwayCardHidden,
+  ): void {
     if (this.disposed || this.writing || this.hasVisibleOverlay()) return;
 
-    const rawRows = this.getRawRows();
-    const cluster = this.getCluster(width, rawRows);
-    const scrollableRows = Math.max(1, rawRows - cluster.lines.length);
+    const { rawRows, cluster, scrollableRows } = layout;
+    const previousScrollableRows = this.visibleScrollableRows;
+    const previousRootStart = this.visibleRootStart;
+    const previousVisibleRootLines = this.visibleRootLines;
+    const previousCard = previousCardVisible
+      ? this.computeScrollAwayNavigationCard(width, previousScrollableRows, previousScrollOffset, true)
+      : null;
     const start = this.updateVisibleRootWindow(scrollableRows);
     const visibleLines = this.renderVisibleRootLines(start, width, scrollableRows);
+    const scrollDelta = this.scrollOffset - previousScrollOffset;
+    const shiftedRows = Math.abs(scrollDelta);
+    const canShiftRows = scrollDelta !== 0
+      && shiftedRows < scrollableRows
+      && previousScrollableRows === scrollableRows
+      && previousVisibleRootLines.length === scrollableRows
+      && start === previousRootStart - scrollDelta;
     let buffer = beginSynchronizedOutput()
       + this.consumePendingImageCleanup()
-      + disableAutoWrap()
-      + setScrollRegion(1, scrollableRows)
-      + moveCursor(1, 1);
+      + disableAutoWrap();
 
-    for (let row = 0; row < scrollableRows; row++) {
-      if (row > 0) buffer += "\r\n";
-      buffer += clearLine();
-      buffer += sanitizeLine(visibleLines[row] ?? "", width);
+    if (canShiftRows) {
+      if (previousCard) {
+        for (const bound of previousCard.bounds) {
+          const row = bound.row - 1;
+          buffer += moveCursor(bound.row, 1);
+          buffer += clearLine();
+          buffer += sanitizeLine(previousVisibleRootLines[row] ?? "", width);
+        }
+      }
+
+      buffer += setScrollRegion(1, scrollableRows);
+      buffer += scrollDelta > 0 ? scrollDownLines(shiftedRows) : scrollUpLines(shiftedRows);
+
+      const firstExposedRow = scrollDelta > 0 ? 0 : scrollableRows - shiftedRows;
+      const lastExposedRow = scrollDelta > 0 ? shiftedRows : scrollableRows;
+      for (let row = firstExposedRow; row < lastExposedRow; row++) {
+        buffer += moveCursor(row + 1, 1);
+        buffer += clearLine();
+        buffer += sanitizeLine(this.visibleRootLines[row] ?? "", width);
+      }
+
+      const card = this.computeScrollAwayNavigationCard(width, scrollableRows);
+      if (card) {
+        for (const bound of card.bounds) {
+          const row = bound.row - 1;
+          buffer += moveCursor(bound.row, 1);
+          buffer += clearLine();
+          buffer += sanitizeLine(visibleLines[row] ?? "", width);
+        }
+      }
+    } else {
+      buffer += setScrollRegion(1, scrollableRows);
+      buffer += moveCursor(1, 1);
+      for (let row = 0; row < scrollableRows; row++) {
+        if (row > 0) buffer += "\r\n";
+        buffer += clearLine();
+        buffer += sanitizeLine(visibleLines[row] ?? "", width);
+      }
     }
 
     buffer += buildFixedClusterPaint(this.decorateCluster(cluster), rawRows, width, this.getShowHardwareCursor());

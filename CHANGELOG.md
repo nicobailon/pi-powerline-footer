@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- **Fixed-editor scrolling performance** — Uses terminal row shifts, cached transcript lines, an 8 ms repaint cadence, and transient shortcut-card hiding during active wheel movement to cut scroll latency and terminal output churn.
+
 ## [0.7.0] - 2026-07-14
 
 ### Added
