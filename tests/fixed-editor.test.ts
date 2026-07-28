@@ -499,8 +499,10 @@ test("terminal split keeps tabbed overlay composition within terminal width", ()
   const tui = new TUI(terminal, false);
   const overlay = "\x1b[38;2;119;125;136m[grep]: render.ts-706- \treturn [...lines.slice(0, visibleLines), truncLine(theme.fg(\"dim\", hint), width)];\x1b[39m";
 
+  // Pi's own composition leaves the raw tab in place. Its measured width tracks how the
+  // installed pi-tui counts "\t" (0 columns historically, 3 since 0.74), so assert only the
+  // tab that the compositor patch below is responsible for removing.
   const before = tui.compositeLineAt("Validation before " + " ".repeat(232), overlay, 20, 210, 250);
-  assert.equal(visibleWidth(before), 250);
   assert.match(before, /\t/);
 
   const compositor = new TerminalSplitCompositor({
