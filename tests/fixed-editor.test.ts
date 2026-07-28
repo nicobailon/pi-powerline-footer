@@ -329,6 +329,77 @@ test("terminal split re-enables modifyOtherKeys in alternate screen", () => {
   assert.ok(!cleanup.includes("\x1b[<999u"));
 });
 
+test("terminal split retries Kitty keyboard protocol when negotiation completes after install", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+
+  const terminal = new FakeTerminal();
+  const compositor = new TerminalSplitCompositor({
+    tui: { terminal },
+    terminal,
+    renderCluster: () => ({ lines: ["cluster"], cursor: null }),
+  });
+
+  compositor.install();
+
+  const setup = terminal.writes[0] ?? "";
+  assert.ok(setup.includes("\x1b[?1049h"));
+  assert.ok(!setup.includes("\x1b[>7u"));
+
+  terminal.kittyProtocolActive = true;
+  t.mock.timers.tick(10);
+
+  assert.equal(terminal.writes.at(-1), "\x1b[>7u");
+
+  compositor.dispose();
+
+  const cleanup = terminal.writes.at(-1) ?? "";
+  assert.ok(cleanup.includes("\x1b[<u"));
+  assert.ok(cleanup.indexOf("\x1b[<u") < cleanup.indexOf("\x1b[?1049l"));
+});
+
+test("terminal split retries modifyOtherKeys when negotiation completes after install", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+
+  const terminal = new FakeTerminal();
+  const compositor = new TerminalSplitCompositor({
+    tui: { terminal },
+    terminal,
+    renderCluster: () => ({ lines: ["cluster"], cursor: null }),
+  });
+
+  compositor.install();
+  Reflect.set(terminal, "_modifyOtherKeysActive", true);
+  t.mock.timers.tick(10);
+
+  assert.equal(terminal.writes.at(-1), "\x1b[>4;2m");
+
+  compositor.dispose();
+
+  const cleanup = terminal.writes.at(-1) ?? "";
+  assert.ok(cleanup.includes("\x1b[>4;0m"));
+  assert.ok(cleanup.indexOf("\x1b[>4;0m") < cleanup.indexOf("\x1b[?1049l"));
+});
+
+test("terminal split cancels pending keyboard retries on dispose", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+
+  const terminal = new FakeTerminal();
+  const compositor = new TerminalSplitCompositor({
+    tui: { terminal },
+    terminal,
+    renderCluster: () => ({ lines: ["cluster"], cursor: null }),
+  });
+
+  compositor.install();
+  compositor.dispose();
+  const writeCount = terminal.writes.length;
+
+  terminal.kittyProtocolActive = true;
+  t.mock.timers.tick(100);
+
+  assert.equal(terminal.writes.length, writeCount);
+});
+
 test("terminal split restores main screen mode when Kitty activates after install", () => {
   const terminal = new FakeTerminal();
   const compositor = new TerminalSplitCompositor({

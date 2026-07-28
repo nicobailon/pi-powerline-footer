@@ -128,6 +128,8 @@ const CONTEXT_MENU_SELECTION_RESTORE_WINDOW_MS = 5000;
 const CONTEXT_MENU_CLIPBOARD_RESTORE_INTERVAL_MS = 100;
 export const DEFAULT_SCROLL_REPAINT_THROTTLE_MS = 8;
 const SCROLL_SETTLED_RENDER_MS = 80;
+const EXTENDED_KEYBOARD_RETRY_MS = 10;
+const EXTENDED_KEYBOARD_RETRY_ATTEMPTS = 50;
 const DOUBLE_CLICK_MS = 500;
 const DEFAULT_KEYBOARD_SCROLL_SHORTCUTS: KeyboardScrollShortcuts = {
   up: "super+up",
@@ -576,6 +578,7 @@ export class TerminalSplitCompositor {
   private removeInputListener: (() => void) | null = null;
   private emergencyCleanup: (() => void) | null = null;
   private mouseReportingResumeTimer: ReturnType<typeof setTimeout> | null = null;
+  private alternateScreenKeyboardRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private clipboardRestoreTimer: ReturnType<typeof setTimeout> | null = null;
   private scrollRepaintTimer: ReturnType<typeof setTimeout> | null = null;
   private scrollSettledRenderTimer: ReturnType<typeof setTimeout> | null = null;
@@ -638,6 +641,10 @@ export class TerminalSplitCompositor {
       + this.mouseReportingStateGuard()
       + endSynchronizedOutput(),
     );
+    if (this.extendedKeyboardMode === null) {
+      this.scheduleAlternateScreenKeyboardRetry(EXTENDED_KEYBOARD_RETRY_ATTEMPTS);
+    }
+
     this.emergencyCleanup = () => {
       if (!this.disposed) {
         this.restoreTerminalStateForExit();
@@ -827,6 +834,10 @@ export class TerminalSplitCompositor {
     if (this.mouseReportingResumeTimer) {
       clearTimeout(this.mouseReportingResumeTimer);
       this.mouseReportingResumeTimer = null;
+    }
+    if (this.alternateScreenKeyboardRetryTimer) {
+      clearTimeout(this.alternateScreenKeyboardRetryTimer);
+      this.alternateScreenKeyboardRetryTimer = null;
     }
     if (this.clipboardRestoreTimer) {
       clearTimeout(this.clipboardRestoreTimer);
@@ -1548,6 +1559,28 @@ export class TerminalSplitCompositor {
   private enableAlternateScreenKeyboardMode(): string {
     this.extendedKeyboardMode = this.activeExtendedKeyboardMode();
     return this.extendedKeyboardMode ? enableExtendedKeyboardMode(this.extendedKeyboardMode) : "";
+  }
+
+  private scheduleAlternateScreenKeyboardRetry(remainingAttempts: number): void {
+    if (remainingAttempts <= 0 || this.disposed || this.extendedKeyboardMode !== null) return;
+
+    this.alternateScreenKeyboardRetryTimer = setTimeout(() => {
+      this.alternateScreenKeyboardRetryTimer = null;
+      if (this.disposed || this.extendedKeyboardMode !== null) return;
+
+      const activeMode = this.activeExtendedKeyboardMode();
+      if (activeMode) {
+        this.extendedKeyboardMode = activeMode;
+        this.originalWrite(enableExtendedKeyboardMode(activeMode));
+        return;
+      }
+
+      this.scheduleAlternateScreenKeyboardRetry(remainingAttempts - 1);
+    }, EXTENDED_KEYBOARD_RETRY_MS);
+
+    if (typeof this.alternateScreenKeyboardRetryTimer === "object" && "unref" in this.alternateScreenKeyboardRetryTimer) {
+      this.alternateScreenKeyboardRetryTimer.unref();
+    }
   }
 
   private restoreTerminalState(options: DisposeOptions = {}): void {
