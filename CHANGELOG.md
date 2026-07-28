@@ -15,6 +15,7 @@
 - **Fixed-editor scrolling performance** — Uses terminal row shifts, cached transcript lines, an 8 ms repaint cadence, and transient shortcut-card hiding during active wheel movement to cut scroll latency and terminal output churn.
 
 ### Fixed
+- **Theme override path** — Loads `theme.json` from the documented agent-dir `extensions/powerline-footer` path before falling back to the loaded package directory, and clarifies setup docs for `showLastPrompt` and layout rows. Thanks to MeisterP for #117.
 - **Print-mode terminal cleanup** — Terminal reset and cursor restoration sequences run only during interactive TUI shutdowns, keeping `pi -p` output visible. Thanks to Sergey Konkin (@sergeykonkin) for #101.
 
 ## [0.7.0] - 2026-07-14

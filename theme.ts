@@ -11,6 +11,7 @@ import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 import { existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { getAgentPath } from "./paths.ts";
 import type { ColorScheme, ColorValue, SemanticColor, ThemeLike } from "./types.ts";
 
 export interface PowerlineThemeConfig {
@@ -47,8 +48,10 @@ const RAINBOW_COLORS = [
 // Cache for user theme overrides
 let userThemeCache: ColorScheme | null = null;
 let userThemeCacheTime = 0;
+let userThemeCacheKey = "";
 let themeConfigCache: PowerlineThemeConfig | null = null;
 let themeConfigCacheTime = 0;
+let themeConfigCacheKey = "";
 const CACHE_TTL = 5000; // 5 seconds
 const warnedInvalidThemeColors = new Set<string>();
 
@@ -82,50 +85,60 @@ function sanitizeUserThemeOverrides(value: unknown): ColorScheme {
 }
 
 /**
- * Get the path to the theme.json file
+ * Get theme.json lookup paths.
  */
-function getThemePath(): string {
+function getThemePaths(): string[] {
   const extDir = dirname(fileURLToPath(import.meta.url));
-  return join(extDir, "theme.json");
+  return Array.from(new Set([
+    getAgentPath("extensions", "powerline-footer", "theme.json"),
+    join(extDir, "theme.json"),
+  ]));
 }
 
 /**
- * Load user theme config from theme.json
+ * Load user theme config from theme.json.
  */
 export function loadThemeConfig(): PowerlineThemeConfig {
   const now = Date.now();
-  if (themeConfigCache && now - themeConfigCacheTime < CACHE_TTL) {
+  const themePaths = getThemePaths();
+  const cacheKey = themePaths.join("\0");
+  if (themeConfigCache && themeConfigCacheKey === cacheKey && now - themeConfigCacheTime < CACHE_TTL) {
     return themeConfigCache;
   }
 
-  const themePath = getThemePath();
-  try {
-    if (existsSync(themePath)) {
-      const content = readFileSync(themePath, "utf-8");
-      const parsed = JSON.parse(content);
-      themeConfigCache = isRecord(parsed) ? parsed : {};
-      themeConfigCacheTime = now;
-      return themeConfigCache;
+  for (const themePath of themePaths) {
+    try {
+      if (existsSync(themePath)) {
+        const content = readFileSync(themePath, "utf-8");
+        const parsed = JSON.parse(content);
+        themeConfigCache = isRecord(parsed) ? parsed : {};
+        themeConfigCacheTime = now;
+        themeConfigCacheKey = cacheKey;
+        return themeConfigCache;
+      }
+    } catch (error) {
+      // Theme overrides are optional. If the file is unreadable or malformed,
+      // keep rendering with built-in defaults instead of breaking the footer.
+      console.debug(`[powerline-theme] Failed to load ${themePath}:`, error);
     }
-  } catch (error) {
-    // Theme overrides are optional. If the file is unreadable or malformed,
-    // keep rendering with built-in defaults instead of breaking the footer.
-    console.debug(`[powerline-theme] Failed to load ${themePath}:`, error);
   }
 
   themeConfigCache = {};
   themeConfigCacheTime = now;
+  themeConfigCacheKey = cacheKey;
   return themeConfigCache;
 }
 
 function loadUserTheme(): ColorScheme {
   const now = Date.now();
-  if (userThemeCache && now - userThemeCacheTime < CACHE_TTL) {
+  const cacheKey = getThemePaths().join("\0");
+  if (userThemeCache && userThemeCacheKey === cacheKey && now - userThemeCacheTime < CACHE_TTL) {
     return userThemeCache;
   }
 
   userThemeCache = sanitizeUserThemeOverrides(loadThemeConfig().colors);
   userThemeCacheTime = now;
+  userThemeCacheKey = cacheKey;
   return userThemeCache;
 }
 

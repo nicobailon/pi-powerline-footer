@@ -13,6 +13,7 @@ import {
   OneOffBashAutocompleteProvider,
 } from "../bash-mode/completion.ts";
 import { getIcons } from "../icons.ts";
+import { resolveColor } from "../theme.ts";
 import { ManagedShellSession } from "../bash-mode/shell-session.ts";
 
 function getMethod(target: object, name: string): Function {
@@ -112,6 +113,28 @@ test("theme.json can override icons without touching colors", () => {
     } else {
       process.env.POWERLINE_NERD_FONTS = originalNerdFonts;
     }
+  }
+});
+
+test("theme.json loads from the documented agent extension path", () => {
+  const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+  const agentDir = mkdtempSync(join(tmpdir(), "powerline-theme-"));
+
+  try {
+    const themeDir = join(agentDir, "extensions", "powerline-footer");
+    mkdirSync(themeDir, { recursive: true });
+    writeFileSync(join(themeDir, "theme.json"), JSON.stringify({ colors: { model: "#ff5500", path: "#ff5500" } }));
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+
+    assert.equal(resolveColor("model"), "#ff5500");
+    assert.equal(resolveColor("path"), "#ff5500");
+  } finally {
+    if (originalAgentDir === undefined) {
+      delete process.env.PI_CODING_AGENT_DIR;
+    } else {
+      process.env.PI_CODING_AGENT_DIR = originalAgentDir;
+    }
+    rmSync(agentDir, { recursive: true, force: true });
   }
 });
 

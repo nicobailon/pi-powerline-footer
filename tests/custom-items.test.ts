@@ -84,6 +84,38 @@ test("parsePowerlineConfig supports partial explicit layout rows", () => {
   assert.deepEqual(config.invalidLayoutSegments, ["left:unknown", "left:123", "right:model"]);
 });
 
+test("parsePowerlineConfig preserves reporter layout groups", () => {
+  const config = parsePowerlineConfig(
+    {
+      preset: "default",
+      layout: {
+        left: ["model"],
+        right: ["path"],
+        secondary: ["thinking"],
+      },
+    },
+    ["default", "compact"],
+  );
+
+  assert.deepEqual(config.layout, {
+    left: ["model"],
+    right: ["path"],
+    secondary: ["thinking"],
+  });
+  assert.deepEqual(config.invalidLayoutSegments, []);
+  assert.deepEqual(
+    mergeSegmentsWithCustomItems(PRESETS.default, config.customItems, {
+      layout: config.layout,
+      disabledSegments: config.disabledSegments,
+    }),
+    {
+      leftSegments: ["model"],
+      rightSegments: ["path"],
+      secondarySegments: ["thinking"],
+    },
+  );
+});
+
 test("parsePowerlineConfig supports separator overrides", () => {
   const config = parsePowerlineConfig(
     { preset: "default", separator: " chevron " },

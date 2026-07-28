@@ -64,6 +64,7 @@ You can also set it in the agent settings file (`~/.pi/agent/settings.json` by d
 
 ```json
 {
+  "showLastPrompt": true,
   "powerline": {
     "preset": "default",
     "fixedEditor": false,
@@ -75,7 +76,7 @@ You can also set it in the agent settings file (`~/.pi/agent/settings.json` by d
 }
 ```
 
-Use `"fixedEditor": true` to enable it again. Set `"scrollAwayCard": false` to keep the fixed editor and navigation shortcuts while hiding the scroll-away hint card. `"placement"` accepts `"above"` (default) or `"below"` in both fixed and regular editor modes. It moves only the primary powerline row; notifications and Pi working status stay above, while responsive overflow, bash transcript, and the last-prompt reminder stay below. Set `"welcome": false` to skip the startup welcome overlay/header while leaving powerline itself enabled. Add `"mouseScroll": false` if you want native terminal selection instead of fixed-editor mouse handling. Set `"copyOnSelect": false` to prevent selected text from being automatically copied to the system clipboard; the selection stays highlighted with a character-count hint, and you copy explicitly with `ctrl+c` or right-click instead. In Herdr, tmux, and other terminal multiplexers, fixed-editor scrolling is Pi-owned while fixed-editor mode is on; keep mouse scrolling enabled for the fixed-editor viewport, or use `/powerline fixed-editor off` when you want the host multiplexer scrollback to own the experience. While fixed-editor mouse reporting is enabled, hold Shift during your terminal's normal modifier-click to bypass capture for OSC 8 links; otherwise use `/powerline mouse-scroll off` or `/powerline fixed-editor off` for native link handling.
+Use `"fixedEditor": true` to enable it again. Set `"scrollAwayCard": false` to keep the fixed editor and navigation shortcuts while hiding the scroll-away hint card. `"placement"` accepts `"above"` (default) or `"below"` in both fixed and regular editor modes. It moves only the primary powerline row; notifications and Pi working status stay above, while responsive overflow, bash transcript, and the last-prompt reminder stay below. Set `"showLastPrompt": false` at the top level of `settings.json` (not inside `powerline`) to hide that reminder. Set `"welcome": false` to skip the startup welcome overlay/header while leaving powerline itself enabled. Add `"mouseScroll": false` if you want native terminal selection instead of fixed-editor mouse handling. Set `"copyOnSelect": false` to prevent selected text from being automatically copied to the system clipboard; the selection stays highlighted with a character-count hint, and you copy explicitly with `ctrl+c` or right-click instead. In Herdr, tmux, and other terminal multiplexers, fixed-editor scrolling is Pi-owned while fixed-editor mode is on; keep mouse scrolling enabled for the fixed-editor viewport, or use `/powerline fixed-editor off` when you want the host multiplexer scrollback to own the experience. While fixed-editor mouse reporting is enabled, hold Shift during your terminal's normal modifier-click to bypass capture for OSC 8 links; otherwise use `/powerline mouse-scroll off` or `/powerline fixed-editor off` for native link handling.
 
 | Preset | Description |
 |--------|-------------|
@@ -171,7 +172,7 @@ Use `powerline.layout` to override segment order and grouping while keeping the 
 
 A present `left`, `right`, or `secondary` array replaces that preset group exactly; an empty array clears it. Omitted groups keep the preset entries and automatically append custom items by their configured `position`. Explicitly listing a segment moves it out of omitted preset groups, and explicitly placed custom items are not auto-appended elsewhere. `disabledSegments` is applied after layout. `separator` accepts any style listed below; omit it to keep the preset’s separator.
 
-Responsive behavior is unchanged: these groups control ordering and overflow priority, not permanently pinned terminal rows. On wide terminals secondary entries can fit in the top bar; on narrow terminals primary overflow moves into the secondary line. Unknown entries are ignored with a startup warning. The old fixed `custom` preset has been removed; combine any preset with `layout` instead.
+Responsive behavior is unchanged: these groups control ordering and overflow priority, not permanently pinned terminal rows. `right` means “later primary segments,” not right-edge alignment. On wide terminals secondary entries can fit in the top bar; on narrow terminals primary overflow moves into the secondary line. Some segments are hidden when they have no value, so `thinking` appears only when the active session/model reports a non-`off` thinking level. Unknown entries are ignored with a startup warning. The old fixed `custom` preset has been removed; combine any preset with `layout` instead.
 
 ### Demo settings
 
@@ -480,12 +481,11 @@ Colors are configurable via pi's theme system. Each preset defines its own color
 
 ### Custom Theme Override
 
-Create `extensions/powerline-footer/theme.json` in the agent dir:
+Create `extensions/powerline-footer/theme.json` in the agent dir (`~/.pi/agent` by default, or `PI_CODING_AGENT_DIR` when set):
 
 ```json
 {
   "colors": {
-    "pi": "#ff5500",
     "model": "accent",
     "shellMode": "accent",
     "path": "#00afaf",
@@ -507,5 +507,7 @@ Colors can be:
 - **Hex colors**: `#ff5500`, `#d787af`
 
 Icons can be any string, including `""` when you want to suppress a specific glyph entirely.
+
+For npm package installs, this documented agent-dir file is separate from the package files under `~/.pi/agent/npm/node_modules`. The extension reads the agent-dir override first, then falls back to a `theme.json` colocated with the loaded extension file. Use `/reload` or restart Pi after creating or editing `theme.json`.
 
 See `theme.example.json` for all available options.
