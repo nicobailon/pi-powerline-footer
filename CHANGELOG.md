@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- **Session directory switching** — Added `/cd <path>` to continue the current conversation from another working directory while keeping Pi tools and the footer path segment in sync. Thanks to chengxiang (@chengxiang1997) for #114.
 - **Separator override** — Added `powerline.separator` so separator style can be chosen independently of the active preset. Thanks to Andy8647 and mj-meyer for #106/#116.
 - **Git host icon** — Added opt-in `powerline.git.hostIcon` to replace the git branch icon with a detected GitHub, GitLab, Bitbucket, or generic git host icon when an origin remote is available. Thanks to Andy8647 for #113.
 - **Segment display formats** — Added opt-in `powerline.context.format` and `powerline.cache_read.format` settings for compact percentage-style context and cache-read segments. Thanks to Andy8647 for #109.

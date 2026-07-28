@@ -41,6 +41,7 @@ import { renderFixedEditorCluster } from "./fixed-editor/cluster.ts";
 import { DEFAULT_SCROLL_REPAINT_THROTTLE_MS, emergencyTerminalModeReset, TerminalSplitCompositor } from "./fixed-editor/terminal-split.ts";
 import { inlineEditorQuitCursorRestore } from "./terminal-cursor.ts";
 import { getDefaultColors } from "./theme.ts";
+import { registerCdCommand } from "./cd-command.ts";
 import {
   isSupportedSuperShortcut,
   matchesConfiguredShortcut,
@@ -1864,6 +1865,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
     requestStatusRender();
   });
+
+  registerCdCommand(pi, () => currentCtx?.cwd ?? process.cwd());
 
   // Command to toggle/configure
   pi.registerCommand("powerline", {

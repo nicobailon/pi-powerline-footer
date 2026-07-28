@@ -48,6 +48,8 @@ Restart pi to activate.
 
 Activates automatically. Toggle with `/powerline`, switch presets with `/powerline <name>`, fixed-editor mode with `/powerline fixed-editor on|off|toggle`, the scroll-away card with `/powerline scroll-away-card on|off|toggle`, primary-row placement with `/powerline placement above|below|toggle`, and wheel mode with `/powerline mouse-scroll on|off|toggle`.
 
+Use `/cd <path>` to continue the current conversation from another working directory. It supports relative paths, absolute paths, `~`, `~/...`, and directory completions. With no argument, `/cd` prints the current Pi session directory. The command switches into a cwd-updated session file so Pi tools and the footer path segment agree after the change.
+
 Fixed editor is on by default.
 
 - `/powerline fixed-editor off` — return to Pi’s regular scrolling layout
