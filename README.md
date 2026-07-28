@@ -150,12 +150,13 @@ Built-in names are listed under Segments below. Custom items use `custom:<id>`. 
 
 ### Custom layout
 
-Use `powerline.layout` to override segment order and grouping while keeping the selected preset’s separator, colors, and segment options:
+Use `powerline.layout` to override segment order and grouping while keeping the selected preset’s colors and segment options. Set `powerline.separator` when you want a separator style independent of the preset:
 
 ```json
 {
   "powerline": {
     "preset": "default",
+    "separator": "chevron",
     "layout": {
       "left": ["model", "thinking", "path", "git"],
       "right": ["context_pct", "cost"],
@@ -168,7 +169,7 @@ Use `powerline.layout` to override segment order and grouping while keeping the 
 }
 ```
 
-A present `left`, `right`, or `secondary` array replaces that preset group exactly; an empty array clears it. Omitted groups keep the preset entries and automatically append custom items by their configured `position`. Explicitly listing a segment moves it out of omitted preset groups, and explicitly placed custom items are not auto-appended elsewhere. `disabledSegments` is applied after layout.
+A present `left`, `right`, or `secondary` array replaces that preset group exactly; an empty array clears it. Omitted groups keep the preset entries and automatically append custom items by their configured `position`. Explicitly listing a segment moves it out of omitted preset groups, and explicitly placed custom items are not auto-appended elsewhere. `disabledSegments` is applied after layout. `separator` accepts any style listed below; omit it to keep the preset’s separator.
 
 Responsive behavior is unchanged: these groups control ordering and overflow priority, not permanently pinned terminal rows. On wide terminals secondary entries can fit in the top bar; on narrow terminals primary overflow moves into the secondary line. Unknown entries are ignored with a startup warning. The old fixed `custom` preset has been removed; combine any preset with `layout` instead.
 

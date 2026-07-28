@@ -1,6 +1,6 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { BUILTIN_STATUS_LINE_SEGMENT_IDS } from "./types.ts";
-import type { ColorValue, CustomItemPosition, CustomStatusItem, PowerlinePlacement, PresetDef, StatusLineLayout, StatusLinePreset, StatusLineSegmentId, StatusLineSegmentOptions } from "./types.ts";
+import type { ColorValue, CustomItemPosition, CustomStatusItem, PowerlinePlacement, PresetDef, StatusLineLayout, StatusLinePreset, StatusLineSegmentId, StatusLineSegmentOptions, StatusLineSeparatorStyle } from "./types.ts";
 
 export interface PowerlineConfig {
   preset: StatusLinePreset;
@@ -9,6 +9,7 @@ export interface PowerlineConfig {
   invalidDisabledSegments: string[];
   layout: StatusLineLayout | null;
   invalidLayoutSegments: string[];
+  separator: StatusLineSeparatorStyle | null;
   segmentOptions: StatusLineSegmentOptions;
   mouseScroll: boolean;
   fixedEditor: boolean;
@@ -43,6 +44,27 @@ function normalizePlacement(value: unknown): { placement: PowerlinePlacement; in
     placement: "above",
     invalidPlacement: typeof value === "string" ? value.trim() : String(value),
   };
+}
+
+const SEPARATOR_STYLES = [
+  "powerline",
+  "powerline-thin",
+  "slash",
+  "pipe",
+  "block",
+  "none",
+  "ascii",
+  "dot",
+  "chevron",
+  "star",
+] as const satisfies readonly StatusLineSeparatorStyle[];
+
+function normalizeSeparator(value: unknown): StatusLineSeparatorStyle | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return (SEPARATOR_STYLES as readonly string[]).includes(normalized)
+    ? (normalized as StatusLineSeparatorStyle)
+    : null;
 }
 
 function normalizeCustomItemId(value: unknown): string | null {
@@ -276,6 +298,7 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     invalidDisabledSegments: [],
     layout: null,
     invalidLayoutSegments: [],
+    separator: null,
     segmentOptions: {},
     mouseScroll: true,
     fixedEditor: true,
@@ -304,6 +327,7 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     invalidDisabledSegments,
     layout,
     invalidLayoutSegments,
+    separator: normalizeSeparator(value.separator),
     segmentOptions: normalizeSegmentOptions(value),
     mouseScroll: value.mouseScroll !== false,
     fixedEditor: value.fixedEditor !== false,

@@ -9,7 +9,7 @@ import { isKeyRelease, type AutocompleteProvider, type SelectItem, SelectList, t
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 
-import type { ColorScheme, SegmentContext, StatusLinePreset, StatusLineSegmentId } from "./types.ts";
+import type { ColorScheme, SegmentContext, StatusLinePreset, StatusLineSegmentId, StatusLineSeparatorStyle } from "./types.ts";
 import type { PowerlineConfig } from "./powerline-config.ts";
 import { BashTranscriptStore } from "./bash-mode/transcript.ts";
 import {
@@ -957,10 +957,10 @@ function renderSegmentWithWidth(
 /** Build content string from pre-rendered parts */
 function buildContentFromParts(
   parts: string[],
-  presetDef: ReturnType<typeof getPreset>
+  separatorStyle: StatusLineSeparatorStyle,
 ): string {
   if (parts.length === 0) return "";
-  const separatorDef = getSeparator(presetDef.separator);
+  const separatorDef = getSeparator(separatorStyle);
   const sepAnsi = getFgAnsiCode("sep");
   const sep = separatorDef.left;
   return " " + parts.join(` ${sepAnsi}${sep}${ansi.reset} `) + ansi.reset + " ";
@@ -976,7 +976,8 @@ function computeResponsiveLayout(
   presetDef: ReturnType<typeof getPreset>,
   availableWidth: number
 ): { topContent: string; secondaryContent: string } {
-  const separatorDef = getSeparator(presetDef.separator);
+  const separatorStyle = config.separator ?? presetDef.separator;
+  const separatorDef = getSeparator(separatorStyle);
   const sepWidth = visibleWidth(separatorDef.left) + 2; // separator + spaces around it
   
   // Get all segments: primary first, then secondary
@@ -1037,8 +1038,8 @@ function computeResponsiveLayout(
   }
   
   return {
-    topContent: buildContentFromParts(topSegments, presetDef),
-    secondaryContent: buildContentFromParts(secondarySegments, presetDef),
+    topContent: buildContentFromParts(topSegments, separatorStyle),
+    secondaryContent: buildContentFromParts(secondarySegments, separatorStyle),
   };
 }
 

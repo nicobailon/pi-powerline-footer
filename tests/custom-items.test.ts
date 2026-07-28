@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, normalizeExtensionStatusValue, parsePowerlineConfig, mergeSegmentOptions, mergeSegmentsWithCustomItems, nextPowerlineSettingWithOptions, nextPowerlineSettingWithPreset, normalizeCompactExtensionStatus } from "../powerline-config.ts";
+import { getSeparator } from "../separators.ts";
 import { PRESETS } from "../presets.ts";
 
 test("fixed custom preset is removed in favor of powerline.layout", () => {
@@ -32,6 +33,7 @@ test("parsePowerlineConfig supports object config with custom items", () => {
   assert.equal(config.mouseScroll, true);
   assert.equal(config.fixedEditor, true);
   assert.equal(config.scrollAwayCard, true);
+  assert.equal(config.separator, null);
   assert.equal(config.placement, "above");
   assert.equal(config.invalidPlacement, null);
   assert.equal(config.welcome, true);
@@ -80,6 +82,28 @@ test("parsePowerlineConfig supports partial explicit layout rows", () => {
     secondary: [],
   });
   assert.deepEqual(config.invalidLayoutSegments, ["left:unknown", "left:123", "right:model"]);
+});
+
+test("parsePowerlineConfig supports separator overrides", () => {
+  const config = parsePowerlineConfig(
+    { preset: "default", separator: " chevron " },
+    ["default", "compact"],
+  );
+  const invalid = parsePowerlineConfig(
+    { preset: "default", separator: "sparkle" },
+    ["default", "compact"],
+  );
+
+  assert.equal(config.separator, "chevron");
+  assert.equal(invalid.separator, null);
+});
+
+test("configured separators resolve independently of presets", () => {
+  const presetSeparator = getSeparator(PRESETS.default.separator).left;
+  const configuredSeparator = getSeparator("chevron").left;
+
+  assert.notEqual(configuredSeparator, presetSeparator);
+  assert.equal(configuredSeparator, "›");
 });
 
 test("parsePowerlineConfig validates primary powerline placement", () => {
