@@ -621,12 +621,9 @@ export function getVibeFileCount(theme: string): number {
   return vibes.length;
 }
 
-export interface GenerateVibesResult {
-  success: boolean;
-  count: number;
-  filePath: string;
-  error?: string;
-}
+export type GenerateVibesResult =
+  | { success: true; count: number; filePath: string }
+  | { success: false; count: 0; filePath: string; error: string };
 
 export async function generateVibesBatch(
   theme: string,

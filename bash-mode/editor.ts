@@ -89,6 +89,12 @@ function droppedPathTextFromInput(data: string): string | null {
   return null;
 }
 
+function resetShellHistoryBrowse(state: object): void {
+  Reflect.set(state, "shellHistoryIndex", -1);
+  Reflect.set(state, "shellHistoryItems", []);
+  Reflect.set(state, "shellHistoryDraft", "");
+}
+
 export class BashModeEditor extends CustomEditor {
   private readonly keybindingsRef: KeybindingsManager;
   private readonly optionsRef: BashModeEditorOptions;
@@ -136,9 +142,7 @@ export class BashModeEditor extends CustomEditor {
   }
 
   dismissBashModeUi(): void {
-    this.shellHistoryIndex = -1;
-    this.shellHistoryItems = [];
-    this.shellHistoryDraft = "";
+    resetShellHistoryBrowse(this);
     this.clearGhostSuggestion();
 
     if ("cancelAutocomplete" in this && typeof this.cancelAutocomplete === "function") {
@@ -151,9 +155,7 @@ export class BashModeEditor extends CustomEditor {
     const droppedPathText = droppedPathTextFromInput(data);
     if (droppedPathText !== null) {
       this.insertTextAtCursor(droppedPathText);
-      this.shellHistoryIndex = -1;
-      this.shellHistoryItems = [];
-      this.shellHistoryDraft = "";
+      resetShellHistoryBrowse(this);
       if (this.isShellCompletionContext()) {
         this.scheduleGhostUpdate();
       } else {
@@ -174,9 +176,7 @@ export class BashModeEditor extends CustomEditor {
 
       if (isCommandUndoShortcut(data)) {
         this.undo();
-        this.shellHistoryIndex = -1;
-        this.shellHistoryItems = [];
-        this.shellHistoryDraft = "";
+        resetShellHistoryBrowse(this);
         if (this.isShellCompletionContext()) {
           this.scheduleGhostUpdate();
         } else {
@@ -270,9 +270,7 @@ export class BashModeEditor extends CustomEditor {
         const command = this.getExpandedText().trim();
         if (!command) return;
         this.clearGhostSuggestion();
-        this.shellHistoryIndex = -1;
-        this.shellHistoryItems = [];
-        this.shellHistoryDraft = "";
+        resetShellHistoryBrowse(this);
         this.optionsRef.onEditorSubmit?.();
         this.optionsRef.onSubmitCommand(command);
         this.setText("");
@@ -284,9 +282,7 @@ export class BashModeEditor extends CustomEditor {
     }
 
     if (!this.isShellCompletionContext()) {
-      this.shellHistoryIndex = -1;
-      this.shellHistoryItems = [];
-      this.shellHistoryDraft = "";
+      resetShellHistoryBrowse(this);
       this.clearGhostSuggestion();
       return;
     }
@@ -305,9 +301,7 @@ export class BashModeEditor extends CustomEditor {
       || this.keybindingsRef.matches(data, "tui.editor.cursorLeft")
       || this.keybindingsRef.matches(data, "tui.editor.cursorRight")
     ) {
-      this.shellHistoryIndex = -1;
-      this.shellHistoryItems = [];
-      this.shellHistoryDraft = "";
+      resetShellHistoryBrowse(this);
       this.scheduleGhostUpdate();
     }
   }

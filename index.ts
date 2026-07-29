@@ -244,6 +244,12 @@ const EDITOR_STATUS_DEFER_MS = 150;
 const PROMPT_HISTORY_TRACKED = Symbol.for("powerlinePromptHistoryTracked");
 const PROMPT_HISTORY_STATE_KEY = Symbol.for("powerlinePromptHistoryState");
 
+interface PromptHistoryEditor {
+  history?: unknown;
+  addToHistory?: unknown;
+  [key: symbol]: unknown;
+}
+
 type PromptHistoryState = { savedPromptHistory: string[] };
 type SessionAssistantUsage = AssistantMessage["usage"];
 
@@ -293,7 +299,7 @@ function getPromptHistoryState(): PromptHistoryState {
   return state;
 }
 
-function readPromptHistory(editor: any): string[] {
+function readPromptHistory(editor: PromptHistoryEditor | null | undefined): string[] {
   const history = editor?.history;
   if (!Array.isArray(history)) return [];
 
@@ -310,14 +316,14 @@ function readPromptHistory(editor: any): string[] {
   return normalized;
 }
 
-function snapshotPromptHistory(editor: any): void {
+function snapshotPromptHistory(editor: PromptHistoryEditor | null | undefined): void {
   const history = readPromptHistory(editor);
   if (history.length > 0) {
     getPromptHistoryState().savedPromptHistory = [...history];
   }
 }
 
-function restorePromptHistory(editor: any): void {
+function restorePromptHistory(editor: PromptHistoryEditor | null | undefined): void {
   const { savedPromptHistory } = getPromptHistoryState();
   if (!savedPromptHistory.length || typeof editor?.addToHistory !== "function") return;
 
@@ -326,7 +332,7 @@ function restorePromptHistory(editor: any): void {
   }
 }
 
-function trackPromptHistory(editor: any): void {
+function trackPromptHistory(editor: PromptHistoryEditor | null | undefined): void {
   if (!editor || typeof editor.addToHistory !== "function") return;
   if (editor[PROMPT_HISTORY_TRACKED]) {
     snapshotPromptHistory(editor);
