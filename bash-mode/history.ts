@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { getAgentPath, getHomeDir } from "../paths.ts";
 
@@ -7,6 +7,29 @@ interface PersistedHistoryEntry {
   cwd: string;
   timestamp: number;
 }
+
+// mode and ctimeMs are part of the fingerprint so permission/ACL transitions
+// (e.g. chmod 000) invalidate the cache even when content is unchanged.
+interface FileFingerprint {
+  ctimeMs: number;
+  mtimeMs: number;
+  mode: number;
+  size: number;
+}
+
+interface CachedHistory<T> extends FileFingerprint {
+  entries: T;
+}
+
+function matchesFingerprint(cached: FileFingerprint, stat: FileFingerprint): boolean {
+  return cached.ctimeMs === stat.ctimeMs
+    && cached.mtimeMs === stat.mtimeMs
+    && cached.mode === stat.mode
+    && cached.size === stat.size;
+}
+
+const projectHistoryCache = new Map<string, CachedHistory<PersistedHistoryEntry[]>>();
+const globalHistoryCache = new Map<string, CachedHistory<string[]>>();
 
 function getHistoryDir(): string {
   return getAgentPath("powerline-footer", "bash-history");
@@ -39,13 +62,30 @@ function normalizePersistedEntries(value: unknown): PersistedHistoryEntry[] {
 
 export function readProjectHistory(cwd: string): PersistedHistoryEntry[] {
   const filePath = projectHistoryPath(cwd);
-  if (!existsSync(filePath)) return [];
+  if (!existsSync(filePath)) {
+    projectHistoryCache.delete(filePath);
+    return [];
+  }
 
   try {
+    const stat = statSync(filePath);
+    const cached = projectHistoryCache.get(filePath);
+    if (cached && matchesFingerprint(cached, stat)) {
+      return cached.entries;
+    }
+
     const parsed = JSON.parse(readFileSync(filePath, "utf8"));
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return [];
-    return normalizePersistedEntries((parsed as { entries?: unknown }).entries)
+    const entries = normalizePersistedEntries((parsed as { entries?: unknown }).entries)
       .sort((a, b) => b.timestamp - a.timestamp);
+    projectHistoryCache.set(filePath, {
+      ctimeMs: stat.ctimeMs,
+      mtimeMs: stat.mtimeMs,
+      mode: stat.mode,
+      size: stat.size,
+      entries,
+    });
+    return entries;
   } catch (error) {
     // Project history is a best-effort cache. If it is unreadable or malformed,
     // bash mode should keep working instead of failing command entry entirely.
@@ -62,12 +102,23 @@ export function appendProjectHistory(cwd: string, command: string, entryCwd: str
   const next: PersistedHistoryEntry[] = [
     { command: normalizedCommand, cwd: entryCwd, timestamp: Date.now() },
     ...existing.filter((entry) => entry.command !== normalizedCommand),
-  ].slice(0, 500);
+  ]
+    .slice(0, 500)
+    .sort((a, b) => b.timestamp - a.timestamp);
 
   const filePath = projectHistoryPath(cwd);
+  projectHistoryCache.delete(filePath);
   try {
     mkdirSync(dirname(filePath), { recursive: true });
     writeFileSync(filePath, JSON.stringify({ version: 1, entries: next }, null, 2) + "\n");
+    const stat = statSync(filePath);
+    projectHistoryCache.set(filePath, {
+      ctimeMs: stat.ctimeMs,
+      mtimeMs: stat.mtimeMs,
+      mode: stat.mode,
+      size: stat.size,
+      entries: next,
+    });
   } catch (error) {
     // History persistence should never block a successful shell command from completing.
     console.debug(`[powerline-footer] Failed to persist bash project history to ${filePath}:`, error);
@@ -100,27 +151,37 @@ function parseFishHistory(raw: string): string[] {
 export function readGlobalShellHistory(shellPath: string): string[] {
   const shellName = shellPath.split("/").pop()?.toLowerCase() ?? "";
   const home = getHomeDir();
+  const filePath = shellName.includes("fish")
+    ? join(home, ".local", "share", "fish", "fish_history")
+    : process.env.HISTFILE || join(home, shellName.includes("zsh") ? ".zsh_history" : ".bash_history");
+  const cacheKey = `${shellName}\0${filePath}`;
+
+  if (!existsSync(filePath)) {
+    globalHistoryCache.delete(cacheKey);
+    return [];
+  }
 
   try {
-    if (shellName.includes("zsh")) {
-      const filePath = process.env.HISTFILE || join(home, ".zsh_history");
-      if (!existsSync(filePath)) return [];
-      return readFileSync(filePath, "utf8")
-        .split("\n")
-        .map(parseZshHistoryLine)
-        .filter((entry): entry is string => Boolean(entry))
-        .reverse();
+    const stat = statSync(filePath);
+    const cached = globalHistoryCache.get(cacheKey);
+    if (cached && matchesFingerprint(cached, stat)) {
+      return cached.entries;
     }
 
-    if (shellName.includes("fish")) {
-      const filePath = join(home, ".local", "share", "fish", "fish_history");
-      if (!existsSync(filePath)) return [];
-      return parseFishHistory(readFileSync(filePath, "utf8")).reverse();
-    }
-
-    const filePath = process.env.HISTFILE || join(home, ".bash_history");
-    if (!existsSync(filePath)) return [];
-    return parseBashHistory(readFileSync(filePath, "utf8").split("\n")).reverse();
+    const raw = readFileSync(filePath, "utf8");
+    const entries = shellName.includes("zsh")
+      ? raw.split("\n").map(parseZshHistoryLine).filter((entry): entry is string => Boolean(entry)).reverse()
+      : shellName.includes("fish")
+        ? parseFishHistory(raw).reverse()
+        : parseBashHistory(raw.split("\n")).reverse();
+    globalHistoryCache.set(cacheKey, {
+      ctimeMs: stat.ctimeMs,
+      mtimeMs: stat.mtimeMs,
+      mode: stat.mode,
+      size: stat.size,
+      entries,
+    });
+    return entries;
   } catch (error) {
     // Global shell history is optional recall data. If it is unavailable, shell predictions
     // should degrade to other sources instead of failing the editor.

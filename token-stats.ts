@@ -74,29 +74,61 @@ function eventStatsSignature(event: unknown): string {
   return `e:${typeof event.type === "string" ? event.type : "?"}`;
 }
 
+function emptySessionTokenStats(): SessionTokenStats {
+  return {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    cost: 0,
+    lastAssistant: undefined,
+    thinkingLevelFromSession: null,
+  };
+}
+
+function copySessionTokenStats(stats: SessionTokenStats): SessionTokenStats {
+  return { ...stats };
+}
+
+function accumulateSessionEvent(stats: SessionTokenStats, event: unknown): void {
+  if (!isRecord(event)) return;
+
+  if (event.type === "thinking_level_change" && typeof event.thinkingLevel === "string") {
+    stats.thinkingLevelFromSession = event.thinkingLevel;
+  }
+
+  if (event.type !== "message" || !isSessionAssistantMessage(event.message)) return;
+
+  const message = event.message;
+  if (message.stopReason === "error" || message.stopReason === "aborted") return;
+
+  stats.input += message.usage.input;
+  stats.output += message.usage.output;
+  stats.cacheRead += message.usage.cacheRead;
+  stats.cacheWrite += message.usage.cacheWrite;
+  stats.cost += message.usage.cost.total;
+  if (getUsageTokenTotal(message.usage) > 0) {
+    stats.lastAssistant = message;
+  }
+}
+
 export function computeSessionTokenStats(sessionEvents: readonly unknown[]): SessionTokenStats {
   let input = 0, output = 0, cacheRead = 0, cacheWrite = 0, cost = 0;
   let lastAssistant: AssistantMessage | undefined;
   let thinkingLevelFromSession: string | null = null;
 
   for (const e of sessionEvents) {
-    if (!isRecord(e)) {
-      continue;
-    }
+    if (!isRecord(e)) continue;
 
-    // Check for thinking level change entries
     if (e.type === "thinking_level_change" && typeof e.thinkingLevel === "string") {
       thinkingLevelFromSession = e.thinkingLevel;
     }
 
-    if (e.type !== "message" || !isSessionAssistantMessage(e.message)) {
-      continue;
-    }
+    if (e.type !== "message" || !isSessionAssistantMessage(e.message)) continue;
 
     const m = e.message;
-    if (m.stopReason === "error" || m.stopReason === "aborted") {
-      continue;
-    }
+    if (m.stopReason === "error" || m.stopReason === "aborted") continue;
+
     input += m.usage.input;
     output += m.usage.output;
     cacheRead += m.usage.cacheRead;
@@ -112,38 +144,68 @@ export function computeSessionTokenStats(sessionEvents: readonly unknown[]): Ses
 
 /**
  * Cache for token counting: avoid re-scanning the full session event list on
- * every render (250ms-1s cadence while streaming). Reuses the aggregated
- * totals while the session hasn't changed.
- *
- * An event-count-only check would go stale when streaming updates the last
- * event in place, so validity requires all of:
- *   1. same event count,
- *   2. same last-event reference,
- *   3. same last-event stats signature (usage/stopReason/thinking level).
+ * every render (250ms-1s cadence while streaming). Historical session entries
+ * are append-only, so appended entries are accumulated and an in-place update
+ * to the trailing streaming entry only recomputes that entry.
  */
 export class SessionTokenStatsCache {
   private eventCount = -1;
   private lastEvent: unknown;
   private lastSignature = "";
+  private prefixStats: SessionTokenStats | null = null;
   private stats: SessionTokenStats | null = null;
 
   get(sessionEvents: readonly unknown[]): SessionTokenStats {
     const eventCount = sessionEvents.length;
     const lastEvent = eventCount > 0 ? sessionEvents[eventCount - 1] : undefined;
+    const lastSignature = eventStatsSignature(lastEvent);
 
     if (
       this.stats !== null
       && this.eventCount === eventCount
       && this.lastEvent === lastEvent
-      && this.lastSignature === eventStatsSignature(lastEvent)
+      && this.lastSignature === lastSignature
     ) {
       return this.stats;
     }
 
-    const stats = computeSessionTokenStats(sessionEvents);
+    // getBranch() walks unique parent links, so an identical trailing event at
+    // the previous count proves the whole previous array is an unchanged prefix.
+    const previousStats = this.stats;
+    const canExtendPreviousStats = previousStats !== null
+      && eventCount > this.eventCount
+      && (this.eventCount === 0 || (
+        sessionEvents[this.eventCount - 1] === this.lastEvent
+        && eventStatsSignature(sessionEvents[this.eventCount - 1]) === this.lastSignature
+      ));
+
+    let prefixStats: SessionTokenStats;
+    if (canExtendPreviousStats && previousStats !== null) {
+      prefixStats = copySessionTokenStats(previousStats);
+      for (let index = this.eventCount; index < eventCount - 1; index += 1) {
+        accumulateSessionEvent(prefixStats, sessionEvents[index]);
+      }
+    } else if (
+      this.prefixStats !== null
+      && this.eventCount === eventCount
+      && this.lastEvent === lastEvent
+    ) {
+      // Same array with an in-place tail mutation: reuse the cached prefix.
+      prefixStats = this.prefixStats;
+    } else {
+      prefixStats = emptySessionTokenStats();
+      for (let index = 0; index < eventCount - 1; index += 1) {
+        accumulateSessionEvent(prefixStats, sessionEvents[index]);
+      }
+    }
+
+    const stats = copySessionTokenStats(prefixStats);
+    if (eventCount > 0) accumulateSessionEvent(stats, lastEvent);
+
     this.eventCount = eventCount;
     this.lastEvent = lastEvent;
-    this.lastSignature = eventStatsSignature(lastEvent);
+    this.lastSignature = lastSignature;
+    this.prefixStats = prefixStats;
     this.stats = stats;
     return stats;
   }
@@ -152,6 +214,7 @@ export class SessionTokenStatsCache {
     this.eventCount = -1;
     this.lastEvent = undefined;
     this.lastSignature = "";
+    this.prefixStats = null;
     this.stats = null;
   }
 }

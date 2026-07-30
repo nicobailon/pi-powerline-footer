@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- **Interactive hot-path performance** — Shell history ghost suggestions now cache project and global history behind file-fingerprint validation instead of re-reading and re-parsing history files on every keystroke; fixed-editor cluster rendering only width-normalizes rows that can reach the terminal instead of every candidate line; and streaming token-stat updates reuse the append-only session prefix instead of rescanning the full event list. Measured on stress workloads with byte-identical output: 100k-line zsh history reads ~5,500x faster, large fixed-editor redraws ~390x faster, and 20k-event streaming token updates ~300x faster.
+
 ## [0.8.0] - 2026-07-29
 
 ### Added
