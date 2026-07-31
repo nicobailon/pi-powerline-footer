@@ -157,6 +157,8 @@ export interface UsageStats {
   cacheRead: number;
   cacheWrite: number;
   cost: number;
+  // Cumulative cost of subagent child runs (e.g. /parallel, /worker) launched from this session.
+  subagentCost: number;
 }
 
 // Context passed to segment render functions

@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- **Subagent cost in footer** — The `cost` segment now includes the cumulative cost of subagent child runs (`/parallel`, `/worker`, etc.) launched from the session, instead of only the interactive parent session's cost.
+
 ## [0.8.1] - 2026-07-30
 
 ### Changed

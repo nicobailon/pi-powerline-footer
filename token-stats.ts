@@ -8,6 +8,7 @@ export interface SessionTokenStats {
   cacheRead: number;
   cacheWrite: number;
   cost: number;
+  subagentCost: number;
   lastAssistant: AssistantMessage | undefined;
   thinkingLevelFromSession: string | null;
 }
@@ -43,6 +44,40 @@ function isSessionAssistantMessage(value: unknown): value is AssistantMessage {
 function getUsageTokenTotal(usage: SessionAssistantUsage): number {
   const totalTokens = "totalTokens" in usage && typeof usage.totalTokens === "number" ? usage.totalTokens : 0;
   return totalTokens || usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
+}
+
+// Matches pi-subagents' internal SLASH_RESULT_TYPE custom_message marker.
+const SUBAGENT_SLASH_RESULT_TYPE = "subagent-slash-result";
+
+function subagentDetailsFromSessionEntry(e: Record<string, unknown>): { results: unknown[] } | undefined {
+  if (e.type === "custom_message" && e.customType === SUBAGENT_SLASH_RESULT_TYPE) {
+    const details = isRecord(e.details) ? e.details : undefined;
+    const result = isRecord(details?.result) ? details.result : undefined;
+    const inner = isRecord(result?.details) ? result.details : undefined;
+    return Array.isArray(inner?.results) ? { results: inner.results } : undefined;
+  }
+  if (e.type === "message" && isRecord(e.message)) {
+    const message = e.message as { role?: unknown; toolName?: unknown; details?: unknown };
+    if (message.role === "toolResult" && message.toolName === "subagent" && isRecord(message.details) && Array.isArray(message.details.results)) {
+      return { results: message.details.results };
+    }
+  }
+  return undefined;
+}
+
+// Sums subagent child usage cost recorded on a single session entry (parallel/chain/single runs
+// launched via the subagent tool or /parallel, /worker etc. slash commands), so the footer can
+// show total spend rather than only the interactive parent session's cost.
+function extractSubagentResultCost(e: Record<string, unknown>): number {
+  const details = subagentDetailsFromSessionEntry(e);
+  if (!details) return 0;
+  let total = 0;
+  for (const result of details.results) {
+    if (!isRecord(result)) continue;
+    const usage = isRecord(result.usage) ? result.usage : undefined;
+    if (typeof usage?.cost === "number") total += usage.cost;
+  }
+  return total;
 }
 
 /**
@@ -81,6 +116,7 @@ function emptySessionTokenStats(): SessionTokenStats {
     cacheRead: 0,
     cacheWrite: 0,
     cost: 0,
+    subagentCost: 0,
     lastAssistant: undefined,
     thinkingLevelFromSession: null,
   };
@@ -96,6 +132,8 @@ function accumulateSessionEvent(stats: SessionTokenStats, event: unknown): void 
   if (event.type === "thinking_level_change" && typeof event.thinkingLevel === "string") {
     stats.thinkingLevelFromSession = event.thinkingLevel;
   }
+
+  stats.subagentCost += extractSubagentResultCost(event);
 
   if (event.type !== "message" || !isSessionAssistantMessage(event.message)) return;
 
@@ -113,7 +151,7 @@ function accumulateSessionEvent(stats: SessionTokenStats, event: unknown): void 
 }
 
 export function computeSessionTokenStats(sessionEvents: readonly unknown[]): SessionTokenStats {
-  let input = 0, output = 0, cacheRead = 0, cacheWrite = 0, cost = 0;
+  let input = 0, output = 0, cacheRead = 0, cacheWrite = 0, cost = 0, subagentCost = 0;
   let lastAssistant: AssistantMessage | undefined;
   let thinkingLevelFromSession: string | null = null;
 
@@ -123,6 +161,8 @@ export function computeSessionTokenStats(sessionEvents: readonly unknown[]): Ses
     if (e.type === "thinking_level_change" && typeof e.thinkingLevel === "string") {
       thinkingLevelFromSession = e.thinkingLevel;
     }
+
+    subagentCost += extractSubagentResultCost(e);
 
     if (e.type !== "message" || !isSessionAssistantMessage(e.message)) continue;
 
@@ -139,7 +179,7 @@ export function computeSessionTokenStats(sessionEvents: readonly unknown[]): Ses
     }
   }
 
-  return { input, output, cacheRead, cacheWrite, cost, lastAssistant, thinkingLevelFromSession };
+  return { input, output, cacheRead, cacheWrite, cost, subagentCost, lastAssistant, thinkingLevelFromSession };
 }
 
 /**

@@ -2202,7 +2202,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     // event's stats-relevant fields change, e.g. in-place streaming updates)
     const sessionEvents = ctx.sessionManager?.getBranch?.() ?? [];
     const tokenStats = tokenStatsCache.get(sessionEvents);
-    const { input, output, cacheRead, cacheWrite, cost } = tokenStats;
+    const { input, output, cacheRead, cacheWrite, cost, subagentCost } = tokenStats;
     const lastAssistant = tokenStats.lastAssistant;
     const thinkingLevelFromSession = tokenStats.thinkingLevelFromSession;
 
@@ -2234,7 +2234,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       thinkingLevel,
       sessionId: ctx.sessionManager?.getSessionId?.(),
       cwd: ctx.cwd,
-      usageStats: { input, output, cacheRead, cacheWrite, cost },
+      usageStats: { input, output, cacheRead, cacheWrite, cost, subagentCost },
       contextTokens,
       contextPercent,
       contextWindow,

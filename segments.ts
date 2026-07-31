@@ -284,7 +284,7 @@ const tokenTotalSegment: StatusLineSegment = {
 const costSegment: StatusLineSegment = {
   id: "cost",
   render(ctx) {
-    const { cost } = ctx.usageStats;
+    const cost = ctx.usageStats.cost + ctx.usageStats.subagentCost;
     const usingSubscription = ctx.usingSubscription;
 
     if (!cost && !usingSubscription) {

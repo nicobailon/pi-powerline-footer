@@ -32,6 +32,25 @@ function userEvent() {
   };
 }
 
+function subagentToolResultEvent(costs: number[]) {
+  return {
+    type: "message",
+    message: {
+      role: "toolResult",
+      toolName: "subagent",
+      details: { results: costs.map((cost) => ({ usage: { cost } })) },
+    },
+  };
+}
+
+function subagentSlashResultEvent(costs: number[]) {
+  return {
+    type: "custom_message",
+    customType: "subagent-slash-result",
+    details: { result: { details: { results: costs.map((cost) => ({ usage: { cost } })) } } },
+  };
+}
+
 test("computeSessionTokenStats aggregates usage and tracks thinking level", () => {
   const events = [
     userEvent(),
@@ -51,6 +70,18 @@ test("computeSessionTokenStats aggregates usage and tracks thinking level", () =
   assert.ok(Math.abs(stats.cost - 0.074) < 1e-12);
   assert.equal(stats.lastAssistant, (events[5] as any).message);
   assert.equal(stats.thinkingLevelFromSession, "high");
+});
+
+test("computeSessionTokenStats sums subagent child run cost from tool results and slash results", () => {
+  const events = [
+    userEvent(),
+    assistantEvent(makeUsage(10, 5)),
+    subagentToolResultEvent([0.12, 0.34]),
+    subagentSlashResultEvent([0.5]),
+  ];
+
+  const stats = computeSessionTokenStats(events);
+  assert.ok(Math.abs(stats.subagentCost - 0.96) < 1e-12);
 });
 
 test("computeSessionTokenStats ignores assistant messages without tokens for lastAssistant", () => {
