@@ -262,31 +262,31 @@ test("vibe generate command parses multi-word themes correctly", () => {
   // 测试用例
   const testCases = [
     {
-      name: "单单词主题带计数",
+      name: "single-word theme with count",
       input: ["generate", "pirate", "200"],
       expectedTheme: "pirate",
       expectedCount: 200,
     },
     {
-      name: "双单词主题带计数",
+      name: "multi-word theme with count",
       input: ["generate", "star", "trek", "200"],
       expectedTheme: "star trek",
       expectedCount: 200,
     },
     {
-      name: "三单词主题带计数",
+      name: "three-word theme with count",
       input: ["generate", "lord", "of", "rings", "500"],
       expectedTheme: "lord of rings",
       expectedCount: 500,
     },
     {
-      name: "双单词主题不带计数",
+      name: "multi-word theme without count",
       input: ["generate", "star", "trek"],
       expectedTheme: "star trek",
       expectedCount: 100,
     },
     {
-      name: "非数字作为最后一个参数",
+      name: "non-numeric last argument",
       input: ["generate", "star", "trek", "abc"],
       expectedTheme: "star trek abc",
       expectedCount: 100,
@@ -298,12 +298,12 @@ test("vibe generate command parses multi-word themes correctly", () => {
     assert.equal(
       result.theme,
       testCase.expectedTheme,
-      `${testCase.name}: 主题应为 "${testCase.expectedTheme}"，实际为 "${result.theme}"`
+      `${testCase.name}: theme should be "${testCase.expectedTheme}", got "${result.theme}"`
     );
     assert.equal(
       result.count,
       testCase.expectedCount,
-      `${testCase.name}: 计数应为 ${testCase.expectedCount}，实际为 ${result.count}`
+      `${testCase.name}: count should be ${testCase.expectedCount}, got ${result.count}`
     );
   }
 });
