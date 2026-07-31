@@ -2144,11 +2144,19 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       
       // /vibe generate <theme> [count] - generate vibes and save to file
       if (subcommand === "generate") {
-        const theme = parts[1];
-        const parsedCount = Number.parseInt(parts[2] ?? "", 10);
-        const count = Number.isFinite(parsedCount)
-          ? Math.min(Math.max(Math.floor(parsedCount), 1), 500)
-          : 100;
+        let theme: string;
+        let count: number;
+
+        const lastPart = parts[parts.length - 1];
+        const parsedCount = Number.parseInt(lastPart ?? "", 10);
+
+        if (Number.isFinite(parsedCount) && parts.length > 2) {
+          count = Math.min(Math.max(Math.floor(parsedCount), 1), 500);
+          theme = parts.slice(1, -1).join(" ");
+        } else {
+          count = 100;
+          theme = parts.slice(1).join(" ");
+        }
 
         if (!theme) {
           ctx.ui.notify("Usage: /vibe generate <theme> [count]", "error");
