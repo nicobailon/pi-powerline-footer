@@ -238,7 +238,6 @@ test("generateVibesBatch preserves provider errors instead of reporting an empty
 });
 
 test("vibe generate command parses multi-word themes correctly", () => {
-  // 模拟 /vibe generate 命令的解析逻辑
   function parseVibeGenerateArgs(args: string[]): { theme: string; count: number } {
     const parts = args;
     
@@ -259,7 +258,6 @@ test("vibe generate command parses multi-word themes correctly", () => {
     return { theme, count };
   }
 
-  // 测试用例
   const testCases = [
     {
       name: "single-word theme with count",
