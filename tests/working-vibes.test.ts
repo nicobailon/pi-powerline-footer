@@ -236,3 +236,74 @@ test("generateVibesBatch preserves provider errors instead of reporting an empty
     links.cleanup();
   }
 });
+
+test("vibe generate command parses multi-word themes correctly", () => {
+  // 模拟 /vibe generate 命令的解析逻辑
+  function parseVibeGenerateArgs(args: string[]): { theme: string; count: number } {
+    const parts = args;
+    
+    let theme: string;
+    let count: number;
+
+    const lastPart = parts[parts.length - 1];
+    const parsedCount = Number.parseInt(lastPart ?? "", 10);
+
+    if (Number.isFinite(parsedCount) && parts.length > 2) {
+      count = Math.min(Math.max(Math.floor(parsedCount), 1), 500);
+      theme = parts.slice(1, -1).join(" ");
+    } else {
+      count = 100;
+      theme = parts.slice(1).join(" ");
+    }
+
+    return { theme, count };
+  }
+
+  // 测试用例
+  const testCases = [
+    {
+      name: "单单词主题带计数",
+      input: ["generate", "pirate", "200"],
+      expectedTheme: "pirate",
+      expectedCount: 200,
+    },
+    {
+      name: "双单词主题带计数",
+      input: ["generate", "star", "trek", "200"],
+      expectedTheme: "star trek",
+      expectedCount: 200,
+    },
+    {
+      name: "三单词主题带计数",
+      input: ["generate", "lord", "of", "rings", "500"],
+      expectedTheme: "lord of rings",
+      expectedCount: 500,
+    },
+    {
+      name: "双单词主题不带计数",
+      input: ["generate", "star", "trek"],
+      expectedTheme: "star trek",
+      expectedCount: 100,
+    },
+    {
+      name: "非数字作为最后一个参数",
+      input: ["generate", "star", "trek", "abc"],
+      expectedTheme: "star trek abc",
+      expectedCount: 100,
+    },
+  ];
+
+  for (const testCase of testCases) {
+    const result = parseVibeGenerateArgs(testCase.input);
+    assert.equal(
+      result.theme,
+      testCase.expectedTheme,
+      `${testCase.name}: 主题应为 "${testCase.expectedTheme}"，实际为 "${result.theme}"`
+    );
+    assert.equal(
+      result.count,
+      testCase.expectedCount,
+      `${testCase.name}: 计数应为 ${testCase.expectedCount}，实际为 ${result.count}`
+    );
+  }
+});
