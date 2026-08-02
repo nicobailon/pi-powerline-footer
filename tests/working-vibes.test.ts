@@ -69,50 +69,114 @@ test("generateVibesBatch includes a system prompt so faux providers can return t
   process.env.HOME = home;
 
   try {
-    const { fauxAssistantMessage, registerFauxProvider } = await importFauxProviderTools();
+    const { fauxAssistantMessage, fauxProvider } = await importFauxProviderTools();
     const { generateVibesBatch, initVibeManager, setVibeModel } = await import("../working-vibes.ts");
 
-    const registration = registerFauxProvider({
+    const registration = fauxProvider({
       provider: "test-provider",
       models: [{ id: "test-model" }],
     });
 
-    try {
-      const model = registration.getModel("test-model");
-      assert.ok(model);
+    const model = registration.getModel("test-model");
+    assert.ok(model);
 
-      registration.setResponses([
-        (context) => {
-          assert.match(context.systemPrompt ?? "", /loading messages/i);
-          return fauxAssistantMessage("Engaging warp drive...\nRunning diagnostics...");
+    registration.setResponses([
+      (context) => {
+        assert.match(context.systemPrompt ?? "", /loading messages/i);
+        return fauxAssistantMessage("Engaging warp drive...\nRunning diagnostics...");
+      },
+    ]);
+
+    initVibeManager({
+      modelRegistry: {
+        find(provider: string, modelId: string) {
+          return provider === "test-provider" && modelId === "test-model" ? model : undefined;
         },
-      ]);
-
-      initVibeManager({
-        modelRegistry: {
-          find(provider: string, modelId: string) {
-            return provider === "test-provider" && modelId === "test-model" ? model : undefined;
-          },
-          async getApiKeyAndHeaders() {
-            return { ok: true, apiKey: "test-key", headers: {} };
-          },
+        async getApiKeyAndHeaders() {
+          return { ok: true, apiKey: "test-key", headers: {} };
         },
-      });
+        getProvider(provider: string) {
+          return provider === "test-provider" ? registration.provider : undefined;
+        },
+        async getProviderAuth() {
+          return undefined;
+        },
+      },
+    });
 
-      assert.equal(setVibeModel("test-provider/test-model"), true);
+    assert.equal(setVibeModel("test-provider/test-model"), true);
 
-      const result = await generateVibesBatch("star trek", 2);
+    const result = await generateVibesBatch("star trek", 2);
 
-      assert.equal(result.success, true);
-      assert.equal(result.count, 2);
-      assert.equal(existsSync(result.filePath), true);
-      assert.deepEqual(readFileSync(result.filePath, "utf8").trim().split("\n"), [
-        "Engaging warp drive...",
-        "Running diagnostics...",
-      ]);
-    } finally {
-      registration.unregister();
+    assert.equal(result.success, true);
+    assert.equal(result.count, 2);
+    assert.equal(existsSync(result.filePath), true);
+    assert.deepEqual(readFileSync(result.filePath, "utf8").trim().split("\n"), [
+      "Engaging warp drive...",
+      "Running diagnostics...",
+    ]);
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousHome;
     }
+    rmSync(home, { recursive: true, force: true });
+    links.cleanup();
+  }
+});
+
+test("generateVibesBatch forwards resolved provider env and credential base URL", async () => {
+  const links = ensurePiModuleLinks();
+  const home = mkdtempSync(join(tmpdir(), "powerline-vibes-home-"));
+  const previousHome = process.env.HOME;
+  process.env.HOME = home;
+
+  try {
+    const { fauxAssistantMessage, fauxProvider } = await importFauxProviderTools();
+    const { generateVibesBatch, initVibeManager, setVibeModel } = await import("../working-vibes.ts");
+
+    const registration = fauxProvider({
+      provider: "test-provider",
+      models: [{ id: "test-model" }],
+    });
+
+    const model = registration.getModel("test-model");
+    assert.ok(model);
+
+    registration.setResponses([
+      (_context, options, _state, requestModel) => {
+        assert.deepEqual(options?.env, { AWS_PROFILE: "vibes" });
+        assert.equal(requestModel.baseUrl, "https://credential.example/v1");
+        return fauxAssistantMessage("Signing the request...");
+      },
+    ]);
+
+    initVibeManager({
+      modelRegistry: {
+        find(provider: string, modelId: string) {
+          return provider === "test-provider" && modelId === "test-model" ? model : undefined;
+        },
+        async getApiKeyAndHeaders() {
+          return { ok: true, apiKey: "test-key", headers: {}, env: { AWS_PROFILE: "vibes" } };
+        },
+        getProvider(provider: string) {
+          return provider === "test-provider" ? registration.provider : undefined;
+        },
+        async getProviderAuth() {
+          return { auth: { apiKey: "test-key", baseUrl: "https://credential.example/v1" } };
+        },
+      },
+    });
+
+    assert.equal(setVibeModel("test-provider/test-model"), true);
+
+    const result = await generateVibesBatch("bedrock", 1);
+
+    assert.equal(result.success, true);
+    assert.deepEqual(readFileSync(result.filePath, "utf8").trim().split("\n"), [
+      "Signing the request...",
+    ]);
   } finally {
     if (previousHome === undefined) {
       delete process.env.HOME;
@@ -131,55 +195,57 @@ test("on-demand vibe generation includes a system prompt for providers that requ
   process.env.HOME = home;
 
   try {
-    const { fauxAssistantMessage, registerFauxProvider } = await importFauxProviderTools();
+    const { fauxAssistantMessage, fauxProvider } = await importFauxProviderTools();
     const { initVibeManager, onVibeAgentStart, onVibeBeforeAgentStart, setVibeModel, setVibeTheme } = await import("../working-vibes.ts");
 
-    const registration = registerFauxProvider({
+    const registration = fauxProvider({
       provider: "test-provider",
       models: [{ id: "test-model" }],
     });
 
-    try {
-      const model = registration.getModel("test-model");
-      assert.ok(model);
+    const model = registration.getModel("test-model");
+    assert.ok(model);
 
-      registration.setResponses([
-        (context) => {
-          assert.match(context.systemPrompt ?? "", /loading messages/i);
-          return fauxAssistantMessage("Engaging warp drive...");
+    registration.setResponses([
+      (context) => {
+        assert.match(context.systemPrompt ?? "", /loading messages/i);
+        return fauxAssistantMessage("Engaging warp drive...");
+      },
+    ]);
+
+    initVibeManager({
+      modelRegistry: {
+        find(provider: string, modelId: string) {
+          return provider === "test-provider" && modelId === "test-model" ? model : undefined;
         },
-      ]);
-
-      initVibeManager({
-        modelRegistry: {
-          find(provider: string, modelId: string) {
-            return provider === "test-provider" && modelId === "test-model" ? model : undefined;
-          },
-          async getApiKeyAndHeaders() {
-            return { ok: true, apiKey: "test-key", headers: {} };
-          },
+        async getApiKeyAndHeaders() {
+          return { ok: true, apiKey: "test-key", headers: {} };
         },
-      });
+        getProvider(provider: string) {
+          return provider === "test-provider" ? registration.provider : undefined;
+        },
+        async getProviderAuth() {
+          return undefined;
+        },
+      },
+    });
 
-      assert.equal(setVibeTheme("star trek"), true);
-      assert.equal(setVibeModel("test-provider/test-model"), true);
+    assert.equal(setVibeTheme("star trek"), true);
+    assert.equal(setVibeModel("test-provider/test-model"), true);
 
-      const updates: Array<string | undefined> = [];
-      onVibeAgentStart();
-      onVibeBeforeAgentStart("fix a bug", (message) => {
-        updates.push(message);
-      });
+    const updates: Array<string | undefined> = [];
+    onVibeAgentStart();
+    onVibeBeforeAgentStart("fix a bug", (message) => {
+      updates.push(message);
+    });
 
-      const start = Date.now();
-      while (!updates.includes("Engaging warp drive...") && Date.now() - start < 1000) {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
-
-      assert.equal(updates[0], "Channeling star trek...");
-      assert.ok(updates.includes("Engaging warp drive..."));
-    } finally {
-      registration.unregister();
+    const start = Date.now();
+    while (!updates.includes("Engaging warp drive...") && Date.now() - start < 1000) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
     }
+
+    assert.equal(updates[0], "Channeling star trek...");
+    assert.ok(updates.includes("Engaging warp drive..."));
   } finally {
     if (previousHome === undefined) {
       delete process.env.HOME;
@@ -198,45 +264,47 @@ test("generateVibesBatch preserves provider errors instead of reporting an empty
   process.env.HOME = home;
 
   try {
-    const { fauxAssistantMessage, registerFauxProvider } = await importFauxProviderTools();
+    const { fauxAssistantMessage, fauxProvider } = await importFauxProviderTools();
     const { generateVibesBatch, initVibeManager, setVibeModel } = await import("../working-vibes.ts");
 
-    const registration = registerFauxProvider({
+    const registration = fauxProvider({
       provider: "test-provider",
       models: [{ id: "test-model" }],
     });
 
-    try {
-      const model = registration.getModel("test-model");
-      assert.ok(model);
+    const model = registration.getModel("test-model");
+    assert.ok(model);
 
-      registration.setResponses([
-        fauxAssistantMessage([], {
-          stopReason: "error",
-          errorMessage: "Instructions are required",
-        }),
-      ]);
+    registration.setResponses([
+      fauxAssistantMessage([], {
+        stopReason: "error",
+        errorMessage: "Instructions are required",
+      }),
+    ]);
 
-      initVibeManager({
-        modelRegistry: {
-          find(provider: string, modelId: string) {
-            return provider === "test-provider" && modelId === "test-model" ? model : undefined;
-          },
-          async getApiKeyAndHeaders() {
-            return { ok: true, apiKey: "test-key", headers: {} };
-          },
+    initVibeManager({
+      modelRegistry: {
+        find(provider: string, modelId: string) {
+          return provider === "test-provider" && modelId === "test-model" ? model : undefined;
         },
-      });
+        async getApiKeyAndHeaders() {
+          return { ok: true, apiKey: "test-key", headers: {} };
+        },
+        getProvider(provider: string) {
+          return provider === "test-provider" ? registration.provider : undefined;
+        },
+        async getProviderAuth() {
+          return undefined;
+        },
+      },
+    });
 
-      assert.equal(setVibeModel("test-provider/test-model"), true);
+    assert.equal(setVibeModel("test-provider/test-model"), true);
 
-      const result = await generateVibesBatch("noir", 2);
+    const result = await generateVibesBatch("noir", 2);
 
-      assert.equal(result.success, false);
-      assert.equal(result.error, "Instructions are required");
-    } finally {
-      registration.unregister();
-    }
+    assert.equal(result.success, false);
+    assert.equal(result.error, "Instructions are required");
   } finally {
     if (previousHome === undefined) {
       delete process.env.HOME;

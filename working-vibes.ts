@@ -9,28 +9,26 @@ import { join, dirname } from "node:path";
 import { getAgentPath } from "./paths.ts";
 
 type VibeMode = "generate" | "file";
-type CompleteFunction = (model: Model<string>, context: Context, options?: ProviderStreamOptions) => Promise<AssistantMessage>;
 
-let completeFunctionPromise: Promise<CompleteFunction> | null = null;
+// Extension-registered providers live in the model registry only: their custom `api` values
+// are absent from pi-ai's global api table, so streaming has to go through the provider.
+// Credential-derived base URLs are resolved per request, mirroring ModelRuntime.prepareRequest;
+// getApiKeyAndHeaders() covers the rest of the request auth but never reports a base URL.
+async function completeVibe(
+  providerId: string,
+  model: Model<string>,
+  context: Context,
+  options: ProviderStreamOptions,
+): Promise<AssistantMessage> {
+  const registry = extensionCtx?.modelRegistry;
+  const provider = registry?.getProvider(providerId);
+  if (!registry || !provider) {
+    throw new Error(`Provider not registered: ${providerId}`);
+  }
 
-async function getCompleteFunction(): Promise<CompleteFunction> {
-  completeFunctionPromise ??= (async () => {
-    const piAi = await import("@earendil-works/pi-ai");
-    const complete = Reflect.get(piAi, "complete");
-    if (typeof complete === "function") {
-      return complete as CompleteFunction;
-    }
-
-    const compat = await import("@earendil-works/pi-ai/compat");
-    const compatComplete = Reflect.get(compat, "complete");
-    if (typeof compatComplete !== "function") {
-      throw new Error("pi-ai complete API is unavailable");
-    }
-
-    return compatComplete as CompleteFunction;
-  })();
-
-  return completeFunctionPromise;
+  const baseUrl = (await registry.getProviderAuth(providerId))?.auth.baseUrl;
+  const requestModel = baseUrl ? { ...model, baseUrl } : model;
+  return provider.stream(requestModel, context, options).result();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -423,8 +421,7 @@ async function generateVibe(
   }
   
   const aiContext = buildAiContext(buildVibePrompt(ctx));
-  const complete = await getCompleteFunction();
-  const response = await complete(model, aiContext, { apiKey: auth.apiKey, headers: auth.headers, signal });
+  const response = await completeVibe(provider, model, aiContext, { apiKey: auth.apiKey, headers: auth.headers, env: auth.env, signal });
 
   const textContent = response.content.find(c => c.type === "text");
   if (!textContent?.text && response.stopReason === "error" && response.errorMessage) {
@@ -681,8 +678,7 @@ export async function generateVibesBatch(
   try {
     // Use longer timeout for batch generation (30 seconds)
     const signal = AbortSignal.timeout(30000);
-    const complete = await getCompleteFunction();
-    const response = await complete(model, aiContext, { apiKey: auth.apiKey, headers: auth.headers, signal });
+    const response = await completeVibe(provider, model, aiContext, { apiKey: auth.apiKey, headers: auth.headers, env: auth.env, signal });
     
     const textContent = response.content.find(c => c.type === "text");
     if (!textContent?.text) {

@@ -28,14 +28,14 @@
     "test": "node --experimental-strip-types --test tests/**/*.test.ts"
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": ">=0.74.0 <0.81.0",
-    "@earendil-works/pi-coding-agent": ">=0.74.0 <0.81.0",
-    "@earendil-works/pi-tui": ">=0.74.0 <0.81.0"
+    "@earendil-works/pi-ai": ">=0.81.0 <0.84.0",
+    "@earendil-works/pi-coding-agent": ">=0.81.0 <0.84.0",
+    "@earendil-works/pi-tui": ">=0.81.0 <0.84.0"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "^0.80.3",
-    "@earendil-works/pi-coding-agent": "^0.80.3",
-    "@earendil-works/pi-tui": "^0.80.3"
+    "@earendil-works/pi-ai": "^0.83.0",
+    "@earendil-works/pi-coding-agent": "^0.83.0",
+    "@earendil-works/pi-tui": "^0.83.0"
   },
   "pi": {
     "extensions": [
