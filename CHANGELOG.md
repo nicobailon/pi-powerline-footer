@@ -6,7 +6,7 @@
 - **Minimum Pi version** — Working vibes now stream through the model registry's provider, which Pi exposes from 0.81.0 onward, so the supported Pi range is `>=0.81.0 <0.84.0`.
 
 ### Fixed
-- **Vibe generation with extension-registered providers** — Fixed `No API provider registered for api: <name>` when the vibe model came from a provider registered by another extension. Pi 0.81 moved those providers out of the shared API table that the previous code path resolved against. Vibe requests now also carry resolved provider environment values and credential-derived base URLs, so profile-based and proxied providers reach the right endpoint.
+- **Vibe generation with extension-registered providers** — Fixed `No API provider registered for api: <name>` when the vibe model came from a provider registered by another extension. Pi 0.81 moved those providers out of the shared API table that the previous code path resolved against. Vibe requests now also carry resolved provider environment values and credential-derived base URLs, so profile-based and proxied providers reach the right endpoint. Thanks to Thurston Sandberg (@thurstonsand) for #134.
 
 ## [0.9.0] - 2026-07-31
 
