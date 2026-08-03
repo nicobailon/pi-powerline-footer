@@ -422,17 +422,20 @@ const cacheReadSegment: StatusLineSegment = {
     const { cacheRead, input } = ctx.usageStats;
     if (!cacheRead) return { content: "", visible: false };
 
+    const format = ctx.options.cache_read?.format ?? "tokens";
+    // Cache hit rate: cacheRead / (input + cacheRead)
+    const hitRate = input + cacheRead > 0
+      ? ((cacheRead / (input + cacheRead)) * 100).toFixed(0)
+      : "0";
+
     let content: string;
-    if (ctx.options.cache_read?.format === "percent") {
-      // Cache hit rate: cacheRead / (input + cacheRead)
-      const hitRate = input + cacheRead > 0
-        ? ((cacheRead / (input + cacheRead)) * 100).toFixed(0)
-        : "0";
+    if (format === "percent") {
       content = [icons.cache, `${hitRate}%`].filter(Boolean).join(" ");
     } else {
-      // "tokens" (default): raw cache-read token count
-      const parts = [icons.cache, icons.input, formatTokens(cacheRead)].filter(Boolean);
-      content = parts.join(" ");
+      // "tokens" (default): raw cache-read token count.
+      // "both": raw cache-read token count plus its cache hit rate.
+      const tokens = [icons.cache, icons.input, formatTokens(cacheRead)].filter(Boolean).join(" ");
+      content = format === "both" ? `${tokens} (${hitRate}%)` : tokens;
     }
     return { content: color(ctx, "tokens", content), visible: true };
   },

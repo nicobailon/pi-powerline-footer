@@ -264,7 +264,9 @@ function normalizeSegmentOptions(raw: Record<string, unknown>): StatusLineSegmen
 
   if (isRecord(raw.cache_read)) {
     options.cache_read = {
-      ...(raw.cache_read.format === "tokens" || raw.cache_read.format === "percent" ? { format: raw.cache_read.format } : {}),
+      ...(raw.cache_read.format === "tokens" || raw.cache_read.format === "percent" || raw.cache_read.format === "both"
+        ? { format: raw.cache_read.format }
+        : {}),
     };
   }
 

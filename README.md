@@ -195,13 +195,13 @@ Segment display formats (opt-in; defaults match the historical rendering):
 | Segment option | Values | Default | Effect |
 |---|---|---|---|
 | `"context": { "format" }` | `"full"` / `"percent"` | `"full"` | `"percent"` shows a bare rounded `83%` (threshold-colored, no icon) instead of `12k/200k (6.2%)` |
-| `"cache_read": { "format" }` | `"tokens"` / `"percent"` | `"tokens"` | `"percent"` shows the cache hit rate `cacheRead / (input + cacheRead)` instead of the raw token count |
+| `"cache_read": { "format" }` | `"tokens"` / `"percent"` / `"both"` | `"tokens"` | `"percent"` shows the cache hit rate `cacheRead / (input + cacheRead)` instead of the raw token count; `"both"` shows the raw token count followed by the hit rate, e.g. `cache in: 12k (80%)` |
 
 ```json
 {
   "powerline": {
     "context": { "format": "percent" },
-    "cache_read": { "format": "percent" }
+    "cache_read": { "format": "both" }
   }
 }
 ```

@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- **Combined cache-read format** — Added opt-in `powerline.cache_read.format: "both"` to display raw cache-read tokens alongside the cache hit rate, for example `cache in: 12k (80%)`.
+
 ## [0.10.0] - 2026-08-02
 
 ### Changed
