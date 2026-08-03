@@ -63,7 +63,7 @@ import {
   generateVibesBatch,
   parseVibeGenerateArgs,
 } from "./working-vibes.ts";
-import { PowerlineQueueStore, currentQueueContext, parseTargetPrefix, targetForIdea } from "./queue/store.ts";
+import { PowerlineQueueStore, currentQueueContext, parseCompactQueuedPrompt, parseTargetPrefix, targetForIdea } from "./queue/store.ts";
 import type { PowerlineQueueItem, QueueIntent, QueueTarget } from "./queue/types.ts";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2790,6 +2790,20 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
         const isSubmit = keybindings.matches(data, "tui.input.submit") && !keybindings.matches(data, "tui.input.newLine");
         const isFollowUpSubmit = keybindings.matches(data, "app.message.followUp");
+        if (!powerlineCompacting && !bashModeActive && isSubmit && typeof ctx.compact === "function") {
+          const compactQueuedPrompt = parseCompactQueuedPrompt(editor.getExpandedText());
+          if (compactQueuedPrompt) {
+            editor.addToHistory?.(editor.getExpandedText().trim());
+            editor.setText("");
+            capturePostCompactPrompt(ctx, compactQueuedPrompt);
+            ctx.compact({
+              onError: (error: Error) => ctx.ui.notify(error.message, "error"),
+            });
+            scheduleDismissWelcome(ctx);
+            return;
+          }
+        }
+
         if (powerlineCompacting && !bashModeActive && (isSubmit || isFollowUpSubmit)) {
           const text = editor.getExpandedText().trim();
           if (!text) return;

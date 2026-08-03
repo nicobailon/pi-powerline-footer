@@ -53,6 +53,7 @@ Use `/cd <path>` to continue the current conversation from another working direc
 
 Powerline Queue + Inbox commands:
 
+- `/compact <text>` — compact now and queue `<text>` as the next prompt after successful compaction
 - `/idea <text>` — capture an idea for the current project without sending it to the agent
 - `/idea @global <text>` — capture a global idea
 - `/idea @current <text>` — capture an idea targeted to the current session

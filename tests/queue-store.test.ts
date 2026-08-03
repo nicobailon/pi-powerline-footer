@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { PowerlineQueueStore, currentQueueContext, parseTargetPrefix, targetForIdea } from "../queue/store.ts";
+import { PowerlineQueueStore, currentQueueContext, parseCompactQueuedPrompt, parseTargetPrefix, targetForIdea } from "../queue/store.ts";
 
 function withStore(fn: (store: PowerlineQueueStore, dir: string) => void): void {
   const dir = mkdtempSync(join(tmpdir(), "powerline-queue-"));
@@ -81,6 +81,15 @@ test("queue store aliases resolve idea targets", () => withStore((store) => {
 test("parseTargetPrefix separates optional @target", () => {
   assert.deepEqual(parseTargetPrefix("@pika check logs"), { target: "pika", text: "check logs" });
   assert.deepEqual(parseTargetPrefix("plain idea"), { target: null, text: "plain idea" });
+});
+
+test("parseCompactQueuedPrompt treats /compact suffix as queued prompt text", () => {
+  assert.equal(parseCompactQueuedPrompt("/compact great lets proceed"), "great lets proceed");
+  assert.equal(parseCompactQueuedPrompt("  /compact   great lets proceed  "), "great lets proceed");
+  assert.equal(parseCompactQueuedPrompt("/compact\tgreat lets proceed"), "great lets proceed");
+  assert.equal(parseCompactQueuedPrompt("/compact"), null);
+  assert.equal(parseCompactQueuedPrompt("/compact   "), null);
+  assert.equal(parseCompactQueuedPrompt("/compactness great lets proceed"), null);
 });
 
 test("queue store clears items from active summary", () => withStore((store) => {

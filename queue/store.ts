@@ -320,3 +320,12 @@ export function parseTargetPrefix(text: string): { target: string | null; text: 
   if (!match) return { target: null, text: trimmed };
   return { target: match[1], text: trimmed.slice(match[0].length).trim() };
 }
+
+export function parseCompactQueuedPrompt(text: string): string | null {
+  const trimmed = text.trim();
+  const match = /^\/compact\s+(.+)$/.exec(trimmed);
+  if (!match) return null;
+
+  const prompt = match[1].trim();
+  return prompt ? prompt : null;
+}
