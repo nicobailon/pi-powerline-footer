@@ -1625,7 +1625,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     const errorMessage = event.errorMessage || (event.aborted ? "Compaction cancelled" : "Compaction did not complete");
     if (event.aborted || !event.result) {
       blockPostCompactionQueue(ctx, errorMessage);
-    } else {
+    } else if (!event.willRetry) {
       schedulePostCompactionDelivery(ctx);
     }
     requestQueueRender();
