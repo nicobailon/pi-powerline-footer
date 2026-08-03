@@ -4,6 +4,7 @@
 
 ### Added
 - **Powerline Queue + Inbox** — Added a file-backed queue and idea inbox for capturing thoughts without interrupting the current agent. Messages submitted during compaction are held by Powerline and delivered after successful compaction, while failed or cancelled compactions leave them blocked and visible. `/compact <text>` now compacts and queues `<text>` as the next prompt instead of treating it as compaction-summary instructions. New `/idea`, `/ideas`, and `/queue` commands manage captured ideas, queued prompts, project aliases, retries, clears, and current-session delivery; the `queue` segment and preview row surface active queue, idea, and blocked counts.
+- **Sigil idea capture** — Added leading-`#` idea capture so typing `# <idea>` and pressing Enter saves the idea instead of sending it. The sigil is configurable through `powerline.queue.captureSigil`, the editor prompt glyph switches to `#` while drafting a captured idea, stash history entries can be promoted to ideas, and delivered ideas include provenance for orchestrator handoff.
 - **Combined cache-read format** — Added opt-in `powerline.cache_read.format: "both"` to show raw cache-read tokens alongside the cache hit rate, for example `cache in: 12k (80%)`. Thanks to e (@edabchann) for #136.
 
 ## [0.10.0] - 2026-08-02

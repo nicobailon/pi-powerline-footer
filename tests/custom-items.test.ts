@@ -35,6 +35,7 @@ test("parsePowerlineConfig supports object config with custom items", () => {
   assert.equal(config.invalidPlacement, null);
   assert.equal(config.welcome, true);
   assert.equal(config.stashSharpSShortcut, false);
+  assert.deepEqual(config.queue, { captureSigil: "#" });
 });
 
 test("parsePowerlineConfig supports disabled segments", () => {
@@ -155,17 +156,29 @@ test("parsePowerlineConfig validates primary powerline placement", () => {
 
 
 
-test("parsePowerlineConfig supports welcome and legacy sharp-S toggles", () => {
+test("parsePowerlineConfig supports welcome, legacy sharp-S, and queue capture settings", () => {
   const disabled = parsePowerlineConfig(
-    { preset: "compact", welcome: false, stashSharpSShortcut: true },
+    { preset: "compact", welcome: false, stashSharpSShortcut: true, queue: { captureSigil: false } },
+    ["default", "compact"],
+  );
+  const customSigil = parsePowerlineConfig(
+    { preset: "compact", queue: { captureSigil: "//" } },
+    ["default", "compact"],
+  );
+  const invalidSigil = parsePowerlineConfig(
+    { preset: "compact", queue: { captureSigil: "# note" } },
     ["default", "compact"],
   );
   const shorthand = parsePowerlineConfig("compact", ["default", "compact"]);
 
   assert.equal(disabled.welcome, false);
   assert.equal(disabled.stashSharpSShortcut, true);
+  assert.deepEqual(disabled.queue, { captureSigil: false });
+  assert.deepEqual(customSigil.queue, { captureSigil: "//" });
+  assert.deepEqual(invalidSigil.queue, { captureSigil: "#" });
   assert.equal(shorthand.welcome, true);
   assert.equal(shorthand.stashSharpSShortcut, false);
+  assert.deepEqual(shorthand.queue, { captureSigil: "#" });
 });
 
 test("parsePowerlineConfig extracts supported segment options", () => {

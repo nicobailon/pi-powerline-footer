@@ -63,7 +63,7 @@ import {
   generateVibesBatch,
   parseVibeGenerateArgs,
 } from "./working-vibes.ts";
-import { PowerlineQueueStore, currentQueueContext, parseCompactQueuedPrompt, parseTargetPrefix, targetForIdea } from "./queue/store.ts";
+import { PowerlineQueueStore, currentQueueContext, formatQueueDeliveryText, parseCompactQueuedPrompt, parseSigilIdeaCapture, parseTargetPrefix, targetForIdea } from "./queue/store.ts";
 import type { PowerlineQueueItem, QueueIntent, QueueTarget } from "./queue/types.ts";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -83,6 +83,7 @@ let config: PowerlineConfig = {
   invalidPlacement: null,
   welcome: true,
   stashSharpSShortcut: false,
+  queue: { captureSigil: "#" },
 };
 
 const CUSTOM_COMPACTION_STATUS_KEY = "compact-policy";
@@ -111,11 +112,11 @@ type PowerlineShortcutAction =
 const STASH_HISTORY_LIMIT = 12;
 const PROJECT_PROMPT_HISTORY_LIMIT = 50;
 const STASH_PREVIEW_WIDTH = 72;
-const DEFAULT_SHORTCUTS: Record<PowerlineShortcutKey, string> = {
+const DEFAULT_SHORTCUTS: PowerlineShortcuts = {
   stashHistory: "ctrl+alt+h",
   copyEditor: "ctrl+alt+c",
   cutEditor: "ctrl+alt+x",
-  ideaCapture: "ctrl+alt+i",
+  ideaCapture: null,
   queueOpen: "ctrl+alt+q",
   editorStart: "super+shift+up",
   editorEnd: "super+shift+down",
@@ -720,13 +721,13 @@ function parseShortcutSetting(value: unknown): ShortcutBinding | undefined {
 
 function findShortcutReplacement(key: PowerlineShortcutKey, used: Set<string>): string | null {
   const preferred = DEFAULT_SHORTCUTS[key];
-  if (!used.has(shortcutUsageKey(preferred))) {
+  if (preferred && !used.has(shortcutUsageKey(preferred))) {
     return preferred;
   }
 
   for (const shortcutKey of SHORTCUT_KEYS) {
     const candidate = DEFAULT_SHORTCUTS[shortcutKey];
-    if (!used.has(shortcutUsageKey(candidate))) {
+    if (candidate && !used.has(shortcutUsageKey(candidate))) {
       return candidate;
     }
   }
@@ -1266,6 +1267,23 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     return item;
   }
 
+  function captureIdeaFromParsedInput(ctx: any, parsed: { target: string | null; text: string }): PowerlineQueueItem | null {
+    const trimmed = parsed.text.trim();
+    if (!trimmed) {
+      ctx.ui.notify("Nothing to capture", "info");
+      return null;
+    }
+
+    const target = targetForIdea(parsed.target, queueStore, ctx.cwd ?? process.cwd());
+    const item = captureQueueItem(ctx, trimmed, "idea", target);
+    ctx.ui.notify(`Idea saved (${item.id}) — /ideas to review`, "info");
+    return item;
+  }
+
+  function captureIdeaFromText(ctx: any, text: string): PowerlineQueueItem | null {
+    return captureIdeaFromParsedInput(ctx, parseTargetPrefix(text));
+  }
+
   function captureCurrentProjectIdea(ctx: any, text: string): PowerlineQueueItem | null {
     const trimmed = text.trim();
     if (!trimmed) {
@@ -1274,8 +1292,22 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     }
 
     const item = captureQueueItem(ctx, trimmed, "idea", { kind: "project", cwd: ctx.cwd ?? process.cwd() });
-    ctx.ui.notify(`Captured idea ${item.id}`, "info");
+    ctx.ui.notify(`Idea saved (${item.id}) — /ideas to review`, "info");
     return item;
+  }
+
+  function isSigilIdeaDraft(text: string): boolean {
+    const sigil = config.queue.captureSigil;
+    if (sigil === false) return false;
+    const normalizedSigil = sigil.trim();
+    if (!normalizedSigil) return false;
+    const trimmed = text.trimStart();
+    return trimmed.startsWith(normalizedSigil) && /^\s/.test(trimmed.slice(normalizedSigil.length));
+  }
+
+  function captureSigilGlyph(): string {
+    const sigil = config.queue.captureSigil === false ? "#" : config.queue.captureSigil;
+    return Array.from(sigil)[0] ?? "#";
   }
 
   function capturePostCompactPrompt(ctx: any, text: string): PowerlineQueueItem | null {
@@ -1305,10 +1337,11 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
     try {
       const deliverAs = deliveryModeForItem(ctx, item);
+      const deliveryText = formatQueueDeliveryText(item);
       if (deliverAs) {
-        pi.sendUserMessage(item.text, { deliverAs });
+        pi.sendUserMessage(deliveryText, { deliverAs });
       } else {
-        pi.sendUserMessage(item.text);
+        pi.sendUserMessage(deliveryText);
       }
       queueStore.update(item.id, { status: "sent", error: undefined });
       ctx.ui.notify(`Sent queued item ${item.id}`, "info");
@@ -1453,6 +1486,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
     if (ctx.hasUI) {
       ctx.ui.setStatus("stash", undefined);
+      const pendingIdeas = queueStore.activeItems(getQueueContext(ctx)).filter((item) => item.intent === "idea").length;
+      if (pendingIdeas > 0) {
+        ctx.ui.notify(`${pendingIdeas} idea${pendingIdeas === 1 ? "" : "s"} waiting — /ideas`, "info");
+      }
     }
 
     // Initialize vibe manager (needs modelRegistry from ctx)
@@ -1807,6 +1844,23 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     }
   }
 
+  async function handleSelectedStashHistoryEntry(ctx: any, selected: string): Promise<void> {
+    const action = await ctx.ui.select("Stashed prompt", ["Insert", "Promote to idea", "Cancel"]);
+
+    if (action === "Insert") {
+      await insertSelectedPromptHistoryEntry(ctx, selected);
+      return;
+    }
+
+    if (action === "Promote to idea") {
+      try {
+        captureIdeaFromText(ctx, selected);
+      } catch (error) {
+        ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
+      }
+    }
+  }
+
   function isStashShortcutInput(data: string): boolean {
     return matchesStashShortcutInput(data, { includePrintableSharpS: config.stashSharpSShortcut });
   }
@@ -1934,6 +1988,11 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       : await selectStashedPromptFromHistory(ctx);
     if (!selected) return;
 
+    if (source === "stash") {
+      await handleSelectedStashHistoryEntry(ctx, selected);
+      return;
+    }
+
     await insertSelectedPromptHistoryEntry(ctx, selected);
   }
 
@@ -1991,17 +2050,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       }
 
       try {
-        const parsed = parseTargetPrefix(raw);
-        if (!parsed.text) {
-          ctx.ui.notify("Idea text is empty", "warning");
-          return;
-        }
-        const target = targetForIdea(parsed.target, queueStore, ctx.cwd ?? process.cwd());
-        const item = captureQueueItem(ctx, parsed.text, "idea", target);
-        if (!args.trim()) {
+        const item = captureIdeaFromText(ctx, raw);
+        if (item && !args.trim()) {
           ctx.ui.setEditorText("");
         }
-        ctx.ui.notify(`Captured idea ${item.id}`, "info");
       } catch (error) {
         ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
       }
@@ -2790,6 +2842,23 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
         const isSubmit = keybindings.matches(data, "tui.input.submit") && !keybindings.matches(data, "tui.input.newLine");
         const isFollowUpSubmit = keybindings.matches(data, "app.message.followUp");
+        if (!bashModeActive && (isSubmit || isFollowUpSubmit)) {
+          const sigilCapture = parseSigilIdeaCapture(editor.getExpandedText(), config.queue.captureSigil);
+          if (sigilCapture) {
+            try {
+              const item = captureIdeaFromParsedInput(ctx, sigilCapture);
+              if (item) {
+                editor.addToHistory?.(editor.getExpandedText().trim());
+                editor.setText("");
+              }
+            } catch (error) {
+              ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
+            }
+            scheduleDismissWelcome(ctx);
+            return;
+          }
+        }
+
         if (!powerlineCompacting && !bashModeActive && isSubmit && typeof ctx.compact === "function") {
           const compactQueuedPrompt = parseCompactQueuedPrompt(editor.getExpandedText());
           if (compactQueuedPrompt) {
@@ -2851,8 +2920,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         }
 
         const bc = (s: string) => `${getFgAnsiCode("sep")}${s}${ansi.reset}`;
-        const promptGlyph = bashModeActive ? "$" : ">";
-        const prompt = `${ansi.getFgAnsi(200, 200, 200)}${promptGlyph}${ansi.reset}`;
+        const captureDraft = !bashModeActive && isSigilIdeaDraft(editor.getExpandedText());
+        const promptGlyph = bashModeActive ? "$" : captureDraft ? captureSigilGlyph() : ">";
+        const promptColor = captureDraft ? getFgAnsiCode("queue") : ansi.getFgAnsi(200, 200, 200);
+        const prompt = `${promptColor}${promptGlyph}${ansi.reset}`;
         const promptPrefix = ` ${prompt} `;
         const contPrefix = "   ";
         const contentWidth = Math.max(1, width - 3);

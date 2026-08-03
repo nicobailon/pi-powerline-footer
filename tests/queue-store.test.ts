@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { PowerlineQueueStore, currentQueueContext, parseCompactQueuedPrompt, parseTargetPrefix, targetForIdea } from "../queue/store.ts";
+import { PowerlineQueueStore, currentQueueContext, formatQueueDeliveryText, parseCompactQueuedPrompt, parseSigilIdeaCapture, parseTargetPrefix, targetForIdea } from "../queue/store.ts";
 
 function withStore(fn: (store: PowerlineQueueStore, dir: string) => void): void {
   const dir = mkdtempSync(join(tmpdir(), "powerline-queue-"));
@@ -81,6 +81,40 @@ test("queue store aliases resolve idea targets", () => withStore((store) => {
 test("parseTargetPrefix separates optional @target", () => {
   assert.deepEqual(parseTargetPrefix("@pika check logs"), { target: "pika", text: "check logs" });
   assert.deepEqual(parseTargetPrefix("plain idea"), { target: null, text: "plain idea" });
+});
+
+test("parseSigilIdeaCapture turns leading sigil text into target-aware ideas", () => {
+  assert.deepEqual(parseSigilIdeaCapture("# check logs", "#"), { target: null, text: "check logs" });
+  assert.deepEqual(parseSigilIdeaCapture("# @global check logs", "#"), { target: "global", text: "check logs" });
+  assert.deepEqual(parseSigilIdeaCapture("# @pika check logs\nthen inspect events", "#"), {
+    target: "pika",
+    text: "check logs\nthen inspect events",
+  });
+  assert.deepEqual(parseSigilIdeaCapture("note # check logs", "#"), null);
+  assert.deepEqual(parseSigilIdeaCapture("## markdown heading", "#"), null);
+  assert.deepEqual(parseSigilIdeaCapture("#   ", "#"), null);
+  assert.deepEqual(parseSigilIdeaCapture("# check logs", false), null);
+  assert.deepEqual(parseSigilIdeaCapture("// check logs", "//"), { target: null, text: "check logs" });
+});
+
+test("formatQueueDeliveryText adds provenance only for ideas", () => {
+  const idea = {
+    id: "a1b2c3d4",
+    text: "check logs",
+    createdAt: 1000,
+    updatedAt: 1000,
+    source: { cwd: "/tmp/project" },
+    target: { kind: "current-session" as const },
+    intent: "idea" as const,
+    status: "queued" as const,
+  };
+  const prompt = { ...idea, intent: "follow-up" as const };
+
+  assert.equal(
+    formatQueueDeliveryText(idea),
+    "[powerline idea a1b2c3d4, captured 1970-01-01T00:00:01.000Z from /tmp/project]\ncheck logs",
+  );
+  assert.equal(formatQueueDeliveryText(prompt), "check logs");
 });
 
 test("parseCompactQueuedPrompt treats /compact suffix as queued prompt text", () => {

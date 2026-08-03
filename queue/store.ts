@@ -321,6 +321,26 @@ export function parseTargetPrefix(text: string): { target: string | null; text: 
   return { target: match[1], text: trimmed.slice(match[0].length).trim() };
 }
 
+export function parseSigilIdeaCapture(text: string, sigil: string | false): { target: string | null; text: string } | null {
+  if (sigil === false) return null;
+  const normalizedSigil = sigil.trim();
+  if (!normalizedSigil) return null;
+
+  const trimmed = text.trim();
+  if (!trimmed.startsWith(normalizedSigil)) return null;
+
+  const afterSigil = trimmed.slice(normalizedSigil.length);
+  if (!/^\s/.test(afterSigil)) return null;
+
+  const parsed = parseTargetPrefix(afterSigil.trim());
+  return parsed.text ? parsed : null;
+}
+
+export function formatQueueDeliveryText(item: PowerlineQueueItem): string {
+  if (item.intent !== "idea") return item.text;
+  return `[powerline idea ${item.id}, captured ${new Date(item.createdAt).toISOString()} from ${item.source.cwd}]\n${item.text}`;
+}
+
 export function parseCompactQueuedPrompt(text: string): string | null {
   const trimmed = text.trim();
   const match = /^\/compact\s+(.+)$/.exec(trimmed);

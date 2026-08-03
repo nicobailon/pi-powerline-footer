@@ -13,7 +13,7 @@ Customizes the default [pi](https://github.com/badlogic/pi-mono) editor with a p
 
 **Editor stash** — Press `Alt+S` to save your editor content and clear the editor, type a quick prompt, and your stashed text auto-restores when the agent finishes. Toggles between stash, pop, and update-existing-stash. A `stash` indicator appears in the powerline bar while text is stashed.
 
-**Powerline Queue + Inbox** — Capture thoughts without interrupting the current agent. Messages typed during compaction are held by Powerline and delivered after successful compaction instead of disappearing into Pi's native queue. `/idea`, `/ideas`, and `/queue` provide a file-backed inbox for current-session prompts, project ideas, aliases, retries, clears, and manual delivery. Active queue, idea, and blocked counts appear in the `queue` segment only when there is something to show.
+**Powerline Queue + Inbox** — Capture thoughts without interrupting the current agent. Type `# <idea>` and press Enter to save an idea instead of sending it; `# @global <idea>`, `# @current <idea>`, and `# @alias <idea>` route it. Messages typed during compaction are held by Powerline and delivered after successful compaction instead of disappearing into Pi's native queue. `/idea`, `/ideas`, and `/queue` provide a file-backed inbox for current-session prompts, project ideas, aliases, retries, clears, and manual delivery. Active queue, idea, and blocked counts appear in the `queue` segment only when there is something to show.
 
 **Working Vibes** — AI-generated themed loading messages. Set `/vibe star trek` and your "Working..." becomes "Running diagnostics..." or "Engaging warp drive...". Supports any theme: pirate, zen, noir, cowboy, etc.
 
@@ -51,14 +51,15 @@ Activates automatically. Toggle with `/powerline`, switch presets with `/powerli
 
 Use `/cd <path>` to continue the current conversation from another working directory. It supports relative paths, absolute paths, `~`, `~/...`, and directory completions. With no argument, `/cd` prints the current Pi session directory. The command switches into a cwd-updated session file so Pi tools and the footer path segment agree after the change.
 
-Powerline Queue + Inbox commands:
+Powerline Queue + Inbox commands and capture shortcuts:
 
-- `/compact <text>` — compact now and queue `<text>` as the next prompt after successful compaction
-- `/idea <text>` — capture an idea for the current project without sending it to the agent
-- `/idea @global <text>` — capture a global idea
-- `/idea @current <text>` — capture an idea targeted to the current session
+- `# <text>` — capture an idea for the current project without sending it to the agent
+- `# @global <text>` — capture a global idea
+- `# @current <text>` — capture an idea targeted to the current session
 - `/queue alias <name> [path]` — save a project alias, defaulting to the current cwd when `path` is omitted
-- `/idea @name <text>` — capture an idea for a saved project alias
+- `# @name <text>` — capture an idea for a saved project alias
+- `/compact <text>` — compact now and queue `<text>` as the next prompt after successful compaction
+- `/idea [@target] <text>` — command form of idea capture, useful for scripts and users who disable the sigil
 - `/ideas` — open the captured-ideas picker
 - `/ideas send <id>` — send an idea to the current session
 - `/queue` — open the queued-prompt picker
@@ -66,7 +67,21 @@ Powerline Queue + Inbox commands:
 - `/queue clear <id|all>` — clear queued prompt items
 - `/queue target <id> @name|global|current` — retarget a queued item
 
-Captured data is stored under the Pi agent directory in `powerline-footer/inbox.jsonl` and `powerline-footer/projects.json`.
+The default capture sigil is `#`. When the editor text starts with `# `, the prompt glyph changes to `#`; pressing Enter saves the idea, clears the editor, and leaves the original sigil text in editor history for quick recovery. Configure or disable this under `powerline.queue.captureSigil`:
+
+```json
+{
+  "powerline": {
+    "queue": {
+      "captureSigil": "#"
+    }
+  }
+}
+```
+
+Set `captureSigil` to `false` if you often submit markdown headings and prefer `/idea` instead.
+
+Captured data is stored under the Pi agent directory in `powerline-footer/inbox.jsonl` and `powerline-footer/projects.json`. `inbox.jsonl` is a stable read surface for orchestrators and helper agents; each line is a queue item with `id`, `text`, `createdAt`, `updatedAt`, `source`, `target`, `intent`, `status`, and optional `error`. Writes should still go through Powerline commands or the store so locking and atomic writes are preserved. Ideas sent to a session include a small provenance header so the receiving agent can treat them as deferred captured context.
 
 - `/powerline placement below` — move the primary powerline row below the editor
 - `/powerline placement above` — restore the default placement
@@ -288,13 +303,12 @@ Prompt history now has two sources:
 - stashed prompts — up to 12 recent stashed prompts (newest first)
 - recent project prompts — up to 50 recent user-submitted prompts pulled from pi sessions in the current project folder
 
-Selecting an entry inserts it into the editor. If the editor already has text, you can choose `Replace`, `Append`, or `Cancel`.
+Selecting a stashed entry lets you insert it or promote it to an idea. Project prompt history entries insert into the editor. If the editor already has text, you can choose `Replace`, `Append`, or `Cancel`.
 
 ### Editor clipboard and navigation shortcuts
 
 - `ctrl+alt+c` — copy full editor content
 - `ctrl+alt+x` — cut full editor content (copy, then clear)
-- `ctrl+alt+i` — capture the current editor text as a project idea and clear the editor
 - `ctrl+alt+q` — open the queued-prompt picker
 - `cmd+shift+up` — move the editor cursor to the start of the first line
 - `cmd+shift+down` — move the editor cursor to the end of the last line
@@ -311,7 +325,7 @@ You can override shortcut keys in the agent settings file:
     "stashHistory": "ctrl+alt+h",
     "copyEditor": "ctrl+alt+c",
     "cutEditor": "ctrl+alt+x",
-    "ideaCapture": "ctrl+alt+i",
+    "ideaCapture": null,
     "queueOpen": "ctrl+alt+q",
     "editorStart": "cmd+shift+up",
     "editorEnd": "cmd+shift+down"
