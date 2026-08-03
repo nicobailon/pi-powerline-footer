@@ -1,4 +1,4 @@
-interface CoreContextUsage {
+export interface CoreContextUsage {
   contextTokens: number;
   contextWindow: number;
   contextPercent: number;
@@ -6,6 +6,46 @@ interface CoreContextUsage {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+interface ContextUsageSource {
+  sessionManager: {
+    getLeafId(): string | null;
+  };
+  getContextUsage(): unknown;
+}
+
+function isContextUsageSource(value: unknown): value is ContextUsageSource {
+  if (!isRecord(value) || typeof value.getContextUsage !== "function" || !isRecord(value.sessionManager)) {
+    return false;
+  }
+  return typeof value.sessionManager.getLeafId === "function";
+}
+
+export class CoreContextUsageCache {
+  private sessionManager: ContextUsageSource["sessionManager"] | null = null;
+  private leafId: string | null = null;
+  private usage: CoreContextUsage | null = null;
+
+  get(ctx: unknown): CoreContextUsage | null {
+    if (!isContextUsageSource(ctx)) return readCoreContextUsage(ctx);
+
+    const sessionManager = ctx.sessionManager;
+    const leafId = sessionManager.getLeafId();
+    // A reset cache holds sessionManager === null, which never matches a live one.
+    if (this.sessionManager !== sessionManager || this.leafId !== leafId) {
+      this.sessionManager = sessionManager;
+      this.leafId = leafId;
+      this.usage = readCoreContextUsage(ctx);
+    }
+    return this.usage;
+  }
+
+  reset(): void {
+    this.sessionManager = null;
+    this.leafId = null;
+    this.usage = null;
+  }
 }
 
 export function estimateInitialContextTokens(ctx: unknown): number | null {

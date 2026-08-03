@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { detectGitHost, getCurrentBranch, getGitStatus, invalidateGitBranch, invalidateGitStatus } from "../git-status.ts";
+import { detectGitHost, getCurrentBranch, getGitStatus, invalidateGitBranch, invalidateGitStatus, subscribeGitUpdates } from "../git-status.ts";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -42,6 +42,20 @@ test("invalidateGitBranch keeps serving the last known branch while refreshing",
 
   invalidateGitBranch();
   assert.equal(getCurrentBranch("provider-fallback"), realBranch);
+});
+
+test("git cache completion notifies active footer subscribers", async () => {
+  let updates = 0;
+  const unsubscribe = subscribeGitUpdates(() => { updates += 1; });
+  try {
+    invalidateGitStatus();
+    invalidateGitBranch();
+    getGitStatus("provider-fallback");
+    await sleep(FETCH_SETTLE_MS);
+    assert.ok(updates > 0);
+  } finally {
+    unsubscribe();
+  }
 });
 
 test("detectGitHost recognizes known hosts over SSH and HTTPS", () => {

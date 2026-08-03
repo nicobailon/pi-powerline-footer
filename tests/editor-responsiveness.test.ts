@@ -35,6 +35,40 @@ test("render scheduler coalesces pending status renders", () => {
   }
 });
 
+test("render scheduler pulls pending work forward for an earlier deadline", () => {
+  const originalSetTimeout = globalThis.setTimeout;
+  const originalClearTimeout = globalThis.clearTimeout;
+  const callbacks: Array<() => void> = [];
+  const delays: number[] = [];
+  const cleared = new Set<object>();
+  let renderCount = 0;
+
+  globalThis.setTimeout = ((callback: () => void, delay?: number) => {
+    const handle = { id: callbacks.length + 1 };
+    callbacks.push(callback);
+    delays.push(delay ?? 0);
+    return handle as ReturnType<typeof setTimeout>;
+  }) as typeof setTimeout;
+  globalThis.clearTimeout = ((handle?: ReturnType<typeof setTimeout>) => {
+    if (handle && typeof handle === "object") cleared.add(handle);
+  }) as typeof clearTimeout;
+
+  try {
+    const scheduler = createRenderScheduler(() => { renderCount += 1; }, 33);
+
+    scheduler.schedule(250);
+    scheduler.schedule(33);
+
+    assert.deepEqual(delays, [250, 33]);
+    assert.equal(cleared.size, 1);
+    callbacks[1]?.();
+    assert.equal(renderCount, 1);
+  } finally {
+    globalThis.setTimeout = originalSetTimeout;
+    globalThis.clearTimeout = originalClearTimeout;
+  }
+});
+
 test("render scheduler allows callbacks to schedule follow-up renders", () => {
   const originalSetTimeout = globalThis.setTimeout;
   const callbacks: Array<() => void> = [];

@@ -28,14 +28,14 @@ import { getAgentPath } from "./paths.ts";
 import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, mergeSegmentOptions, mergeSegmentsWithCustomItems, nextPowerlineSettingWithOptions, nextPowerlineSettingWithPreset, parsePowerlineConfig } from "./powerline-config.ts";
 import { getSeparator } from "./separators.ts";
 import { renderSegment } from "./segments.ts";
-import { getGitStatus, invalidateGitStatus, invalidateGitBranch } from "./git-status.ts";
-import { SessionTokenStatsCache } from "./token-stats.ts";
+import { getGitStatus, invalidateGitStatus, invalidateGitBranch, subscribeGitUpdates } from "./git-status.ts";
+import { SessionBranchCache, SessionTokenStatsCache } from "./token-stats.ts";
 import { ansi, getFgAnsiCode } from "./colors.ts";
 import { WelcomeComponent, WelcomeHeader, discoverLoadedCounts, getRecentSessions } from "./welcome.ts";
 import { createWelcomeDismissScheduler } from "./welcome-dismiss.ts";
 import { createRenderScheduler } from "./render-scheduler.ts";
 import { getEditorAutocompleteProvider, passAutocompleteProviderThroughPreviousEditor } from "./editor-composition.ts";
-import { estimateInitialContextTokens, readCoreContextUsage } from "./context-usage.ts";
+import { CoreContextUsageCache, estimateInitialContextTokens } from "./context-usage.ts";
 import { isStaleExtensionContextError, shouldShowStartupWelcome } from "./lifecycle.ts";
 import { getDefaultColors } from "./theme.ts";
 import { registerCdCommand } from "./cd-command.ts";
@@ -1005,7 +1005,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   // Cache for token counting: avoid re-scanning the full session event list
   // on every render (250ms-1s cadence). Revalidates the trailing event's
   // stats signature so in-place streaming updates are not served stale.
+  const sessionBranchCache = new SessionBranchCache();
   const tokenStatsCache = new SessionTokenStatsCache();
+  const coreContextUsageCache = new CoreContextUsageCache();
 
   const getShellPath = () => process.env.SHELL || "/bin/sh";
   const getShellCwd = () => shellSession?.state.cwd ?? currentCtx?.cwd ?? process.cwd();
@@ -1028,7 +1030,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   const resetLayoutCache = () => {
     lastLayoutResult = null;
     layoutDirty = true;
+    sessionBranchCache.reset();
     tokenStatsCache.reset();
+    coreContextUsageCache.reset();
   };
 
   const requestStatusRender = (delayMs?: number) => {
@@ -1305,16 +1309,16 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   pi.on("tool_result", async (event) => {
     if (event.toolName === "write" || event.toolName === "edit") {
       invalidateGitStatus();
+      requestStatusRender();
     }
     // Check for bash commands that might change git branch
     if (event.toolName === "bash" && event.input?.command) {
       const cmd = String(event.input.command);
       if (mightChangeGitBranch(cmd)) {
-        // Invalidate caches since working tree state changes with branch
+        // The command has completed, so start refreshing immediately.
         invalidateGitStatus();
         invalidateGitBranch();
-        // Small delay to let git update, then re-render
-        setTimeout(() => requestStatusRender(), 100);
+        requestStatusRender();
       }
     }
   });
@@ -1336,6 +1340,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   pi.on("model_select", async (_event, ctx) => {
     currentCtx = ctx;
+    coreContextUsageCache.reset();
     requestStatusRender();
   });
 
@@ -1384,6 +1389,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   pi.on("message_end", async (event, ctx) => {
     currentCtx = ctx;
+    coreContextUsageCache.reset();
     if (isSessionAssistantMessage(event.message)) {
       if (event.message.stopReason === "error" || event.message.stopReason === "aborted") {
         liveAssistantUsage = null;
@@ -1396,6 +1402,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   pi.on("turn_end", async (_event, ctx) => {
     currentCtx = ctx;
+    coreContextUsageCache.reset();
     requestImmediateStatusRender({ deferDuringTyping: false });
   });
 
@@ -1686,6 +1693,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   pi.on("agent_end", async (_event, ctx) => {
     isStreaming = false;
     liveAssistantUsage = null;
+    coreContextUsageCache.reset();
 
     let hasUI = false;
     try {
@@ -1989,7 +1997,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     // Build usage stats and get thinking level from session (cached; the full
     // event list is only re-scanned when events are appended or the trailing
     // event's stats-relevant fields change, e.g. in-place streaming updates)
-    const sessionEvents = ctx.sessionManager?.getBranch?.() ?? [];
+    const sessionEvents = sessionBranchCache.get(ctx.sessionManager);
     const tokenStats = tokenStatsCache.get(sessionEvents);
     const { input, output, cacheRead, cacheWrite, cost, subagentCost } = tokenStats;
     const lastAssistant = tokenStats.lastAssistant;
@@ -1997,7 +2005,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
     // Calculate context percentage.
     const latestUsage = isStreaming ? liveAssistantUsage ?? lastAssistant?.usage : lastAssistant?.usage;
-    const coreContextUsage = isStreaming && liveAssistantUsage ? null : readCoreContextUsage(ctx);
+    const coreContextUsage = isStreaming && liveAssistantUsage ? null : coreContextUsageCache.get(ctx);
     const contextTokens = coreContextUsage?.contextTokens ?? (latestUsage ? getUsageTokenTotal(latestUsage) : 0);
     const contextWindow = coreContextUsage?.contextWindow ?? ctx.model?.contextWindow ?? 0;
     const contextPercent = coreContextUsage?.contextPercent ?? (contextWindow > 0 ? (contextTokens / contextWindow) * 100 : 0);
@@ -2419,10 +2427,12 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       tuiRef = tui;
       installFooterStatusRepaintHook(footerData);
       const unsub = footerData.onBranchChange(() => requestStatusRender());
+      const unsubGitUpdates = subscribeGitUpdates(() => requestStatusRender());
 
       return {
         dispose() {
           unsub();
+          unsubGitUpdates();
           restoreFooterStatusRepaintHook?.();
           restoreFooterStatusRepaintHook = null;
         },

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { computeSessionTokenStats, SessionTokenStatsCache } from "../token-stats.ts";
+import { computeSessionTokenStats, SessionBranchCache, SessionTokenStatsCache } from "../token-stats.ts";
 
 function makeUsage(input: number, output: number, cacheRead = 0, cacheWrite = 0, costPerToken = 0.001) {
   return {
@@ -50,6 +50,37 @@ function subagentSlashResultEvent(costs: number[]) {
     details: { result: { details: { results: costs.map((cost) => ({ usage: { cost } })) } } },
   };
 }
+
+test("session branch cache reuses a leaf path and refreshes when the leaf changes", () => {
+  const cache = new SessionBranchCache();
+  let leafId = "leaf-1";
+  let branch: unknown[] = [{ id: leafId, value: 1 }];
+  let branchReads = 0;
+  const provider = {
+    getLeafId: () => leafId,
+    getBranch: () => {
+      branchReads += 1;
+      return branch;
+    },
+  };
+
+  assert.deepEqual(cache.get(null), []);
+
+  const first = cache.get(provider);
+  (branch[0] as { value: number }).value = 2;
+  assert.equal(cache.get(provider), first);
+  assert.equal((cache.get(provider)[0] as { value: number }).value, 2);
+  assert.equal(branchReads, 1);
+
+  leafId = "leaf-2";
+  branch = [...branch, { id: leafId }];
+  assert.equal(cache.get(provider), branch);
+  assert.equal(branchReads, 2);
+
+  cache.reset();
+  cache.get(provider);
+  assert.equal(branchReads, 3);
+});
 
 test("computeSessionTokenStats aggregates usage and tracks thinking level", () => {
   const events = [
@@ -211,7 +242,8 @@ test("reset forces recomputation", () => {
 
 test("index.ts wires the token stats cache into buildSegmentContext", () => {
   const source = readFileSync(new URL("../index.ts", import.meta.url), "utf-8");
-  assert.match(source, /import \{ SessionTokenStatsCache \} from "\.\/token-stats\.ts";/);
+  assert.match(source, /import \{ SessionBranchCache, SessionTokenStatsCache \} from "\.\/token-stats\.ts";/);
+  assert.match(source, /sessionBranchCache\.get\(ctx\.sessionManager\)/);
   assert.match(source, /tokenStatsCache\.get\(sessionEvents\)/);
   assert.match(source, /tokenStatsCache\.reset\(\)/);
 });

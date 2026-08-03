@@ -4,21 +4,26 @@ export interface RenderScheduler {
 }
 
 export function createRenderScheduler(render: () => void, defaultDelayMs: number): RenderScheduler {
-  let timer: ReturnType<typeof setTimeout> | null = null;
+  let pending: { timer: ReturnType<typeof setTimeout>; deadline: number } | null = null;
 
   return {
     schedule(delayMs = defaultDelayMs) {
-      if (timer) return;
+      const deadline = Date.now() + delayMs;
+      if (pending) {
+        if (deadline >= pending.deadline) return;
+        clearTimeout(pending.timer);
+      }
 
-      timer = setTimeout(() => {
-        timer = null;
+      const timer = setTimeout(() => {
+        pending = null;
         render();
       }, delayMs);
+      pending = { timer, deadline };
     },
     cancel() {
-      if (!timer) return;
-      clearTimeout(timer);
-      timer = null;
+      if (!pending) return;
+      clearTimeout(pending.timer);
+      pending = null;
     },
   };
 }

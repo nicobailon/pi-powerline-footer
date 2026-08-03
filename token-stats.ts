@@ -155,6 +155,45 @@ function accumulateSessionEvent(stats: SessionTokenStats, event: unknown): void 
   }
 }
 
+export interface SessionBranchProvider {
+  getLeafId(): string | null;
+  getBranch(): readonly unknown[];
+}
+
+function isSessionBranchProvider(value: unknown): value is SessionBranchProvider {
+  return isRecord(value) && typeof value.getLeafId === "function" && typeof value.getBranch === "function";
+}
+
+/**
+ * Session branches are immutable for a given leaf. Keep the already-built path
+ * while streaming updates mutate only its trailing message in place.
+ */
+export class SessionBranchCache {
+  private provider: SessionBranchProvider | null = null;
+  private leafId: string | null = null;
+  private branch: readonly unknown[] = [];
+
+  get(source: unknown): readonly unknown[] {
+    if (!isSessionBranchProvider(source)) return [];
+
+    const provider = source;
+    const leafId = provider.getLeafId();
+    // A reset cache holds provider === null, which never matches a live provider.
+    if (this.provider !== provider || this.leafId !== leafId) {
+      this.provider = provider;
+      this.leafId = leafId;
+      this.branch = provider.getBranch();
+    }
+    return this.branch;
+  }
+
+  reset(): void {
+    this.provider = null;
+    this.leafId = null;
+    this.branch = [];
+  }
+}
+
 export function computeSessionTokenStats(sessionEvents: readonly unknown[]): SessionTokenStats {
   let input = 0, output = 0, cacheRead = 0, cacheWrite = 0, cost = 0, subagentCost = 0;
   let lastAssistant: AssistantMessage | undefined;

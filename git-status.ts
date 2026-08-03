@@ -34,6 +34,16 @@ let pendingFetch: Promise<void> | null = null;
 let pendingBranchFetch: Promise<void> | null = null;
 let invalidationCounter = 0; // Track invalidations to prevent stale updates
 let branchInvalidationCounter = 0;
+const updateListeners = new Set<() => void>();
+
+function notifyGitUpdate(): void {
+  for (const listener of updateListeners) listener();
+}
+
+export function subscribeGitUpdates(listener: () => void): () => void {
+  updateListeners.add(listener);
+  return () => updateListeners.delete(listener);
+}
 
 /**
  * Parse git status --porcelain output
@@ -174,9 +184,11 @@ export function getGitRemoteHost(): GitHost | null {
     pendingRemoteFetch = fetchRemoteHost()
       .then((host) => {
         cachedRemoteHost = { host, timestamp: Date.now() };
+        notifyGitUpdate();
       })
       .catch(() => {
         cachedRemoteHost = { host: null, timestamp: Date.now() };
+        notifyGitUpdate();
       })
       .finally(() => {
         pendingRemoteFetch = null;
@@ -217,6 +229,7 @@ export function getCurrentBranch(providerBranch: string | null): string | null {
           branch: result,
           timestamp: Date.now(),
         };
+        notifyGitUpdate();
       }
       pendingBranchFetch = null;
     });
@@ -259,6 +272,7 @@ export function getGitStatus(providerBranch: string | null, pollingMode: GitPoll
         cachedStatus = result
           ? { staged: result.staged, unstaged: result.unstaged, untracked: result.untracked, timestamp: Date.now() }
           : { staged: 0, unstaged: 0, untracked: 0, timestamp: Date.now() };
+        notifyGitUpdate();
       }
       pendingFetch = null;
     });

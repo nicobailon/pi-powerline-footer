@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- **Long-session footer responsiveness** — Footer refreshes now reuse the active session branch and core context result while its leaf is unchanged, pull urgent paints ahead of queued streaming refreshes, and repaint as soon as background git data arrives. This removes repeated full-session walks from the interactive render path without slowing status updates.
 - **Minimum Pi version** — Working vibes now stream through the model registry's provider, which Pi exposes from 0.81.0 onward, so the supported Pi range is `>=0.81.0 <0.84.0`.
 
 ### Fixed
