@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { PowerlineQueueStore, currentQueueContext, formatQueueDeliveryText, parseCompactQueuedPrompt, parseSigilIdeaCapture, parseTargetPrefix, targetForIdea } from "../queue/store.ts";
+import { PowerlineQueueStore, currentQueueContext, formatIdeaIssuePrompt, formatQueueDeliveryText, parseCompactQueuedPrompt, parseSigilIdeaCapture, parseTargetPrefix, targetForIdea } from "../queue/store.ts";
 
 function withStore(fn: (store: PowerlineQueueStore, dir: string) => void): void {
   const dir = mkdtempSync(join(tmpdir(), "powerline-queue-"));
@@ -70,7 +70,7 @@ test("queue store aliases resolve idea targets", () => withStore((store) => {
 
   assert.deepEqual(targetForIdea("pika", store, "/tmp/current"), {
     kind: "project",
-    cwd: "/tmp/pika",
+    cwd: resolve("/tmp/pika"),
     alias: "pika",
   });
   assert.deepEqual(targetForIdea("global", store, "/tmp/current"), { kind: "global" });
@@ -115,6 +115,26 @@ test("formatQueueDeliveryText adds provenance only for ideas", () => {
     "[powerline idea a1b2c3d4, captured 1970-01-01T00:00:01.000Z from /tmp/project]\ncheck logs",
   );
   assert.equal(formatQueueDeliveryText(prompt), "check logs");
+});
+
+test("formatIdeaIssuePrompt requires dedupe and clear owned repo before filing", () => {
+  const prompt = formatIdeaIssuePrompt({
+    id: "a1b2c3d4",
+    text: "add typed issue handoff",
+    createdAt: 1000,
+    updatedAt: 1000,
+    source: { cwd: "/tmp/project" },
+    target: { kind: "project", cwd: "/tmp/project", alias: "powerline" },
+    intent: "idea",
+    status: "queued",
+  });
+
+  assert.match(prompt, /spawn one low-budget issue-filing lane/);
+  assert.match(prompt, /target repository is unclear or is not owned\/controlled by the user, ask before filing/);
+  assert.match(prompt, /dedupe against existing open issues first/);
+  assert.match(prompt, /If a matching open issue already exists, report it and do not create another issue/);
+  assert.match(prompt, /create one self-contained GitHub issue/);
+  assert.match(prompt, /project @powerline \/tmp\/project/);
 });
 
 test("parseCompactQueuedPrompt treats /compact suffix as queued prompt text", () => {

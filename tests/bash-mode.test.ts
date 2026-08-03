@@ -24,6 +24,13 @@ function getMethod(target: object, name: string): Function {
   return method;
 }
 
+function resolveManagedShellPath(): string | null {
+  for (const shellPath of ["/bin/zsh", "/bin/bash"]) {
+    if (existsSync(shellPath)) return shellPath;
+  }
+  return null;
+}
+
 function ensureEditorModuleLinks(): { cleanup: () => void } {
   const nodeModulesDir = join(process.cwd(), "node_modules", "@earendil-works");
   mkdirSync(nodeModulesDir, { recursive: true });
@@ -473,12 +480,18 @@ test("deterministic path completion handles bash argument position", async () =>
   assert.equal(suggestion?.source, "path");
 });
 
-test("managed shell session preserves cwd changes across commands", async () => {
+test("managed shell session preserves cwd changes across commands", async (t) => {
+  const shellPath = resolveManagedShellPath();
+  if (!shellPath) {
+    t.skip("requires zsh or bash");
+    return;
+  }
+
   const cwd = mkdtempSync(join(tmpdir(), "powerline-shell-"));
   const childDir = join(cwd, "child");
   mkdirSync(childDir, { recursive: true });
   const store = new BashTranscriptStore({ transcriptMaxLines: 100, transcriptMaxBytes: 64 * 1024 });
-  const session = new ManagedShellSession("/bin/zsh", cwd, store, () => {}, () => {});
+  const session = new ManagedShellSession(shellPath, cwd, store, () => {}, () => {});
 
   try {
     await session.ensureReady();
@@ -505,10 +518,16 @@ test("managed shell session preserves cwd changes across commands", async () => 
   }
 });
 
-test("managed shell session recovers cleanly after interrupt", async () => {
+test("managed shell session recovers cleanly after interrupt", async (t) => {
+  const shellPath = resolveManagedShellPath();
+  if (!shellPath) {
+    t.skip("requires zsh or bash");
+    return;
+  }
+
   const cwd = mkdtempSync(join(tmpdir(), "powerline-shell-interrupt-"));
   const store = new BashTranscriptStore({ transcriptMaxLines: 100, transcriptMaxBytes: 64 * 1024 });
-  const session = new ManagedShellSession("/bin/zsh", cwd, store, () => {}, () => {});
+  const session = new ManagedShellSession(shellPath, cwd, store, () => {}, () => {});
 
   const waitForCommand = async () => {
     const start = Date.now();
@@ -684,7 +703,12 @@ test("bash editor refreshes shell ghost state after a bracketed paste completes"
   }
 });
 
-test("bash editor inserts Finder file drops as path strings", async () => {
+test("bash editor inserts Finder file drops as path strings", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("Finder file drops are macOS/POSIX paths");
+    return;
+  }
+
   const links = ensureEditorModuleLinks();
 
   try {
@@ -756,28 +780,26 @@ test("one-off bash autocomplete provider stays inactive even inside bang command
   assert.equal(suggestions, null);
 });
 
-test("bash autocomplete providers return null synchronously in shell contexts", () => {
+test("bash autocomplete providers return null in shell contexts", async () => {
   const signal = new AbortController().signal;
 
-  const bashSuggestions = new BashAutocompleteProvider().getSuggestions(["git st"], 0, 6, { signal });
-  const oneOffSuggestions = new OneOffBashAutocompleteProvider().getSuggestions(["!git st"], 0, 7, { signal });
+  const bashSuggestions = await new BashAutocompleteProvider().getSuggestions(["git st"], 0, 6, { signal });
+  const oneOffSuggestions = await new OneOffBashAutocompleteProvider().getSuggestions(["!git st"], 0, 7, { signal });
 
   assert.equal(bashSuggestions, null);
   assert.equal(oneOffSuggestions, null);
-  assert.equal(bashSuggestions instanceof Promise, false);
-  assert.equal(oneOffSuggestions instanceof Promise, false);
 });
 
-test("mode-aware autocomplete provider preserves synchronous default results", () => {
+test("mode-aware autocomplete provider preserves default results", async () => {
   const signal = new AbortController().signal;
-  const syncResult = {
+  const result = {
     items: [{ value: "status", label: "status" }],
     prefix: "st",
   };
   const provider = new ModeAwareAutocompleteProvider(
     {
-      getSuggestions() {
-        return syncResult;
+      async getSuggestions() {
+        return result;
       },
       applyCompletion(lines: string[], cursorLine: number, cursorCol: number) {
         return { lines, cursorLine, cursorCol };
@@ -788,10 +810,9 @@ test("mode-aware autocomplete provider preserves synchronous default results", (
     () => false,
   );
 
-  const suggestions = provider.getSuggestions(["st"], 0, 2, { signal });
+  const suggestions = await provider.getSuggestions(["st"], 0, 2, { signal });
 
-  assert.equal(suggestions, syncResult);
-  assert.equal(suggestions instanceof Promise, false);
+  assert.equal(suggestions, result);
 });
 
 test("one-off bash autocomplete provider stays inactive before the bang command starts", async () => {

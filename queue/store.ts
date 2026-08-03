@@ -341,6 +341,14 @@ export function formatQueueDeliveryText(item: PowerlineQueueItem): string {
   return `[powerline idea ${item.id}, captured ${new Date(item.createdAt).toISOString()} from ${item.source.cwd}]\n${item.text}`;
 }
 
+export function formatIdeaIssuePrompt(item: PowerlineQueueItem): string {
+  const target = item.target.kind === "project"
+    ? `project ${item.target.alias ? `@${item.target.alias} ` : ""}${item.target.cwd}`
+    : item.target.kind;
+
+  return `Please process this saved Powerline idea as a GitHub issue candidate.\n\n${formatQueueDeliveryText(item)}\n\nIssue filing rules:\n- If subagents are available, spawn one low-budget issue-filing lane for this idea; otherwise do the same checks directly.\n- First identify the target repository from the idea target (${target}), source cwd (${item.source.cwd}), and current session context.\n- If the target repository is unclear or is not owned/controlled by the user, ask before filing anything.\n- If the target repository is clear and owned/controlled by the user, dedupe against existing open issues first.\n- If a matching open issue already exists, report it and do not create another issue.\n- If no matching issue exists, create one self-contained GitHub issue in that repository with a clear title, context, acceptance criteria, and the Powerline idea provenance above.\n- Use explicit repository targeting for GitHub commands and do not change source files for this handoff.`;
+}
+
 export function parseCompactQueuedPrompt(text: string): string | null {
   const trimmed = text.trim();
   const match = /^\/compact\s+(.+)$/.exec(trimmed);

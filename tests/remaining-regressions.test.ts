@@ -135,13 +135,13 @@ test("startup welcome predicate respects powerline.welcome false", () => {
   assert.equal(shouldShowStartupWelcome("startup", true), true);
   assert.equal(shouldShowStartupWelcome("startup", false), false);
   assert.equal(shouldShowStartupWelcome("resume", true), false);
-  assert.match(source, /setupCustomEditor\(ctx\);\n\s+if \(shouldShowStartupWelcome\(event\.reason, config\.welcome\)\)/);
+  assert.match(source, /setupCustomEditor\(ctx\);\r?\n\s+if \(shouldShowStartupWelcome\(event\.reason, config\.welcome\)\)/);
 });
 
 test("stale ctx guard handles old and new Pi messages on agent_end", () => {
   assert.equal(isStaleExtensionContextError(new Error("This extension instance is stale after session replacement or reload.")), true);
   assert.equal(isStaleExtensionContextError(new Error("This extension ctx is stale after session replacement or reload.")), true);
   assert.equal(isStaleExtensionContextError(new Error("ctx.hasUI failed for another reason")), false);
-  assert.match(source, /let hasUI = false;\n\s+try \{\n\s+hasUI = Boolean\(ctx\.hasUI\);/);
-  assert.match(source, /if \(!isStaleExtensionContextError\(error\)\) throw error;\n\s+currentCtx = null;\n\s+return;/);
+  assert.match(source, /let hasUI = false;\r?\n\s+try \{\r?\n\s+hasUI = Boolean\(ctx\.hasUI\);/);
+  assert.match(source, /if \(!isStaleExtensionContextError\(error\)\) throw error;\r?\n\s+currentCtx = null;\r?\n\s+return;/);
 });

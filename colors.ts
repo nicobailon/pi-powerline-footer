@@ -32,10 +32,11 @@ const THEME = {
   path: "#00afaf",        // Teal/cyan
   gitClean: "#5faf5f",    // Green
   accent: "#febc38",      // Orange
+  queue: "#febc38",       // Orange
 };
 
 // Color name to ANSI code mapping
-type ColorName = "sep" | "model" | "path" | "gitClean" | "accent";
+type ColorName = keyof typeof THEME;
 
 function getAnsiCode(color: ColorName): string {
   const value = THEME[color as keyof typeof THEME];

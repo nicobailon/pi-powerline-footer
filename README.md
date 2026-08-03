@@ -13,7 +13,7 @@ Customizes the default [pi](https://github.com/badlogic/pi-mono) editor with a p
 
 **Editor stash** — Press `Alt+S` to save your editor content and clear the editor, type a quick prompt, and your stashed text auto-restores when the agent finishes. Toggles between stash, pop, and update-existing-stash. A `stash` indicator appears in the powerline bar while text is stashed.
 
-**Powerline Queue + Inbox** — Capture thoughts without interrupting the current agent. Type `# <idea>` and press Enter to save an idea instead of sending it; `# @global <idea>`, `# @current <idea>`, and `# @alias <idea>` route it. Messages typed during compaction are held by Powerline and delivered after successful compaction instead of disappearing into Pi's native queue. `/idea`, `/ideas`, and `/queue` provide a file-backed inbox for current-session prompts, project ideas, aliases, retries, clears, and manual delivery. Active queue, idea, and blocked counts appear in the `queue` segment only when there is something to show.
+**Powerline Queue + Inbox** — Capture thoughts without interrupting the current agent. Type `# <idea>` and press Enter to save an idea instead of sending it; `# @global <idea>`, `# @current <idea>`, and `# @alias <idea>` route it. Messages typed during compaction are held by Powerline and delivered after successful compaction instead of disappearing into Pi's native queue. `/idea`, `/ideas`, and `/queue` provide a file-backed inbox for current-session prompts, project ideas, aliases, retries, clears, and manual delivery. Use `/ideas next` to work the oldest active idea in the current session, or `/ideas issue` to hand it to the current agent for safe GitHub issue triage. Active queue, idea, and blocked counts appear in the `queue` segment only when there is something to show.
 
 **Working Vibes** — AI-generated themed loading messages. Set `/vibe star trek` and your "Working..." becomes "Running diagnostics..." or "Engaging warp drive...". Supports any theme: pirate, zen, noir, cowboy, etc.
 
@@ -60,7 +60,10 @@ Powerline Queue + Inbox commands and capture shortcuts:
 - `# @name <text>` — capture an idea for a saved project alias
 - `/compact <text>` — compact now and queue `<text>` as the next prompt after successful compaction
 - `/idea [@target] <text>` — command form of idea capture, useful for scripts and users who disable the sigil
+- `/idea issue [id]` — hand the oldest active idea, or a specific idea, to the current agent for safe GitHub issue triage
 - `/ideas` — open the captured-ideas picker
+- `/ideas next` — send the oldest active idea to the current session
+- `/ideas issue [id]` — ask the current agent to dedupe and file a GitHub issue only when the target repo is clear and owned/controlled
 - `/ideas send <id>` — send an idea to the current session
 - `/queue` — open the queued-prompt picker
 - `/queue send [id]` / `/queue retry [id]` — deliver a queued item now
@@ -81,7 +84,7 @@ The default capture sigil is `#`. When the editor text starts with `# `, the pro
 
 Set `captureSigil` to `false` if you often submit markdown headings and prefer `/idea` instead.
 
-Captured data is stored under the Pi agent directory in `powerline-footer/inbox.jsonl` and `powerline-footer/projects.json`. `inbox.jsonl` is a stable read surface for orchestrators and helper agents; each line is a queue item with `id`, `text`, `createdAt`, `updatedAt`, `source`, `target`, `intent`, `status`, and optional `error`. Writes should still go through Powerline commands or the store so locking and atomic writes are preserved. Ideas sent to a session include a small provenance header so the receiving agent can treat them as deferred captured context.
+Captured data is stored under the Pi agent directory in `powerline-footer/inbox.jsonl` and `powerline-footer/projects.json`. `inbox.jsonl` is a stable read surface for orchestrators and helper agents; each line is a queue item with `id`, `text`, `createdAt`, `updatedAt`, `source`, `target`, `intent`, `status`, and optional `error`. Writes should still go through Powerline commands or the store so locking and atomic writes are preserved. Ideas sent with `/ideas next` or `/ideas send <id>` include a small provenance header so the receiving agent can treat them as deferred captured context. `/idea issue` and `/ideas issue` do not file issues directly from the extension; they send a guarded handoff prompt that tells the current agent to dedupe open issues first, create a GitHub issue only for a clear owned/controlled repo, and ask before filing when the target is unclear.
 
 - `/powerline placement below` — move the primary powerline row below the editor
 - `/powerline placement above` — restore the default placement

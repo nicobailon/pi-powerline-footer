@@ -552,8 +552,12 @@ function renderCustomSegment(id: `custom:${string}`, ctx: SegmentContext): Rende
   return { content, visible: true };
 }
 
+function isCustomSegmentId(id: StatusLineSegmentId): id is `custom:${string}` {
+  return id.startsWith("custom:");
+}
+
 export function renderSegment(id: StatusLineSegmentId, ctx: SegmentContext): RenderedSegment {
-  if (id.startsWith("custom:")) {
+  if (isCustomSegmentId(id)) {
     return renderCustomSegment(id, ctx);
   }
 

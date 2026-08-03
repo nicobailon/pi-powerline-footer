@@ -63,7 +63,7 @@ import {
   generateVibesBatch,
   parseVibeGenerateArgs,
 } from "./working-vibes.ts";
-import { PowerlineQueueStore, currentQueueContext, formatQueueDeliveryText, parseCompactQueuedPrompt, parseSigilIdeaCapture, parseTargetPrefix, targetForIdea } from "./queue/store.ts";
+import { PowerlineQueueStore, currentQueueContext, formatIdeaIssuePrompt, formatQueueDeliveryText, parseCompactQueuedPrompt, parseSigilIdeaCapture, parseTargetPrefix, targetForIdea } from "./queue/store.ts";
 import type { PowerlineQueueItem, QueueIntent, QueueTarget } from "./queue/types.ts";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -121,11 +121,11 @@ const DEFAULT_SHORTCUTS: PowerlineShortcuts = {
   editorStart: "super+shift+up",
   editorEnd: "super+shift+down",
 };
-const DEFAULT_BASH_MODE_SETTINGS: BashModeSettings = {
+const DEFAULT_BASH_MODE_SETTINGS = {
   toggleShortcut: "ctrl+shift+b",
   transcriptMaxLines: 2000,
   transcriptMaxBytes: 512 * 1024,
-};
+} as const satisfies BashModeSettings;
 const SHORTCUT_KEYS: PowerlineShortcutKey[] = ["stashHistory", "copyEditor", "cutEditor", "ideaCapture", "queueOpen", "editorStart", "editorEnd"];
 const APP_RESERVED_SHORTCUTS = [
   "escape",
@@ -157,7 +157,7 @@ const APP_RESERVED_SHORTCUTS = [
 ] as const;
 const EXTRA_RESERVED_SHORTCUTS = ["alt+s"] as const;
 const SHORTCUT_MODIFIER_ORDER = ["ctrl", "alt", "super", "shift"] as const;
-const SHORTCUT_MODIFIERS = new Set(SHORTCUT_MODIFIER_ORDER);
+const SHORTCUT_MODIFIERS = new Set<string>(SHORTCUT_MODIFIER_ORDER);
 const SHORTCUT_NAMED_KEYS = new Set([
   "escape", "esc", "enter", "return", "tab", "space", "backspace", "delete", "insert", "clear",
   "home", "end", "pageup", "pagedown", "up", "down", "left", "right",
@@ -176,9 +176,7 @@ const PROMPT_HISTORY_TRACKED = Symbol.for("powerlinePromptHistoryTracked");
 const PROMPT_HISTORY_STATE_KEY = Symbol.for("powerlinePromptHistoryState");
 
 interface PromptHistoryEditor {
-  history?: unknown;
-  addToHistory?: unknown;
-  [key: symbol]: unknown;
+  addToHistory?: (text: string) => void;
 }
 
 type PromptHistoryState = { savedPromptHistory: string[] };
@@ -231,7 +229,8 @@ function getPromptHistoryState(): PromptHistoryState {
 }
 
 function readPromptHistory(editor: PromptHistoryEditor | null | undefined): string[] {
-  const history = editor?.history;
+  if (!editor) return [];
+  const history = Reflect.get(editor, "history");
   if (!Array.isArray(history)) return [];
 
   const normalized: string[] = [];
@@ -265,7 +264,7 @@ function restorePromptHistory(editor: PromptHistoryEditor | null | undefined): v
 
 function trackPromptHistory(editor: PromptHistoryEditor | null | undefined): void {
   if (!editor || typeof editor.addToHistory !== "function") return;
-  if (editor[PROMPT_HISTORY_TRACKED]) {
+  if (Reflect.get(editor, PROMPT_HISTORY_TRACKED)) {
     snapshotPromptHistory(editor);
     return;
   }
@@ -275,7 +274,7 @@ function trackPromptHistory(editor: PromptHistoryEditor | null | undefined): voi
     originalAddToHistory(text);
     snapshotPromptHistory(editor);
   };
-  editor[PROMPT_HISTORY_TRACKED] = true;
+  Reflect.set(editor, PROMPT_HISTORY_TRACKED, true);
   snapshotPromptHistory(editor);
 }
 
@@ -634,7 +633,7 @@ function normalizeShortcut(value: string): string {
   const parts = value.trim().toLowerCase().split("+");
   if (parts.length <= 1) return parts[0] ?? "";
 
-  const modifierRank = new Map(SHORTCUT_MODIFIER_ORDER.map((modifier, index) => [modifier, index]));
+  const modifierRank = new Map<string, number>(SHORTCUT_MODIFIER_ORDER.map((modifier, index) => [modifier, index]));
   const modifiers = parts.slice(0, -1).sort((a, b) => (modifierRank.get(a) ?? 99) - (modifierRank.get(b) ?? 99));
   return [...modifiers, parts[parts.length - 1]].join("+");
 }
@@ -1004,6 +1003,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let shellSession: ManagedShellSession | null = null;
   const queueStore = new PowerlineQueueStore();
   let powerlineCompacting = false;
+  let deliverAfterRetrySettles = false;
   let queueDeliveryTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Cache for the top and secondary powerline widgets.
@@ -1185,7 +1185,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     items: SelectItem[],
     maxVisible: number,
   ): Promise<SelectItem | null> {
-    return ctx.ui.custom<SelectItem | null>(
+    return ctx.ui.custom(
       (tui: any, theme: Theme, _keybindings: any, done: (result: SelectItem | null) => void) => {
         const selectList = new SelectList(items, maxVisible, overlaySelectListTheme(theme));
         const border = (text: string) => theme.fg("dim", text);
@@ -1376,6 +1376,13 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     }
   }
 
+  function finishFailedCompaction(ctx: any, errorMessage: string): void {
+    powerlineCompacting = false;
+    deliverAfterRetrySettles = false;
+    blockPostCompactionQueue(ctx, errorMessage);
+    requestQueueRender();
+  }
+
   async function chooseQueueAction(ctx: any, item: PowerlineQueueItem): Promise<void> {
     const actions: SelectItem[] = [
       { value: "send", label: "Send to current session", description: "Deliver as prompt/follow-up" },
@@ -1454,6 +1461,42 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     if (updated) deliverQueueItem(ctx, updated);
   }
 
+  function findNextIdea(ctx: any): PowerlineQueueItem | null {
+    return queueStore.activeItems(getQueueContext(ctx)).find((candidate) => candidate.intent === "idea") ?? null;
+  }
+
+  function sendIdeaIssueHandoff(ctx: any, item: PowerlineQueueItem): void {
+    queueStore.update(item.id, { status: "delivering", error: undefined });
+    requestQueueRender();
+
+    try {
+      const deliverAs = deliveryModeForItem(ctx, item);
+      const issuePrompt = formatIdeaIssuePrompt(item);
+      if (deliverAs) {
+        pi.sendUserMessage(issuePrompt, { deliverAs });
+      } else {
+        pi.sendUserMessage(issuePrompt);
+      }
+      queueStore.update(item.id, { status: "sent", error: undefined });
+      ctx.ui.notify(`Sent idea ${item.id} for issue triage`, "info");
+      requestQueueRender();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      queueStore.update(item.id, { status: "failed", error: message });
+      ctx.ui.notify(`Failed to send ${item.id}: ${message}`, "error");
+      requestQueueRender();
+    }
+  }
+
+  function sendIdeaIssueHandoffById(ctx: any, id: string | undefined): void {
+    const item = id ? queueStore.get(id) : findNextIdea(ctx);
+    if (!item || item.intent !== "idea") {
+      ctx.ui.notify(id ? `No unique idea matches ${id}` : "No ideas captured", id ? "warning" : "info");
+      return;
+    }
+    sendIdeaIssueHandoff(ctx, item);
+  }
+
   // Track session start
   pi.on("session_start", async (event, ctx) => {
     shellSession?.dispose();
@@ -1466,6 +1509,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     isStreaming = false;
     liveAssistantUsage = null;
     powerlineCompacting = false;
+    deliverAfterRetrySettles = false;
     stashedEditorText = null;
 
     const settings = readSettings(ctx.cwd);
@@ -1479,10 +1523,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     bashTranscript = new BashTranscriptStore(bashModeSettings);
     bashCompletionEngine = new BashCompletionEngine();
 
-    getThinkingLevelFn = typeof ctx.getThinkingLevel === "function"
-      ? () => ctx.getThinkingLevel()
-      : null;
-    currentThinkingLevel = getThinkingLevelFn?.() ?? null;
+    getThinkingLevelFn = () => ctx.thinkingLevel ?? "off";
+    currentThinkingLevel = getThinkingLevelFn();
 
     if (ctx.hasUI) {
       ctx.ui.setStatus("stash", undefined);
@@ -1529,6 +1571,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       queueDeliveryTimer = null;
     }
     powerlineCompacting = false;
+    deliverAfterRetrySettles = false;
     bashModeActive = false;
     currentCtx = null;
     footerDataRef = null;
@@ -1650,22 +1693,33 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     requestImmediateStatusRender({ deferDuringTyping: false });
   });
 
-  pi.on("compaction_start", async (_event, ctx) => {
+  pi.on("session_before_compact", async (_event, ctx) => {
     powerlineCompacting = true;
     currentCtx = ctx;
     requestQueueRender();
   });
 
-  pi.on("compaction_end", async (event, ctx) => {
+  pi.on("session_compact", async (event, ctx) => {
     powerlineCompacting = false;
     currentCtx = ctx;
-    const errorMessage = event.errorMessage || (event.aborted ? "Compaction cancelled" : "Compaction did not complete");
-    if (event.aborted || !event.result) {
-      blockPostCompactionQueue(ctx, errorMessage);
-    } else if (!event.willRetry) {
+    if (event.willRetry) {
+      deliverAfterRetrySettles = true;
+    } else {
+      deliverAfterRetrySettles = false;
       schedulePostCompactionDelivery(ctx);
     }
     requestQueueRender();
+  });
+
+  pi.on("agent_settled", async (_event, ctx) => {
+    if (powerlineCompacting) {
+      finishFailedCompaction(ctx, "Compaction did not complete");
+      return;
+    }
+    if (deliverAfterRetrySettles) {
+      deliverAfterRetrySettles = false;
+      schedulePostCompactionDelivery(ctx);
+    }
   });
 
   // Also dismiss on tool calls (agent is working) + refresh vibe if rate limit allows
@@ -2032,7 +2086,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     }
 
     requestStatusRender();
-    if (!powerlineCompacting) {
+    if (!powerlineCompacting && !deliverAfterRetrySettles) {
       schedulePostCompactionDelivery(ctx);
     }
   });
@@ -2040,18 +2094,25 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   registerCdCommand(pi, () => currentCtx?.cwd ?? process.cwd());
 
   pi.registerCommand("idea", {
-    description: "Capture an idea without interrupting the current agent. Usage: /idea [@alias|@global|@current] <text>",
+    description: "Capture an idea without interrupting the current agent. Usage: /idea [@alias|@global|@current] <text> | /idea issue [id]",
     handler: async (args, ctx) => {
       currentCtx = ctx;
-      const raw = args.trim() || getCurrentEditorText(ctx, currentEditor).trim();
+      const trimmedArgs = args.trim();
+      const [action, id] = trimmedArgs.split(/\s+/).filter(Boolean);
+      if (action === "issue") {
+        sendIdeaIssueHandoffById(ctx, id);
+        return;
+      }
+
+      const raw = trimmedArgs || getCurrentEditorText(ctx, currentEditor).trim();
       if (!raw) {
-        ctx.ui.notify("Usage: /idea [@alias|@global|@current] <text>", "info");
+        ctx.ui.notify("Usage: /idea [@alias|@global|@current] <text> | /idea issue [id]", "info");
         return;
       }
 
       try {
         const item = captureIdeaFromText(ctx, raw);
-        if (item && !args.trim()) {
+        if (item && !trimmedArgs) {
           ctx.ui.setEditorText("");
         }
       } catch (error) {
@@ -2061,7 +2122,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   });
 
   pi.registerCommand("ideas", {
-    description: "Review or send captured ideas. Usage: /ideas [send|retry|clear|edit] <id>",
+    description: "Review or send captured ideas. Usage: /ideas next | /ideas issue [id] | /ideas [send|retry|clear|edit] <id>",
     handler: async (args, ctx) => {
       currentCtx = ctx;
       const parts = args.trim().split(/\s+/).filter(Boolean);
@@ -2073,8 +2134,24 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         return;
       }
 
+      if (action === "next") {
+        const item = findNextIdea(ctx);
+        if (!item) {
+          ctx.ui.notify("No ideas captured", "info");
+          return;
+        }
+        const updated = queueStore.update(item.id, { status: "queued", target: { kind: "current-session" }, error: undefined });
+        if (updated) deliverQueueItem(ctx, updated);
+        return;
+      }
+
+      if (action === "issue") {
+        sendIdeaIssueHandoffById(ctx, id);
+        return;
+      }
+
       if (!id) {
-        ctx.ui.notify("Usage: /ideas [send|retry|clear|edit] <id>", "info");
+        ctx.ui.notify("Usage: /ideas next | /ideas issue [id] | /ideas [send|retry|clear|edit] <id>", "info");
         return;
       }
 
@@ -2104,7 +2181,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         return;
       }
 
-      ctx.ui.notify("Usage: /ideas [send|retry|clear|edit] <id>", "info");
+      ctx.ui.notify("Usage: /ideas next | /ideas issue [id] | /ideas [send|retry|clear|edit] <id>", "info");
     },
   });
 
@@ -2860,13 +2937,22 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         }
 
         if (!powerlineCompacting && !bashModeActive && isSubmit && typeof ctx.compact === "function") {
-          const compactQueuedPrompt = parseCompactQueuedPrompt(editor.getExpandedText());
-          if (compactQueuedPrompt) {
-            editor.addToHistory?.(editor.getExpandedText().trim());
+          const editorText = editor.getExpandedText().trim();
+          const compactQueuedPrompt = parseCompactQueuedPrompt(editorText);
+          if (editorText === "/compact" || compactQueuedPrompt) {
+            editor.addToHistory?.(editorText);
             editor.setText("");
-            capturePostCompactPrompt(ctx, compactQueuedPrompt);
+            if (compactQueuedPrompt) {
+              capturePostCompactPrompt(ctx, compactQueuedPrompt);
+            }
+            powerlineCompacting = true;
+            deliverAfterRetrySettles = false;
+            requestQueueRender();
             ctx.compact({
-              onError: (error: Error) => ctx.ui.notify(error.message, "error"),
+              onError: (error: Error) => {
+                finishFailedCompaction(ctx, error.message);
+                ctx.ui.notify(error.message, "error");
+              },
             });
             scheduleDismissWelcome(ctx);
             return;
@@ -3096,7 +3182,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
             horizontalAlign: "center",
           }),
         },
-      ).catch((error) => {
+      ).catch((error: unknown) => {
         console.debug("[powerline-footer] Welcome overlay failed:", error);
       });
     }, 100);

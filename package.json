@@ -26,6 +26,7 @@
     "url": "git+https://github.com/nicobailon/pi-powerline-footer.git"
   },
   "scripts": {
+    "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/**/*.test.ts"
   },
   "peerDependencies": {
@@ -36,7 +37,9 @@
   "devDependencies": {
     "@earendil-works/pi-ai": "^0.83.0",
     "@earendil-works/pi-coding-agent": "^0.83.0",
-    "@earendil-works/pi-tui": "^0.83.0"
+    "@earendil-works/pi-tui": "^0.83.0",
+    "@types/node": "24.13.3",
+    "typescript": "5.9.3"
   },
   "pi": {
     "extensions": [

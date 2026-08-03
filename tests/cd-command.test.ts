@@ -41,10 +41,12 @@ test("cd argument completions suggest directories and quick picks", () => {
   assert.ok(rootCompletions.some((item) => item.value === "My\\ Folder/" && item.label === "My Folder/"));
   assert.ok(!rootCompletions.some((item) => item.label === "file.txt"));
 
-  assert.deepEqual(
-    getCdArgumentCompletions("~/p", root, home).map((item) => item.value),
-    ["~/project/"],
-  );
+  if (process.platform !== "win32") {
+    assert.deepEqual(
+      getCdArgumentCompletions("~/p", root, home).map((item) => item.value),
+      ["~/project/"],
+    );
+  }
 });
 
 test("cd command cleans up the forked session when switching is cancelled", async () => {

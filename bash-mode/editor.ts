@@ -1,7 +1,6 @@
 import { fileURLToPath } from "node:url";
-import { CustomEditor } from "@earendil-works/pi-coding-agent";
+import { CustomEditor, type KeybindingsManager } from "@earendil-works/pi-coding-agent";
 import { isKeyRelease, matchesKey, visibleWidth, truncateToWidth } from "@earendil-works/pi-tui";
-import type { KeybindingsManager } from "@earendil-works/pi-coding-agent/dist/core/keybindings.js";
 import type { AutocompleteProvider } from "@earendil-works/pi-tui";
 import { matchesConfiguredShortcut } from "../shortcuts.ts";
 import { getOneOffBashCommandContext } from "./completion.ts";
@@ -145,8 +144,9 @@ export class BashModeEditor extends CustomEditor {
     resetShellHistoryBrowse(this);
     this.clearGhostSuggestion();
 
-    if ("cancelAutocomplete" in this && typeof this.cancelAutocomplete === "function") {
-      this.cancelAutocomplete();
+    const cancelAutocomplete = Reflect.get(this, "cancelAutocomplete");
+    if (typeof cancelAutocomplete === "function") {
+      cancelAutocomplete.call(this);
     }
     this.tui.requestRender();
   }
@@ -175,7 +175,10 @@ export class BashModeEditor extends CustomEditor {
       const oneOffBashCommand = !bashMode && this.isOneOffBashCommandContext();
 
       if (isCommandUndoShortcut(data)) {
-        this.undo();
+        const undo = Reflect.get(this, "undo");
+        if (typeof undo === "function") {
+          undo.call(this);
+        }
         resetShellHistoryBrowse(this);
         if (this.isShellCompletionContext()) {
           this.scheduleGhostUpdate();

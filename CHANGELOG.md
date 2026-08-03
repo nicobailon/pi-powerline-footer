@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+- Added `/ideas next` to send the oldest active captured idea to the current session, plus `/idea issue [id]` and `/ideas issue [id]` to hand saved ideas to the current agent for guarded GitHub issue triage.
+- Added a strict source-only TypeScript gate and GitHub Actions workflow that runs typecheck before tests on Ubuntu and Windows.
+
+### Fixed
+- Switched compaction-aware queue delivery to Pi's supported `session_before_compact` and `session_compact` extension lifecycle instead of internal session events.
+
 ## [0.11.0] - 2026-08-03
 
 ### Added
