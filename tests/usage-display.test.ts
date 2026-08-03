@@ -116,14 +116,27 @@ test("cache_read percent format renders the cache hit rate", () => {
   assert.equal(stripAnsi(rendered.content), "cache 80%");
 });
 
-test("cache_read percent format handles zero total without NaN", () => {
-  const ctx = createSegmentContext({ cache_read: { format: "percent" } }, {
+test("cache_read both format renders raw token count and cache hit rate", () => {
+  const ctx = createSegmentContext({ cache_read: { format: "both" } }, {
+    usageStats: { input: 2000, output: 0, cacheRead: 8000, cacheWrite: 0, cost: 0, subagentCost: 0 },
+  });
+
+  const rendered = renderSegment("cache_read", ctx);
+  assert.equal(stripAnsi(rendered.content), "cache in: 8.0k (80%)");
+});
+
+test("cache_read percent and both formats handle zero input without NaN", () => {
+  const percentCtx = createSegmentContext({ cache_read: { format: "percent" } }, {
     usageStats: { input: 0, output: 0, cacheRead: 5, cacheWrite: 0, cost: 0, subagentCost: 0 },
   });
-  assert.equal(stripAnsi(renderSegment("cache_read", ctx).content), "cache 100%");
+  assert.equal(stripAnsi(renderSegment("cache_read", percentCtx).content), "cache 100%");
 
-  // cacheRead = 0 hides the segment entirely in both formats
-  const hidden = createSegmentContext({ cache_read: { format: "percent" } });
+  const bothCtx = createSegmentContext({ cache_read: { format: "both" } }, {
+    usageStats: { input: 0, output: 0, cacheRead: 5, cacheWrite: 0, cost: 0, subagentCost: 0 },
+  });
+  assert.equal(stripAnsi(renderSegment("cache_read", bothCtx).content), "cache in: 5 (100%)");
+
+  const hidden = createSegmentContext({ cache_read: { format: "both" } });
   assert.deepEqual(renderSegment("cache_read", hidden), { content: "", visible: false });
 });
 
@@ -155,11 +168,11 @@ test("queue segment highlights compaction-held prompts", () => {
 test("parsePowerlineConfig accepts context and cache_read formats", () => {
   const config = parsePowerlineConfig({
     context: { format: "percent" },
-    cache_read: { format: "percent" },
+    cache_read: { format: "both" },
   }, PRESET_NAMES);
 
   assert.equal(config.segmentOptions.context?.format, "percent");
-  assert.equal(config.segmentOptions.cache_read?.format, "percent");
+  assert.equal(config.segmentOptions.cache_read?.format, "both");
 });
 
 test("parsePowerlineConfig ignores invalid format values", () => {
@@ -181,9 +194,9 @@ test("parsePowerlineConfig defaults to upstream rendering when options are absen
 test("mergeSegmentOptions merges context and cache_read per key", () => {
   const merged = mergeSegmentOptions(
     { context: { format: "percent" }, cache_read: { format: "percent" } },
-    { context: { format: "full" } },
+    { context: { format: "full" }, cache_read: { format: "both" } },
   );
 
   assert.equal(merged.context?.format, "full");
-  assert.equal(merged.cache_read?.format, "percent");
+  assert.equal(merged.cache_read?.format, "both");
 });
