@@ -21,6 +21,7 @@ export type SemanticColor =
   | "contextError"
   | "cost"
   | "tokens"
+  | "queue"
   | "separator"
   | "border";
 
@@ -34,6 +35,7 @@ export const BUILTIN_STATUS_LINE_SEGMENT_IDS = [
   "path",
   "git",
   "subagents",
+  "queue",
   "token_in",
   "token_out",
   "token_total",
@@ -152,6 +154,14 @@ export interface GitStatus {
 }
 
 // Usage statistics
+export interface QueueSummary {
+  queueCount: number;
+  ideaCount: number;
+  blockedCount: number;
+  compacting: boolean;
+  leadingText: string | null;
+}
+
 export interface UsageStats {
   input: number;
   output: number;
@@ -186,6 +196,7 @@ export interface SegmentContext {
   autoCompactEnabled: boolean;
   customCompactionEnabled: boolean;
   usingSubscription: boolean;
+  queueSummary: QueueSummary;
   sessionStartTime: number;
   shellModeActive: boolean;
   shellRunning: boolean;

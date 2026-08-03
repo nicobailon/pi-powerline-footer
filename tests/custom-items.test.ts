@@ -43,6 +43,7 @@ test("parsePowerlineConfig supports disabled segments", () => {
       preset: "default",
       customItems: [{ id: "ci" }],
       disabledSegments: [
+        "queue",
         "cost",
         " extension_statuses ",
         "custom:ci",
@@ -55,7 +56,7 @@ test("parsePowerlineConfig supports disabled segments", () => {
     ["default", "compact"],
   );
 
-  assert.deepEqual(config.disabledSegments, ["cost", "extension_statuses", "custom:ci"]);
+  assert.deepEqual(config.disabledSegments, ["queue", "cost", "extension_statuses", "custom:ci"]);
   assert.deepEqual(config.invalidDisabledSegments, ["unknown", "custom:missing", "123"]);
 });
 

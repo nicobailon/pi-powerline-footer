@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- **Powerline Queue + Inbox** — Added a file-backed queue and idea inbox for capturing thoughts without interrupting the current agent. Messages submitted during compaction are held by Powerline and delivered after successful compaction, while failed or cancelled compactions leave them blocked and visible. New `/idea`, `/ideas`, and `/queue` commands manage captured ideas, queued prompts, project aliases, retries, clears, and current-session delivery; the `queue` segment and preview row surface active queue, idea, and blocked counts.
+
 ## [0.10.0] - 2026-08-02
 
 ### Changed

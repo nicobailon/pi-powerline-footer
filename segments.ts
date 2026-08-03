@@ -245,6 +245,31 @@ const subagentsSegment: StatusLineSegment = {
   },
 };
 
+const queueSegment: StatusLineSegment = {
+  id: "queue",
+  render(ctx) {
+    const summary = ctx.queueSummary;
+    const parts: string[] = [];
+
+    if (summary.compacting && summary.queueCount > 0) {
+      parts.push(`compact q ${summary.queueCount}`);
+    } else if (summary.queueCount > 0) {
+      parts.push(`q ${summary.queueCount}`);
+    }
+
+    if (summary.ideaCount > 0) {
+      parts.push(`ideas ${summary.ideaCount}`);
+    }
+
+    if (summary.blockedCount > 0) {
+      parts.push(`blocked ${summary.blockedCount}`);
+    }
+
+    if (parts.length === 0) return { content: "", visible: false };
+    return { content: color(ctx, "queue", parts.join(SEP_DOT)), visible: true };
+  },
+};
+
 const tokenInSegment: StatusLineSegment = {
   id: "token_in",
   render(ctx) {
@@ -489,6 +514,7 @@ export const SEGMENTS: Record<BuiltinStatusLineSegmentId, StatusLineSegment> = {
   git: gitSegment,
   thinking: thinkingSegment,
   subagents: subagentsSegment,
+  queue: queueSegment,
   token_in: tokenInSegment,
   token_out: tokenOutSegment,
   token_total: tokenTotalSegment,

@@ -13,6 +13,8 @@ Customizes the default [pi](https://github.com/badlogic/pi-mono) editor with a p
 
 **Editor stash** — Press `Alt+S` to save your editor content and clear the editor, type a quick prompt, and your stashed text auto-restores when the agent finishes. Toggles between stash, pop, and update-existing-stash. A `stash` indicator appears in the powerline bar while text is stashed.
 
+**Powerline Queue + Inbox** — Capture thoughts without interrupting the current agent. Messages typed during compaction are held by Powerline and delivered after successful compaction instead of disappearing into Pi's native queue. `/idea`, `/ideas`, and `/queue` provide a file-backed inbox for current-session prompts, project ideas, aliases, retries, clears, and manual delivery. Active queue, idea, and blocked counts appear in the `queue` segment only when there is something to show.
+
 **Working Vibes** — AI-generated themed loading messages. Set `/vibe star trek` and your "Working..." becomes "Running diagnostics..." or "Engaging warp drive...". Supports any theme: pirate, zen, noir, cowboy, etc.
 
 **Welcome overlay** — Branded splash screen shown as centered overlay on startup. Shows gradient logo, model info, keyboard tips, loaded AGENTS.md/extensions/skills/templates counts, an approximate initial system-prompt token count, and recent sessions. Auto-dismisses after 30 seconds or on any key press. Set `powerline.welcome` to `false` to disable it while keeping the footer enabled.
@@ -48,6 +50,22 @@ Restart pi to activate.
 Activates automatically. Toggle with `/powerline`, switch presets with `/powerline <name>`, and move the primary row with `/powerline placement above|below|toggle`.
 
 Use `/cd <path>` to continue the current conversation from another working directory. It supports relative paths, absolute paths, `~`, `~/...`, and directory completions. With no argument, `/cd` prints the current Pi session directory. The command switches into a cwd-updated session file so Pi tools and the footer path segment agree after the change.
+
+Powerline Queue + Inbox commands:
+
+- `/idea <text>` — capture an idea for the current project without sending it to the agent
+- `/idea @global <text>` — capture a global idea
+- `/idea @current <text>` — capture an idea targeted to the current session
+- `/queue alias <name> [path]` — save a project alias, defaulting to the current cwd when `path` is omitted
+- `/idea @name <text>` — capture an idea for a saved project alias
+- `/ideas` — open the captured-ideas picker
+- `/ideas send <id>` — send an idea to the current session
+- `/queue` — open the queued-prompt picker
+- `/queue send [id]` / `/queue retry [id]` — deliver a queued item now
+- `/queue clear <id|all>` — clear queued prompt items
+- `/queue target <id> @name|global|current` — retarget a queued item
+
+Captured data is stored under the Pi agent directory in `powerline-footer/inbox.jsonl` and `powerline-footer/projects.json`.
 
 - `/powerline placement below` — move the primary powerline row below the editor
 - `/powerline placement above` — restore the default placement
@@ -275,6 +293,8 @@ Selecting an entry inserts it into the editor. If the editor already has text, y
 
 - `ctrl+alt+c` — copy full editor content
 - `ctrl+alt+x` — cut full editor content (copy, then clear)
+- `ctrl+alt+i` — capture the current editor text as a project idea and clear the editor
+- `ctrl+alt+q` — open the queued-prompt picker
 - `cmd+shift+up` — move the editor cursor to the start of the first line
 - `cmd+shift+down` — move the editor cursor to the end of the last line
 
@@ -290,6 +310,8 @@ You can override shortcut keys in the agent settings file:
     "stashHistory": "ctrl+alt+h",
     "copyEditor": "ctrl+alt+c",
     "cutEditor": "ctrl+alt+x",
+    "ideaCapture": "ctrl+alt+i",
+    "queueOpen": "ctrl+alt+q",
     "editorStart": "cmd+shift+up",
     "editorEnd": "cmd+shift+down"
   }
