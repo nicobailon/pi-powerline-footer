@@ -38,6 +38,8 @@ test("queue store adds active project ideas and summarizes them", () => withStor
     blockedCount: 0,
     compacting: true,
     leadingText: "run after compact",
+    leadingIntent: "post-compact",
+    leadingStatus: "queued",
   });
 }));
 
@@ -51,6 +53,26 @@ test("queue store filters inactive project items", () => withStore((store) => {
 
   assert.equal(store.activeItems(currentQueueContext("/tmp/project-b")).length, 0);
   assert.equal(store.activeItems(currentQueueContext("/tmp/project-a")).length, 1);
+}));
+
+test("queue store exposes the leading item intent for idea-only summaries", () => withStore((store) => {
+  store.add({
+    text: "saved follow-up idea",
+    source: { cwd: "/tmp/project" },
+    target: { kind: "project", cwd: "/tmp/project" },
+    intent: "idea",
+    now: 100,
+  });
+
+  assert.deepEqual(store.summarize(currentQueueContext("/tmp/project"), false), {
+    queueCount: 0,
+    ideaCount: 1,
+    blockedCount: 0,
+    compacting: false,
+    leadingText: "saved follow-up idea",
+    leadingIntent: "idea",
+    leadingStatus: "queued",
+  });
 }));
 
 test("current-session targets stay scoped to the source session when known", () => withStore((store) => {

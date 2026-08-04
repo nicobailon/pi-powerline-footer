@@ -209,6 +209,8 @@ export class PowerlineQueueStore {
       blockedCount: blockedItems.length,
       compacting,
       leadingText: leading?.text ?? null,
+      leadingIntent: leading?.intent ?? null,
+      leadingStatus: leading?.status ?? null,
     };
   }
 

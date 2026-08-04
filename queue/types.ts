@@ -33,6 +33,8 @@ export interface QueueSummary {
   blockedCount: number;
   compacting: boolean;
   leadingText: string | null;
+  leadingIntent: QueueIntent | null;
+  leadingStatus: QueueStatus | null;
 }
 
 export interface CreateQueueItemInput {

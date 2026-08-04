@@ -2687,9 +2687,15 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     const summary = queueStore.summarize(getQueueContext(currentCtx), powerlineCompacting);
     if (!summary.leadingText) return [];
 
-    const prefix = summary.blockedCount > 0 ? "blocked: " : "queued: ";
+    const prefix = summary.leadingStatus === "blocked" || summary.leadingStatus === "failed"
+      ? "blocked: "
+      : summary.leadingStatus === "delivering"
+        ? "sending: "
+        : summary.leadingIntent === "idea"
+          ? "idea: "
+          : "queued: ";
     const text = `${prefix}${summary.leadingText.replace(/\s+/g, " ").trim()}`;
-    const color = summary.blockedCount > 0 ? "warning" : "dim";
+    const color = summary.leadingStatus === "blocked" || summary.leadingStatus === "failed" ? "warning" : "dim";
     return [` ${theme.fg(color, truncateToWidth(text, Math.max(1, width - 1), "…"))}`];
   }
 
