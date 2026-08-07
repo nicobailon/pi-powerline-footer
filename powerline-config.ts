@@ -76,10 +76,35 @@ function normalizeCustomItemPosition(value: unknown): CustomItemPosition {
   return "right";
 }
 
+/**
+ * Valid foreground theme color names, mirrored from the pi core `ThemeColor`
+ * union. Any other string (e.g. "info") is NOT a valid theme color and would
+ * make `theme.fg()` throw "Unknown theme color" during status-line rendering.
+ */
+const VALID_THEME_COLORS = new Set<string>([
+  "accent", "border", "borderAccent", "borderMuted", "success", "error",
+  "warning", "muted", "dim", "text", "thinkingText", "userMessageText",
+  "customMessageText", "customMessageLabel", "toolTitle", "toolOutput",
+  "mdHeading", "mdLink", "mdLinkUrl", "mdCode", "mdCodeBlock",
+  "mdCodeBlockBorder", "mdQuote", "mdQuoteBorder", "mdHr", "mdListBullet",
+  "toolDiffAdded", "toolDiffRemoved", "toolDiffContext",
+  "syntaxComment", "syntaxKeyword", "syntaxFunction", "syntaxVariable",
+  "syntaxString", "syntaxNumber", "syntaxType", "syntaxOperator",
+  "syntaxPunctuation", "thinkingOff", "thinkingMinimal", "thinkingLow",
+  "thinkingMedium", "thinkingHigh", "thinkingXhigh", "thinkingMax", "bashMode",
+]);
+
 function normalizeCustomColor(value: unknown): ColorValue | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim();
-  return normalized ? (normalized as ColorValue) : undefined;
+  if (!normalized) return undefined;
+  // Reject unknown theme color names (e.g. "info") before they reach theme.fg().
+  // Only hex colors and known theme colors are accepted.
+  if (!normalized.startsWith("#") && !VALID_THEME_COLORS.has(normalized)) {
+    console.debug(`[powerline-footer] Ignoring invalid custom item color "${normalized}".`);
+    return undefined;
+  }
+  return normalized as ColorValue;
 }
 
 function normalizeCustomPrefix(value: unknown): string | undefined {
