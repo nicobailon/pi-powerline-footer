@@ -145,3 +145,10 @@ test("stale ctx guard handles old and new Pi messages on agent_end", () => {
   assert.match(source, /let hasUI = false;\r?\n\s+try \{\r?\n\s+hasUI = Boolean\(ctx\.hasUI\);/);
   assert.match(source, /if \(!isStaleExtensionContextError\(error\)\) throw error;\r?\n\s+currentCtx = null;\r?\n\s+return;/);
 });
+
+test("post-compaction queue delivery does not read ctx.cwd from the delayed callback", () => {
+  assert.match(source, /const queueContext = getQueueContext\(ctx\);\r?\n\s+const scheduledGeneration = sessionGeneration;\r?\n\s+queueDeliveryTimer = setTimeout/);
+  assert.match(source, /if \(scheduledGeneration !== sessionGeneration\) return;\r?\n\s+try \{\r?\n\s+const item = queueStore\.queuedDeliveryItems\(queueContext, "post-compact"\)\[0\];/);
+  assert.match(source, /catch \(error\) \{\r?\n\s+if \(!isStaleExtensionContextError\(error\)\) throw error;\r?\n\s+currentCtx = null;/);
+  assert.match(source, /if \(isStaleExtensionContextError\(error\)\) \{\r?\n\s+if \(!sent\) queueStore\.update\(item\.id, \{ status: "queued", error: undefined \}\);/);
+});

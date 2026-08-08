@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Post-compaction queue delivery** — Snapshot the queue context before delayed delivery so a reload or session replacement cannot crash by reading a stale extension context. Thanks to @pascalandy for the report in nicobailon/pi-subagents#897.
+
 ## [0.12.1] - 2026-08-04
 
 ### Fixed

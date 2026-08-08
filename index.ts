@@ -64,7 +64,7 @@ import {
   parseVibeGenerateArgs,
 } from "./working-vibes.ts";
 import { PowerlineQueueStore, currentQueueContext, formatIdeaIssuePrompt, formatQueueDeliveryText, parseCompactQueuedPrompt, parseSigilIdeaCapture, parseTargetPrefix, targetForIdea } from "./queue/store.ts";
-import type { PowerlineQueueItem, QueueIntent, QueueTarget } from "./queue/types.ts";
+import type { PowerlineQueueItem, QueueContext, QueueIntent, QueueTarget } from "./queue/types.ts";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Configuration
@@ -1237,7 +1237,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     return typeof sessionId === "string" && sessionId.trim() ? sessionId : undefined;
   }
 
-  function getQueueContext(ctx: any) {
+  function getQueueContext(ctx: any): QueueContext {
     return currentQueueContext(ctx.cwd ?? process.cwd(), getQueueSessionId(ctx));
   }
 
@@ -1335,6 +1335,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     queueStore.update(item.id, { status: "delivering", error: undefined });
     requestQueueRender();
 
+    let sent = false;
     try {
       const deliverAs = deliveryModeForItem(ctx, item);
       const deliveryText = formatQueueDeliveryText(item);
@@ -1343,11 +1344,22 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       } else {
         pi.sendUserMessage(deliveryText);
       }
+      sent = true;
       queueStore.update(item.id, { status: "sent", error: undefined });
-      ctx.ui.notify(`Sent queued item ${item.id}`, "info");
+      try {
+        ctx.ui.notify(`Sent queued item ${item.id}`, "info");
+      } catch (error) {
+        if (!isStaleExtensionContextError(error)) throw error;
+        currentCtx = null;
+      }
       requestQueueRender();
       return true;
     } catch (error) {
+      if (isStaleExtensionContextError(error)) {
+        if (!sent) queueStore.update(item.id, { status: "queued", error: undefined });
+        currentCtx = null;
+        throw error;
+      }
       const message = error instanceof Error ? error.message : String(error);
       queueStore.update(item.id, { status: "failed", error: message });
       ctx.ui.notify(`Failed to send ${item.id}: ${message}`, "error");
@@ -1358,10 +1370,18 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   function schedulePostCompactionDelivery(ctx: any): void {
     if (queueDeliveryTimer) clearTimeout(queueDeliveryTimer);
+    const queueContext = getQueueContext(ctx);
+    const scheduledGeneration = sessionGeneration;
     queueDeliveryTimer = setTimeout(() => {
       queueDeliveryTimer = null;
-      const item = queueStore.queuedDeliveryItems(getQueueContext(ctx), "post-compact")[0];
-      if (item) deliverQueueItem(ctx, item);
+      if (scheduledGeneration !== sessionGeneration) return;
+      try {
+        const item = queueStore.queuedDeliveryItems(queueContext, "post-compact")[0];
+        if (item) deliverQueueItem(ctx, item);
+      } catch (error) {
+        if (!isStaleExtensionContextError(error)) throw error;
+        currentCtx = null;
+      }
     }, 50);
   }
 
