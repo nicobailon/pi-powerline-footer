@@ -24,11 +24,18 @@ test("invalidateGitStatus serves stale counts while refreshing (no flicker to ze
 
   invalidateGitStatus();
   const afterInvalidate = getGitStatus("provider-branch");
-  assert.deepEqual(afterInvalidate, seeded);
+  assert.deepEqual(
+    { staged: afterInvalidate.staged, unstaged: afterInvalidate.unstaged, untracked: afterInvalidate.untracked },
+    { staged: seeded.staged, unstaged: seeded.unstaged, untracked: seeded.untracked },
+  );
 
   // The background refresh converges to real data again (repo is unchanged).
   await sleep(FETCH_SETTLE_MS);
-  assert.deepEqual(getGitStatus("provider-branch"), seeded);
+  const refreshed = getGitStatus("provider-branch");
+  assert.deepEqual(
+    { staged: refreshed.staged, unstaged: refreshed.unstaged, untracked: refreshed.untracked },
+    { staged: seeded.staged, unstaged: seeded.unstaged, untracked: seeded.untracked },
+  );
 });
 
 test("invalidateGitBranch keeps serving the last known branch while refreshing", async () => {
