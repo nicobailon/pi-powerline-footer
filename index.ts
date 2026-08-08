@@ -3096,7 +3096,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           requestStatusRender();
         },
         render(): string[] {
-          return [];
+          return [""];
         },
       };
     });
