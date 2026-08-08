@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Post-compaction context display** — Show Pi's unknown context state immediately after compaction instead of keeping the stale pre-compaction percentage until the next assistant response.
+
 ## [0.12.2] - 2026-08-08
 
 ### Fixed

@@ -35,7 +35,7 @@ import { WelcomeComponent, WelcomeHeader, discoverLoadedCounts, getRecentSession
 import { createWelcomeDismissScheduler } from "./welcome-dismiss.ts";
 import { createRenderScheduler } from "./render-scheduler.ts";
 import { getEditorAutocompleteProvider, passAutocompleteProviderThroughPreviousEditor } from "./editor-composition.ts";
-import { CoreContextUsageCache, estimateInitialContextTokens } from "./context-usage.ts";
+import { CoreContextUsageCache, estimateInitialContextTokens, resolveDisplayContextUsage } from "./context-usage.ts";
 import { isStaleExtensionContextError, shouldShowStartupWelcome } from "./lifecycle.ts";
 import { getDefaultColors } from "./theme.ts";
 import { registerCdCommand } from "./cd-command.ts";
@@ -1716,12 +1716,18 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   pi.on("session_before_compact", async (_event, ctx) => {
     powerlineCompacting = true;
     currentCtx = ctx;
+    isStreaming = false;
+    liveAssistantUsage = null;
+    coreContextUsageCache.reset();
     requestQueueRender();
   });
 
   pi.on("session_compact", async (event, ctx) => {
     powerlineCompacting = false;
     currentCtx = ctx;
+    isStreaming = false;
+    liveAssistantUsage = null;
+    coreContextUsageCache.reset();
     if (event.willRetry) {
       deliverAfterRetrySettles = true;
     } else {
@@ -2576,9 +2582,16 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     // Calculate context percentage.
     const latestUsage = isStreaming ? liveAssistantUsage ?? lastAssistant?.usage : lastAssistant?.usage;
     const coreContextUsage = isStreaming && liveAssistantUsage ? null : coreContextUsageCache.get(ctx);
-    const contextTokens = coreContextUsage?.contextTokens ?? (latestUsage ? getUsageTokenTotal(latestUsage) : 0);
-    const contextWindow = coreContextUsage?.contextWindow ?? ctx.model?.contextWindow ?? 0;
-    const contextPercent = coreContextUsage?.contextPercent ?? (contextWindow > 0 ? (contextTokens / contextWindow) * 100 : 0);
+    const fallbackContextTokens = latestUsage ? getUsageTokenTotal(latestUsage) : 0;
+    const {
+      contextTokens,
+      contextWindow,
+      contextPercent,
+    } = resolveDisplayContextUsage({
+      coreContextUsage,
+      fallbackContextTokens,
+      fallbackContextWindow: ctx.model?.contextWindow ?? 0,
+    });
 
     const segmentOptions = mergeSegmentOptions(presetDef.segmentOptions, config.segmentOptions);
 

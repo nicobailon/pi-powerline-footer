@@ -346,19 +346,22 @@ const contextPctSegment: StatusLineSegment = {
 
     const autoIcon = ctx.autoCompactEnabled && icons.auto ? ` ${icons.auto}` : "";
     const percentOnly = ctx.options.context?.format === "percent";
+    const hasKnownUsage = contextTokens !== null && contextPercent !== null;
     // "full" (default): tokens/window + one-decimal percentage + auto-compact icon.
     // "percent": bare rounded percentage, threshold-colored, no icons.
     const text = percentOnly
-      ? `${Math.round(contextPercent)}%`
-      : `${formatTokens(contextTokens)}/${formatTokens(contextWindow)} (${contextPercent.toFixed(1)}%)${autoIcon}`;
+      ? (hasKnownUsage ? `${Math.round(contextPercent)}%` : "?")
+      : hasKnownUsage
+        ? `${formatTokens(contextTokens)}/${formatTokens(contextWindow)} (${contextPercent.toFixed(1)}%)${autoIcon}`
+        : `?/${formatTokens(contextWindow)}${autoIcon}`;
 
     // Icon outside color, text inside - use semantic colors for thresholds
     let content: string;
     const colored = (semantic: "context" | "contextWarn" | "contextError") =>
       percentOnly ? color(ctx, semantic, text) : withIcon(icons.context, color(ctx, semantic, text));
-    if (contextPercent > 90) {
+    if (hasKnownUsage && contextPercent > 90) {
       content = colored("contextError");
-    } else if (contextPercent > 70) {
+    } else if (hasKnownUsage && contextPercent > 70) {
       content = colored("contextWarn");
     } else {
       content = colored("context");

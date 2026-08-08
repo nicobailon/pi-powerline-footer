@@ -82,6 +82,22 @@ test("context_pct percent format renders a bare rounded percentage", () => {
   assert.equal(stripAnsi(rendered.content), "6%");
 });
 
+test("context_pct renders unknown usage after compaction", () => {
+  const full = createSegmentContext({}, {
+    contextTokens: null,
+    contextWindow: 200000,
+    contextPercent: null,
+  });
+  const percent = createSegmentContext({ context: { format: "percent" } }, {
+    contextTokens: null,
+    contextWindow: 200000,
+    contextPercent: null,
+  });
+
+  assert.equal(stripAnsi(renderSegment("context_pct", full).content), "◫ ?/200k AC");
+  assert.equal(stripAnsi(renderSegment("context_pct", percent).content), "?");
+});
+
 test("context_pct percent format keeps threshold colors and drops icons", () => {
   for (const [percent, expected] of [[69, "69%"], [85, "85%"], [95, "95%"]] as const) {
     const ctx = createSegmentContext({ context: { format: "percent" } }, {

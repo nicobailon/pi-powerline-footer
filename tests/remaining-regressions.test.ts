@@ -152,3 +152,8 @@ test("post-compaction queue delivery does not read ctx.cwd from the delayed call
   assert.match(source, /catch \(error\) \{\r?\n\s+if \(!isStaleExtensionContextError\(error\)\) throw error;\r?\n\s+currentCtx = null;/);
   assert.match(source, /if \(isStaleExtensionContextError\(error\)\) \{\r?\n\s+if \(!sent\) queueStore\.update\(item\.id, \{ status: "queued", error: undefined \}\);/);
 });
+
+test("compaction events clear live usage before context display can fall back", () => {
+  assert.match(source, /pi\.on\("session_before_compact", async \(_event, ctx\) => \{\r?\n\s+powerlineCompacting = true;\r?\n\s+currentCtx = ctx;\r?\n\s+isStreaming = false;\r?\n\s+liveAssistantUsage = null;\r?\n\s+coreContextUsageCache\.reset\(\);/);
+  assert.match(source, /pi\.on\("session_compact", async \(event, ctx\) => \{\r?\n\s+powerlineCompacting = false;\r?\n\s+currentCtx = ctx;\r?\n\s+isStreaming = false;\r?\n\s+liveAssistantUsage = null;\r?\n\s+coreContextUsageCache\.reset\(\);/);
+});

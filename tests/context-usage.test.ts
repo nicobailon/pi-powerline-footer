@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CoreContextUsageCache, estimateInitialContextTokens, readCoreContextUsage } from "../context-usage.ts";
+import { CoreContextUsageCache, estimateInitialContextTokens, readCoreContextUsage, resolveDisplayContextUsage } from "../context-usage.ts";
 
 test("readCoreContextUsage returns Pi context estimates for branch summaries", () => {
   const usage = readCoreContextUsage({
@@ -30,10 +30,24 @@ test("readCoreContextUsage computes percent when Pi returns only token totals", 
   });
 });
 
+test("readCoreContextUsage preserves Pi's post-compaction unknown state", () => {
+  const usage = readCoreContextUsage({
+    getContextUsage() {
+      return { tokens: null, contextWindow: 5000, percent: null };
+    },
+  });
+
+  assert.deepEqual(usage, {
+    contextTokens: null,
+    contextWindow: 5000,
+    contextPercent: null,
+  });
+});
+
 test("readCoreContextUsage ignores unknown or unusable estimates", () => {
   assert.equal(readCoreContextUsage({}), null);
   assert.equal(readCoreContextUsage({ getContextUsage: () => undefined }), null);
-  assert.equal(readCoreContextUsage({ getContextUsage: () => ({ tokens: null, contextWindow: 5000, percent: null }) }), null);
+  assert.equal(readCoreContextUsage({ getContextUsage: () => ({ tokens: undefined, contextWindow: 5000, percent: null }) }), null);
   assert.equal(readCoreContextUsage({ getContextUsage: () => ({ tokens: 100, contextWindow: 0, percent: 0 }) }), null);
 });
 
@@ -61,6 +75,30 @@ test("core context usage cache reuses a leaf and supports explicit invalidation"
   tokens = 300;
   assert.equal(cache.get(ctx)?.contextTokens, 300);
   assert.equal(reads, 3);
+});
+
+test("resolveDisplayContextUsage preserves unknown core usage over fallback usage", () => {
+  assert.deepEqual(resolveDisplayContextUsage({
+    coreContextUsage: { contextTokens: null, contextWindow: 5000, contextPercent: null },
+    fallbackContextTokens: 4000,
+    fallbackContextWindow: 5000,
+  }), {
+    contextTokens: null,
+    contextWindow: 5000,
+    contextPercent: null,
+  });
+});
+
+test("resolveDisplayContextUsage computes fallback usage when Pi has no current estimate", () => {
+  assert.deepEqual(resolveDisplayContextUsage({
+    coreContextUsage: null,
+    fallbackContextTokens: 1000,
+    fallbackContextWindow: 4000,
+  }), {
+    contextTokens: 1000,
+    contextWindow: 4000,
+    contextPercent: 25,
+  });
 });
 
 test("estimateInitialContextTokens uses Pi's conservative character estimate", () => {

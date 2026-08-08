@@ -1,7 +1,13 @@
 export interface CoreContextUsage {
-  contextTokens: number;
+  contextTokens: number | null;
   contextWindow: number;
-  contextPercent: number;
+  contextPercent: number | null;
+}
+
+interface DisplayContextUsageInput {
+  coreContextUsage: CoreContextUsage | null;
+  fallbackContextTokens: number;
+  fallbackContextWindow: number;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -61,6 +67,20 @@ export function estimateInitialContextTokens(ctx: unknown): number | null {
   return Math.ceil(prompt.length / 4);
 }
 
+export function resolveDisplayContextUsage({
+  coreContextUsage,
+  fallbackContextTokens,
+  fallbackContextWindow,
+}: DisplayContextUsageInput): CoreContextUsage {
+  if (coreContextUsage) return coreContextUsage;
+
+  return {
+    contextTokens: fallbackContextTokens,
+    contextWindow: fallbackContextWindow,
+    contextPercent: fallbackContextWindow > 0 ? (fallbackContextTokens / fallbackContextWindow) * 100 : 0,
+  };
+}
+
 export function readCoreContextUsage(ctx: unknown): CoreContextUsage | null {
   if (!isRecord(ctx) || typeof ctx.getContextUsage !== "function") {
     return null;
@@ -74,13 +94,16 @@ export function readCoreContextUsage(ctx: unknown): CoreContextUsage | null {
   const tokens = usage.tokens;
   const contextWindow = usage.contextWindow;
   if (
-    typeof tokens !== "number"
-    || !Number.isFinite(tokens)
+    !(tokens === null || (typeof tokens === "number" && Number.isFinite(tokens)))
     || typeof contextWindow !== "number"
     || !Number.isFinite(contextWindow)
     || contextWindow <= 0
   ) {
     return null;
+  }
+
+  if (tokens === null) {
+    return { contextTokens: null, contextWindow, contextPercent: null };
   }
 
   const percent = usage.percent;
