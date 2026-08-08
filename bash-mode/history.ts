@@ -161,8 +161,9 @@ export function readGlobalShellHistory(shellPath: string): string[] {
     return [];
   }
 
+  let stat: FileFingerprint | undefined;
   try {
-    const stat = statSync(filePath);
+    stat = statSync(filePath);
     const cached = globalHistoryCache.get(cacheKey);
     if (cached && matchesFingerprint(cached, stat)) {
       return cached.entries;
@@ -174,18 +175,13 @@ export function readGlobalShellHistory(shellPath: string): string[] {
       : shellName.includes("fish")
         ? parseFishHistory(raw).reverse()
         : parseBashHistory(raw.split("\n")).reverse();
-    globalHistoryCache.set(cacheKey, {
-      ctimeMs: stat.ctimeMs,
-      mtimeMs: stat.mtimeMs,
-      mode: stat.mode,
-      size: stat.size,
-      entries,
-    });
+    globalHistoryCache.set(cacheKey, { ...stat, entries });
     return entries;
   } catch (error) {
-    // Global shell history is optional recall data. If it is unavailable, shell predictions
-    // should degrade to other sources instead of failing the editor.
-    console.debug(`[powerline-footer] Failed to read global shell history for ${shellName}:`, error);
+    if (stat) {
+      globalHistoryCache.set(cacheKey, { ...stat, entries: [] });
+      console.debug(`[powerline-footer] Failed to read global shell history for ${shellName}:`, error);
+    }
     return [];
   }
 }

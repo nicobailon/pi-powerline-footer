@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Fixed
+- **Global shell history fallback** — Cache unreadable global history files as empty until their fingerprint changes, so bash mode keeps working without logging a stack on every keypress. Thanks to @RomainMuller for #143.
 - **Post-compaction queue delivery** — Snapshot the queue context before delayed delivery so a reload or session replacement cannot crash by reading a stale extension context. Thanks to @pascalandy for the report in nicobailon/pi-subagents#897.
 
 ## [0.12.1] - 2026-08-04

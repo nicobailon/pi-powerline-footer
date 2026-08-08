@@ -84,6 +84,38 @@ test("project history is stored newest-first and global zsh history parses histf
   assert.deepEqual(global, ["plain-command", "git pull", "git fetch"]);
 });
 
+test("global history caches an unreadable file until its fingerprint changes", () => {
+  const cwd = mkdtempSync(join(tmpdir(), "powerline-unreadable-history-"));
+  const historyPath = join(cwd, ".zsh_history");
+  const originalHistfile = process.env.HISTFILE;
+  const originalDebug = console.debug;
+  let debugCalls = 0;
+
+  try {
+    mkdirSync(historyPath);
+    process.env.HISTFILE = historyPath;
+    console.debug = () => {
+      debugCalls += 1;
+    };
+
+    assert.deepEqual(readGlobalShellHistory("/bin/zsh"), []);
+    assert.deepEqual(readGlobalShellHistory("/bin/zsh"), []);
+    assert.equal(debugCalls, 1);
+
+    rmSync(historyPath, { recursive: true });
+    writeFileSync(historyPath, ": 1711111111:0;git status\n");
+    assert.deepEqual(readGlobalShellHistory("/bin/zsh"), ["git status"]);
+  } finally {
+    console.debug = originalDebug;
+    if (originalHistfile === undefined) {
+      delete process.env.HISTFILE;
+    } else {
+      process.env.HISTFILE = originalHistfile;
+    }
+    rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
 test("matchHistoryEntries returns newest entries when the prefix is empty", () => {
   const matches = matchHistoryEntries([
     "git stash",
