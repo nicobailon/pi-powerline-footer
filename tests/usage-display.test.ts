@@ -38,6 +38,7 @@ function createSegmentContext(options: StatusLineSegmentOptions = {}, overrides:
     contextTokens: 0,
     contextPercent: 0,
     contextWindow: 0,
+    contextApproximate: false,
     autoCompactEnabled: true,
     customCompactionEnabled: false,
     usingSubscription: false,
@@ -96,6 +97,24 @@ test("context_pct renders unknown usage after compaction", () => {
 
   assert.equal(stripAnsi(renderSegment("context_pct", full).content), "◫ ?/200k AC");
   assert.equal(stripAnsi(renderSegment("context_pct", percent).content), "?");
+});
+
+test("context_pct marks reload estimates as approximate", () => {
+  const full = createSegmentContext({}, {
+    contextTokens: 18000,
+    contextWindow: 272000,
+    contextPercent: 6.6176,
+    contextApproximate: true,
+  });
+  const percent = createSegmentContext({ context: { format: "percent" } }, {
+    contextTokens: 18000,
+    contextWindow: 272000,
+    contextPercent: 6.6176,
+    contextApproximate: true,
+  });
+
+  assert.equal(stripAnsi(renderSegment("context_pct", full).content), "◫ ~18k/272k (6.6%) AC");
+  assert.equal(stripAnsi(renderSegment("context_pct", percent).content), "~7%");
 });
 
 test("context_pct percent format keeps threshold colors and drops icons", () => {

@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Fixed
+- **Reload context display** — Show a clearly marked one-time estimate from the active compacted context after `/reload`, instead of leaving context usage unknown until the next assistant response.
 - **Post-compaction context display** — Show Pi's unknown context state immediately after compaction instead of keeping the stale pre-compaction percentage until the next assistant response.
 
 ## [0.12.2] - 2026-08-08

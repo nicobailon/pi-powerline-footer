@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CoreContextUsageCache, estimateInitialContextTokens, readCoreContextUsage, resolveDisplayContextUsage } from "../context-usage.ts";
+import { CoreContextUsageCache, estimateInitialContextTokens, estimateReloadContextUsage, readCoreContextUsage, resolveDisplayContextUsage } from "../context-usage.ts";
 
 test("readCoreContextUsage returns Pi context estimates for branch summaries", () => {
   const usage = readCoreContextUsage({
@@ -77,9 +77,10 @@ test("core context usage cache reuses a leaf and supports explicit invalidation"
   assert.equal(reads, 3);
 });
 
-test("resolveDisplayContextUsage preserves unknown core usage over fallback usage", () => {
+test("resolveDisplayContextUsage preserves unknown core usage over assistant fallback usage", () => {
   assert.deepEqual(resolveDisplayContextUsage({
     coreContextUsage: { contextTokens: null, contextWindow: 5000, contextPercent: null },
+    unknownCoreFallback: null,
     fallbackContextTokens: 4000,
     fallbackContextWindow: 5000,
   }), {
@@ -89,9 +90,20 @@ test("resolveDisplayContextUsage preserves unknown core usage over fallback usag
   });
 });
 
-test("resolveDisplayContextUsage computes fallback usage when Pi has no current estimate", () => {
+test("resolveDisplayContextUsage uses the reload estimate for unknown core usage", () => {
+  const reloadEstimate = { contextTokens: 1000, contextWindow: 5000, contextPercent: 20 };
+  assert.equal(resolveDisplayContextUsage({
+    coreContextUsage: { contextTokens: null, contextWindow: 5000, contextPercent: null },
+    unknownCoreFallback: reloadEstimate,
+    fallbackContextTokens: 4000,
+    fallbackContextWindow: 5000,
+  }), reloadEstimate);
+});
+
+test("resolveDisplayContextUsage computes assistant fallback usage when Pi has no current estimate", () => {
   assert.deepEqual(resolveDisplayContextUsage({
     coreContextUsage: null,
+    unknownCoreFallback: null,
     fallbackContextTokens: 1000,
     fallbackContextWindow: 4000,
   }), {
@@ -99,6 +111,40 @@ test("resolveDisplayContextUsage computes fallback usage when Pi has no current 
     contextWindow: 4000,
     contextPercent: 25,
   });
+});
+
+test("estimateReloadContextUsage estimates the active compacted context", () => {
+  const usage = estimateReloadContextUsage({
+    getContextUsage: () => ({ tokens: null, contextWindow: 100, percent: null }),
+    getSystemPrompt: () => "12345678",
+    sessionManager: {
+      buildContextEntries: () => [
+        { type: "compaction", summary: "12345678", tokensBefore: 90, timestamp: "2026-08-08T00:00:00.000Z" },
+        { type: "message", message: { role: "user", content: "1234", timestamp: 0 } },
+      ],
+    },
+  });
+
+  assert.deepEqual(usage, {
+    contextTokens: 5,
+    contextWindow: 100,
+    contextPercent: 5,
+  });
+});
+
+test("estimateReloadContextUsage skips sessions with known core usage", () => {
+  let entryReads = 0;
+  assert.equal(estimateReloadContextUsage({
+    getContextUsage: () => ({ tokens: 25, contextWindow: 100, percent: 25 }),
+    getSystemPrompt: () => "12345678",
+    sessionManager: {
+      buildContextEntries() {
+        entryReads += 1;
+        return [];
+      },
+    },
+  }), null);
+  assert.equal(entryReads, 0);
 });
 
 test("estimateInitialContextTokens uses Pi's conservative character estimate", () => {

@@ -35,7 +35,7 @@ import { WelcomeComponent, WelcomeHeader, discoverLoadedCounts, getRecentSession
 import { createWelcomeDismissScheduler } from "./welcome-dismiss.ts";
 import { createRenderScheduler } from "./render-scheduler.ts";
 import { getEditorAutocompleteProvider, passAutocompleteProviderThroughPreviousEditor } from "./editor-composition.ts";
-import { CoreContextUsageCache, estimateInitialContextTokens, resolveDisplayContextUsage } from "./context-usage.ts";
+import { CoreContextUsageCache, estimateInitialContextTokens, estimateReloadContextUsage, resolveDisplayContextUsage, type CoreContextUsage } from "./context-usage.ts";
 import { isStaleExtensionContextError, shouldShowStartupWelcome } from "./lifecycle.ts";
 import { getDefaultColors } from "./theme.ts";
 import { registerCdCommand } from "./cd-command.ts";
@@ -985,6 +985,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let getThinkingLevelFn: (() => string) | null = null;
   let currentThinkingLevel: string | null = null;
   let liveAssistantUsage: SessionAssistantUsage | null = null;
+  let reloadContextUsage: CoreContextUsage | null = null;
   let isStreaming = false;
   let tuiRef: any = null;
   let restoreFooterStatusRepaintHook: (() => void) | null = null;
@@ -1528,6 +1529,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     lastUserPrompt = "";
     isStreaming = false;
     liveAssistantUsage = null;
+    reloadContextUsage = event.reason === "reload" ? estimateReloadContextUsage(ctx) : null;
     powerlineCompacting = false;
     deliverAfterRetrySettles = false;
     stashedEditorText = null;
@@ -1718,6 +1720,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     currentCtx = ctx;
     isStreaming = false;
     liveAssistantUsage = null;
+    reloadContextUsage = null;
     coreContextUsageCache.reset();
     requestQueueRender();
   });
@@ -1727,6 +1730,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     currentCtx = ctx;
     isStreaming = false;
     liveAssistantUsage = null;
+    reloadContextUsage = null;
     coreContextUsageCache.reset();
     if (event.willRetry) {
       deliverAfterRetrySettles = true;
@@ -2589,9 +2593,11 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       contextPercent,
     } = resolveDisplayContextUsage({
       coreContextUsage,
+      unknownCoreFallback: reloadContextUsage,
       fallbackContextTokens,
       fallbackContextWindow: ctx.model?.contextWindow ?? 0,
     });
+    const contextApproximate = coreContextUsage?.contextTokens === null && reloadContextUsage !== null;
 
     const segmentOptions = mergeSegmentOptions(presetDef.segmentOptions, config.segmentOptions);
 
@@ -2619,6 +2625,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       contextTokens,
       contextPercent,
       contextWindow,
+      contextApproximate,
       autoCompactEnabled: ctx.settingsManager?.getCompactionSettings?.()?.enabled ?? true,
       customCompactionEnabled: customCompactionEnabled || extensionStatuses.has(CUSTOM_COMPACTION_STATUS_KEY),
       usingSubscription,

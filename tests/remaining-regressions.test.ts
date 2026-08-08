@@ -37,6 +37,7 @@ function createSegmentContext(overrides: Partial<SegmentContext> = {}): SegmentC
     contextTokens: 0,
     contextPercent: 0,
     contextWindow: 0,
+    contextApproximate: false,
     autoCompactEnabled: true,
     customCompactionEnabled: false,
     usingSubscription: false,
@@ -153,7 +154,10 @@ test("post-compaction queue delivery does not read ctx.cwd from the delayed call
   assert.match(source, /if \(isStaleExtensionContextError\(error\)\) \{\r?\n\s+if \(!sent\) queueStore\.update\(item\.id, \{ status: "queued", error: undefined \}\);/);
 });
 
-test("compaction events clear live usage before context display can fall back", () => {
-  assert.match(source, /pi\.on\("session_before_compact", async \(_event, ctx\) => \{\r?\n\s+powerlineCompacting = true;\r?\n\s+currentCtx = ctx;\r?\n\s+isStreaming = false;\r?\n\s+liveAssistantUsage = null;\r?\n\s+coreContextUsageCache\.reset\(\);/);
-  assert.match(source, /pi\.on\("session_compact", async \(event, ctx\) => \{\r?\n\s+powerlineCompacting = false;\r?\n\s+currentCtx = ctx;\r?\n\s+isStreaming = false;\r?\n\s+liveAssistantUsage = null;\r?\n\s+coreContextUsageCache\.reset\(\);/);
+test("reload estimates are scoped to reload and cleared by compaction", () => {
+  assert.match(source, /reloadContextUsage = event\.reason === "reload" \? estimateReloadContextUsage\(ctx\) : null;/);
+  assert.match(source, /unknownCoreFallback: reloadContextUsage,/);
+  assert.match(source, /contextApproximate = coreContextUsage\?\.contextTokens === null && reloadContextUsage !== null;/);
+  assert.match(source, /pi\.on\("session_before_compact", async \(_event, ctx\) => \{\r?\n\s+powerlineCompacting = true;\r?\n\s+currentCtx = ctx;\r?\n\s+isStreaming = false;\r?\n\s+liveAssistantUsage = null;\r?\n\s+reloadContextUsage = null;\r?\n\s+coreContextUsageCache\.reset\(\);/);
+  assert.match(source, /pi\.on\("session_compact", async \(event, ctx\) => \{\r?\n\s+powerlineCompacting = false;\r?\n\s+currentCtx = ctx;\r?\n\s+isStreaming = false;\r?\n\s+liveAssistantUsage = null;\r?\n\s+reloadContextUsage = null;\r?\n\s+coreContextUsageCache\.reset\(\);/);
 });

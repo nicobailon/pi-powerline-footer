@@ -21,6 +21,7 @@ function createSegmentContext(thinkingLevel: string, colors: ColorScheme): Segme
     contextTokens: 0,
     contextPercent: 0,
     contextWindow: 0,
+    contextApproximate: false,
     autoCompactEnabled: true,
     customCompactionEnabled: false,
     usingSubscription: false,

@@ -195,6 +195,7 @@ export interface SegmentContext {
   contextTokens: number | null;
   contextPercent: number | null;
   contextWindow: number;
+  contextApproximate: boolean;
   autoCompactEnabled: boolean;
   customCompactionEnabled: boolean;
   usingSubscription: boolean;

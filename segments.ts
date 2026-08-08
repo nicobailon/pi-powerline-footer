@@ -347,12 +347,13 @@ const contextPctSegment: StatusLineSegment = {
     const autoIcon = ctx.autoCompactEnabled && icons.auto ? ` ${icons.auto}` : "";
     const percentOnly = ctx.options.context?.format === "percent";
     const hasKnownUsage = contextTokens !== null && contextPercent !== null;
+    const approximate = ctx.contextApproximate ? "~" : "";
     // "full" (default): tokens/window + one-decimal percentage + auto-compact icon.
     // "percent": bare rounded percentage, threshold-colored, no icons.
     const text = percentOnly
-      ? (hasKnownUsage ? `${Math.round(contextPercent)}%` : "?")
+      ? (hasKnownUsage ? `${approximate}${Math.round(contextPercent)}%` : "?")
       : hasKnownUsage
-        ? `${formatTokens(contextTokens)}/${formatTokens(contextWindow)} (${contextPercent.toFixed(1)}%)${autoIcon}`
+        ? `${approximate}${formatTokens(contextTokens)}/${formatTokens(contextWindow)} (${contextPercent.toFixed(1)}%)${autoIcon}`
         : `?/${formatTokens(contextWindow)}${autoIcon}`;
 
     // Icon outside color, text inside - use semantic colors for thresholds

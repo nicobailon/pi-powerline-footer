@@ -1,3 +1,5 @@
+import { estimateTokens, sessionEntryToContextMessages, type SessionEntry } from "@earendil-works/pi-coding-agent";
+
 export interface CoreContextUsage {
   contextTokens: number | null;
   contextWindow: number;
@@ -6,6 +8,7 @@ export interface CoreContextUsage {
 
 interface DisplayContextUsageInput {
   coreContextUsage: CoreContextUsage | null;
+  unknownCoreFallback: CoreContextUsage | null;
   fallbackContextTokens: number;
   fallbackContextWindow: number;
 }
@@ -21,11 +24,27 @@ interface ContextUsageSource {
   getContextUsage(): unknown;
 }
 
+interface ReloadContextEstimateSource {
+  sessionManager: {
+    buildContextEntries(): SessionEntry[];
+  };
+  getContextUsage(): unknown;
+  getSystemPrompt(): string;
+}
+
 function isContextUsageSource(value: unknown): value is ContextUsageSource {
   if (!isRecord(value) || typeof value.getContextUsage !== "function" || !isRecord(value.sessionManager)) {
     return false;
   }
   return typeof value.sessionManager.getLeafId === "function";
+}
+
+function isReloadContextEstimateSource(value: unknown): value is ReloadContextEstimateSource {
+  return isRecord(value)
+    && typeof value.getContextUsage === "function"
+    && typeof value.getSystemPrompt === "function"
+    && isRecord(value.sessionManager)
+    && typeof value.sessionManager.buildContextEntries === "function";
 }
 
 export class CoreContextUsageCache {
@@ -69,15 +88,35 @@ export function estimateInitialContextTokens(ctx: unknown): number | null {
 
 export function resolveDisplayContextUsage({
   coreContextUsage,
+  unknownCoreFallback,
   fallbackContextTokens,
   fallbackContextWindow,
 }: DisplayContextUsageInput): CoreContextUsage {
+  if (coreContextUsage?.contextTokens === null && unknownCoreFallback) return unknownCoreFallback;
   if (coreContextUsage) return coreContextUsage;
 
   return {
     contextTokens: fallbackContextTokens,
     contextWindow: fallbackContextWindow,
     contextPercent: fallbackContextWindow > 0 ? (fallbackContextTokens / fallbackContextWindow) * 100 : 0,
+  };
+}
+
+export function estimateReloadContextUsage(ctx: unknown): CoreContextUsage | null {
+  if (!isReloadContextEstimateSource(ctx)) return null;
+
+  const coreContextUsage = readCoreContextUsage(ctx);
+  if (!coreContextUsage || coreContextUsage.contextTokens !== null) return null;
+
+  const messageTokens = ctx.sessionManager.buildContextEntries()
+    .flatMap(sessionEntryToContextMessages)
+    .reduce((total, message) => total + estimateTokens(message), 0);
+  const contextTokens = (estimateInitialContextTokens(ctx) ?? 0) + messageTokens;
+
+  return {
+    contextTokens,
+    contextWindow: coreContextUsage.contextWindow,
+    contextPercent: (contextTokens / coreContextUsage.contextWindow) * 100,
   };
 }
 
