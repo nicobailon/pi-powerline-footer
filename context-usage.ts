@@ -24,7 +24,7 @@ interface ContextUsageSource {
   getContextUsage(): unknown;
 }
 
-interface ReloadContextEstimateSource {
+interface UnknownContextEstimateSource {
   sessionManager: {
     buildContextEntries(): SessionEntry[];
   };
@@ -39,7 +39,7 @@ function isContextUsageSource(value: unknown): value is ContextUsageSource {
   return typeof value.sessionManager.getLeafId === "function";
 }
 
-function isReloadContextEstimateSource(value: unknown): value is ReloadContextEstimateSource {
+function isUnknownContextEstimateSource(value: unknown): value is UnknownContextEstimateSource {
   return isRecord(value)
     && typeof value.getContextUsage === "function"
     && typeof value.getSystemPrompt === "function"
@@ -102,8 +102,8 @@ export function resolveDisplayContextUsage({
   };
 }
 
-export function estimateReloadContextUsage(ctx: unknown): CoreContextUsage | null {
-  if (!isReloadContextEstimateSource(ctx)) return null;
+export function estimateUnknownContextUsage(ctx: unknown): CoreContextUsage | null {
+  if (!isUnknownContextEstimateSource(ctx)) return null;
 
   const coreContextUsage = readCoreContextUsage(ctx);
   if (!coreContextUsage || coreContextUsage.contextTokens !== null) return null;

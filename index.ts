@@ -35,7 +35,7 @@ import { WelcomeComponent, WelcomeHeader, discoverLoadedCounts, getRecentSession
 import { createWelcomeDismissScheduler } from "./welcome-dismiss.ts";
 import { createRenderScheduler } from "./render-scheduler.ts";
 import { getEditorAutocompleteProvider, passAutocompleteProviderThroughPreviousEditor } from "./editor-composition.ts";
-import { CoreContextUsageCache, estimateInitialContextTokens, estimateReloadContextUsage, resolveDisplayContextUsage, type CoreContextUsage } from "./context-usage.ts";
+import { CoreContextUsageCache, estimateInitialContextTokens, estimateUnknownContextUsage, resolveDisplayContextUsage, type CoreContextUsage } from "./context-usage.ts";
 import { isStaleExtensionContextError, shouldShowStartupWelcome } from "./lifecycle.ts";
 import { getDefaultColors } from "./theme.ts";
 import { registerCdCommand } from "./cd-command.ts";
@@ -985,7 +985,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let getThinkingLevelFn: (() => string) | null = null;
   let currentThinkingLevel: string | null = null;
   let liveAssistantUsage: SessionAssistantUsage | null = null;
-  let reloadContextUsage: CoreContextUsage | null = null;
+  let approximateContextUsage: CoreContextUsage | null = null;
   let isStreaming = false;
   let tuiRef: any = null;
   let restoreFooterStatusRepaintHook: (() => void) | null = null;
@@ -1529,7 +1529,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     lastUserPrompt = "";
     isStreaming = false;
     liveAssistantUsage = null;
-    reloadContextUsage = event.reason === "reload" ? estimateReloadContextUsage(ctx) : null;
+    approximateContextUsage = event.reason === "reload" ? estimateUnknownContextUsage(ctx) : null;
     powerlineCompacting = false;
     deliverAfterRetrySettles = false;
     stashedEditorText = null;
@@ -1720,7 +1720,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     currentCtx = ctx;
     isStreaming = false;
     liveAssistantUsage = null;
-    reloadContextUsage = null;
+    approximateContextUsage = null;
     coreContextUsageCache.reset();
     requestQueueRender();
   });
@@ -1730,7 +1730,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     currentCtx = ctx;
     isStreaming = false;
     liveAssistantUsage = null;
-    reloadContextUsage = null;
+    approximateContextUsage = estimateUnknownContextUsage(ctx);
     coreContextUsageCache.reset();
     if (event.willRetry) {
       deliverAfterRetrySettles = true;
@@ -2593,11 +2593,11 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       contextPercent,
     } = resolveDisplayContextUsage({
       coreContextUsage,
-      unknownCoreFallback: reloadContextUsage,
+      unknownCoreFallback: approximateContextUsage,
       fallbackContextTokens,
       fallbackContextWindow: ctx.model?.contextWindow ?? 0,
     });
-    const contextApproximate = coreContextUsage?.contextTokens === null && reloadContextUsage !== null;
+    const contextApproximate = coreContextUsage?.contextTokens === null && approximateContextUsage !== null;
 
     const segmentOptions = mergeSegmentOptions(presetDef.segmentOptions, config.segmentOptions);
 

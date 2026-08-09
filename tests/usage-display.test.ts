@@ -99,7 +99,7 @@ test("context_pct renders unknown usage after compaction", () => {
   assert.equal(stripAnsi(renderSegment("context_pct", percent).content), "?");
 });
 
-test("context_pct marks reload estimates as approximate", () => {
+test("context_pct marks context estimates as approximate", () => {
   const full = createSegmentContext({}, {
     contextTokens: 18000,
     contextWindow: 272000,

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CoreContextUsageCache, estimateInitialContextTokens, estimateReloadContextUsage, readCoreContextUsage, resolveDisplayContextUsage } from "../context-usage.ts";
+import { CoreContextUsageCache, estimateInitialContextTokens, estimateUnknownContextUsage, readCoreContextUsage, resolveDisplayContextUsage } from "../context-usage.ts";
 
 test("readCoreContextUsage returns Pi context estimates for branch summaries", () => {
   const usage = readCoreContextUsage({
@@ -90,7 +90,7 @@ test("resolveDisplayContextUsage preserves unknown core usage over assistant fal
   });
 });
 
-test("resolveDisplayContextUsage uses the reload estimate for unknown core usage", () => {
+test("resolveDisplayContextUsage uses the approximate estimate for unknown core usage", () => {
   const reloadEstimate = { contextTokens: 1000, contextWindow: 5000, contextPercent: 20 };
   assert.equal(resolveDisplayContextUsage({
     coreContextUsage: { contextTokens: null, contextWindow: 5000, contextPercent: null },
@@ -113,8 +113,8 @@ test("resolveDisplayContextUsage computes assistant fallback usage when Pi has n
   });
 });
 
-test("estimateReloadContextUsage estimates the active compacted context", () => {
-  const usage = estimateReloadContextUsage({
+test("estimateUnknownContextUsage estimates the active compacted context", () => {
+  const usage = estimateUnknownContextUsage({
     getContextUsage: () => ({ tokens: null, contextWindow: 100, percent: null }),
     getSystemPrompt: () => "12345678",
     sessionManager: {
@@ -132,9 +132,9 @@ test("estimateReloadContextUsage estimates the active compacted context", () => 
   });
 });
 
-test("estimateReloadContextUsage skips sessions with known core usage", () => {
+test("estimateUnknownContextUsage skips sessions with known core usage", () => {
   let entryReads = 0;
-  assert.equal(estimateReloadContextUsage({
+  assert.equal(estimateUnknownContextUsage({
     getContextUsage: () => ({ tokens: 25, contextWindow: 100, percent: 25 }),
     getSystemPrompt: () => "12345678",
     sessionManager: {
