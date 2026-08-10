@@ -83,10 +83,25 @@ function parseGitStatusOutput(output: string): { staged: number; unstaged: numbe
   return { staged, unstaged, untracked };
 }
 
+/**
+ * Environment for this module's read-only git commands.
+ *
+ * Polling `git status` otherwise refreshes the index as a side effect, taking
+ * `.git/index.lock`: that races interactive git in the same repo, and orphans
+ * the lock if we are killed mid-write. `GIT_OPTIONAL_LOCKS=0` skips the
+ * refresh; the reported counts are unchanged. Preferred over
+ * `--no-optional-locks` because it also reaches the child git processes
+ * `status` spawns for submodules.
+ */
+export function readOnlyGitEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return { ...env, GIT_OPTIONAL_LOCKS: "0" };
+}
+
 function runGit(args: string[], timeoutMs = 200): Promise<string | null> {
   return new Promise((resolve) => {
     const proc = spawn("git", args, {
       stdio: ["ignore", "pipe", "pipe"],
+      env: readOnlyGitEnv(),
     });
 
     let stdout = "";
