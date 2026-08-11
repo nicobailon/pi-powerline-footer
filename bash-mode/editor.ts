@@ -3,7 +3,6 @@ import { CustomEditor, type KeybindingsManager } from "@earendil-works/pi-coding
 import { isKeyRelease, matchesKey, visibleWidth, truncateToWidth } from "@earendil-works/pi-tui";
 import type { AutocompleteProvider } from "@earendil-works/pi-tui";
 import { matchesConfiguredShortcut } from "../shortcuts.ts";
-import { getOneOffBashCommandContext } from "./completion.ts";
 import type { GhostSuggestion } from "./types.ts";
 
 interface EditorBoundaryShortcuts {
@@ -29,6 +28,8 @@ const DEFAULT_EDITOR_BOUNDARY_SHORTCUTS: EditorBoundaryShortcuts = {
   start: "super+shift+up",
   end: "super+shift+down",
 };
+
+const GHOST_UPDATE_DEBOUNCE_MS = 50;
 
 function isPrintableInput(data: string): boolean {
   return data.length === 1 && data.charCodeAt(0) >= 32;
@@ -104,7 +105,9 @@ export class BashModeEditor extends CustomEditor {
   private promptHistoryDraft: string | null = null;
   private ghost: GhostSuggestion | null = null;
   private ghostAbort: AbortController | null = null;
+  private ghostTimer: ReturnType<typeof setTimeout> | null = null;
   private ghostToken = 0;
+  private plainBoundInputs: Set<string> | null = null;
 
   constructor(tui: any, theme: any, keybindings: KeybindingsManager, options: BashModeEditorOptions) {
     super(tui, theme, keybindings);
@@ -135,8 +138,11 @@ export class BashModeEditor extends CustomEditor {
   }
 
   clearGhostSuggestion(): void {
+    if (this.ghostTimer) clearTimeout(this.ghostTimer);
+    this.ghostTimer = null;
     this.ghostAbort?.abort();
     this.ghostAbort = null;
+    this.ghostToken += 1;
     this.ghost = null;
   }
 
@@ -152,6 +158,8 @@ export class BashModeEditor extends CustomEditor {
   }
 
   handleInput(data: string): void {
+    if (BashModeEditor.prototype.tryFastPrintableInput.call(this, data)) return;
+
     const droppedPathText = droppedPathTextFromInput(data);
     if (droppedPathText !== null) {
       this.insertTextAtCursor(droppedPathText);
@@ -309,6 +317,36 @@ export class BashModeEditor extends CustomEditor {
     }
   }
 
+  private tryFastPrintableInput(data: string): boolean {
+    if (!/^[a-z0-9 ]$/.test(data)) return false;
+    if (Reflect.get(this, "isInPaste") === true || Reflect.get(this, "jumpMode") !== null) return false;
+
+    if (!this.plainBoundInputs) {
+      this.plainBoundInputs = new Set<string>();
+      for (const binding of Object.values(this.keybindingsRef.getEffectiveConfig())) {
+        if (!binding) continue;
+        for (const key of Array.isArray(binding) ? binding : [binding]) {
+          if (key.length === 1) this.plainBoundInputs.add(key);
+          if (key === "space") this.plainBoundInputs.add(" ");
+        }
+      }
+    }
+    if (this.plainBoundInputs.has(data)) return false;
+    if (this.onExtensionShortcut?.(data)) return true;
+
+    const insertCharacter = Reflect.get(this, "insertCharacter");
+    if (typeof insertCharacter !== "function") return false;
+    insertCharacter.call(this, data);
+
+    resetShellHistoryBrowse(this);
+    if (this.isShellCompletionContext()) {
+      this.scheduleGhostUpdate();
+    } else {
+      this.clearGhostSuggestion();
+    }
+    return true;
+  }
+
   render(width: number): string[] {
     const lines = super.render(width);
     if (!this.isShellCompletionContext()) return lines;
@@ -341,7 +379,27 @@ export class BashModeEditor extends CustomEditor {
   }
 
   private isOneOffBashCommandContext(): boolean {
-    return getOneOffBashCommandContext(this.getExpandedText()) !== null;
+    const state = Reflect.get(this, "state");
+    const lines = state && typeof state === "object" ? Reflect.get(state, "lines") : null;
+    return Array.isArray(lines) && typeof lines[0] === "string" && lines[0].startsWith("!");
+  }
+
+  hasLeadingSigil(sigil: string): boolean {
+    const state = Reflect.get(this, "state");
+    const lines = state && typeof state === "object" ? Reflect.get(state, "lines") : null;
+    if (!Array.isArray(lines)) return false;
+
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = typeof lines[index] === "string" ? lines[index] : "";
+      const trimmed = line.trimStart();
+      if (!trimmed) continue;
+      if (!trimmed.startsWith(sigil)) return false;
+
+      const nextCharacter = trimmed.slice(sigil.length, sigil.length + 1);
+      return nextCharacter ? /^\s$/.test(nextCharacter) : index < lines.length - 1;
+    }
+
+    return false;
   }
 
   private moveCursorToEditorBoundary(position: "start" | "end"): void {
@@ -368,7 +426,7 @@ export class BashModeEditor extends CustomEditor {
 
   private acceptGhostSuggestion(): boolean {
     if (!this.ghost) return false;
-    const text = this.getExpandedText();
+    const text = this.getText();
     if (text.includes("\n")) return false;
 
     const cursor = this.getCursor();
@@ -432,21 +490,27 @@ export class BashModeEditor extends CustomEditor {
   }
 
   private scheduleGhostUpdate(): void {
-    const text = this.getExpandedText();
+    const text = this.getText();
     const currentToken = ++this.ghostToken;
+    if (this.ghostTimer) clearTimeout(this.ghostTimer);
     this.ghostAbort?.abort();
 
     const controller = new AbortController();
     this.ghostAbort = controller;
-    this.optionsRef.resolveGhostSuggestion(text, controller.signal)
-      .then((ghost) => {
-        if (controller.signal.aborted || currentToken !== this.ghostToken) return;
-        this.ghost = ghost;
-        this.tui.requestRender();
-      })
-      .catch((error) => {
-        if (error instanceof Error && error.message === "aborted") return;
-        console.debug("[powerline-footer] Failed to resolve bash ghost suggestion:", error);
-      });
+    this.ghostTimer = setTimeout(() => {
+      this.ghostTimer = null;
+      if (controller.signal.aborted || currentToken !== this.ghostToken) return;
+
+      this.optionsRef.resolveGhostSuggestion(text, controller.signal)
+        .then((ghost) => {
+          if (controller.signal.aborted || currentToken !== this.ghostToken) return;
+          this.ghost = ghost;
+          this.tui.requestRender();
+        })
+        .catch((error) => {
+          if (controller.signal.aborted) return;
+          console.debug("[powerline-footer] Failed to resolve bash ghost suggestion:", error);
+        });
+    }, GHOST_UPDATE_DEBOUNCE_MS);
   }
 }

@@ -1,5 +1,5 @@
 import { readdirSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import type { AutocompleteItem, AutocompleteProvider, AutocompleteSuggestions } from "@earendil-works/pi-tui";
 import { matchHistoryEntries, readGlobalShellHistory, readProjectHistory } from "./history.ts";
@@ -208,22 +208,28 @@ function getPathSuggestions(token: string, cwd: string): ExtendedCompletionItem[
   }
 }
 
-function runGit(args: string[], cwd: string): string[] {
-  try {
-    const result = spawnSync("git", args, {
-      cwd,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    if (result.status !== 0 || !result.stdout) return [];
-    return result.stdout.split("\n").map((line) => line.trim()).filter(Boolean);
-  } catch {
-    // Git-aware completions are optional and should not break the main completion flow.
-    return [];
-  }
+function runGit(args: string[], cwd: string, signal: AbortSignal): Promise<string[]> {
+  return new Promise((resolve) => {
+    try {
+      execFile("git", args, { cwd, encoding: "utf8", signal }, (error, stdout) => {
+        if (error || !stdout) {
+          resolve([]);
+          return;
+        }
+        resolve(stdout.split("\n").map((line) => line.trim()).filter(Boolean));
+      });
+    } catch {
+      // Git-aware completions are optional and should not break the main completion flow.
+      resolve([]);
+    }
+  });
 }
 
-function getGitSuggestions(ctx: TokenContext, cwd: string): ExtendedCompletionItem[] {
+async function getGitSuggestions(
+  ctx: TokenContext,
+  cwd: string,
+  signal: AbortSignal,
+): Promise<ExtendedCompletionItem[]> {
   const tokens = ctx.previousTokens;
   if (tokens[0] !== "git") return [];
 
@@ -246,12 +252,13 @@ function getGitSuggestions(ctx: TokenContext, cwd: string): ExtendedCompletionIt
     return [];
   }
 
-  const refs = [
-    ...runGit(["branch", "--format=%(refname:short)"], cwd),
-    ...runGit(["tag", "--list"], cwd),
-  ];
+  const [branches, tags] = await Promise.all([
+    runGit(["branch", "--format=%(refname:short)"], cwd, signal),
+    runGit(["tag", "--list"], cwd, signal),
+  ]);
+  if (signal.aborted) return [];
 
-  return [...new Set(refs)]
+  return [...new Set([...branches, ...tags])]
     .filter((ref) => ref.startsWith(ctx.token))
     .slice(0, 100)
     .map((ref) => ({
@@ -365,7 +372,8 @@ export class BashCompletionEngine {
       return this.getCommandPositionGhostSuggestion(line, readGlobalShellHistory(shellPath));
     }
 
-    const deterministic = this.getDeterministicInlineSuggestions(ctx, cwd);
+    const deterministic = await this.getDeterministicInlineSuggestions(ctx, cwd, signal);
+    if (signal.aborted) return null;
     const globalHistory = matchHistoryEntries(readGlobalShellHistory(shellPath), line, 5);
     const ranked = boostValidatedItemsFromGlobalHistory(
       line,
@@ -397,10 +405,17 @@ export class BashCompletionEngine {
     return getCuratedCommandFallback(line);
   }
 
-  private getDeterministicInlineSuggestions(ctx: TokenContext, cwd: string): ExtendedCompletionItem[] {
-    const items: ExtendedCompletionItem[] = [];
-    items.push(...withRange(getGitSuggestions(ctx, cwd), ctx.tokenStart, ctx.tokenEnd));
-    items.push(...withRange(getPathSuggestions(ctx.token, cwd), ctx.tokenStart, ctx.tokenEnd));
+  private async getDeterministicInlineSuggestions(
+    ctx: TokenContext,
+    cwd: string,
+    signal: AbortSignal,
+  ): Promise<ExtendedCompletionItem[]> {
+    const gitSuggestions = getGitSuggestions(ctx, cwd, signal);
+    const pathSuggestions = getPathSuggestions(ctx.token, cwd);
+    const items = [
+      ...withRange(await gitSuggestions, ctx.tokenStart, ctx.tokenEnd),
+      ...withRange(pathSuggestions, ctx.tokenStart, ctx.tokenEnd),
+    ];
 
     return uniqueByReplacement(items);
   }

@@ -876,6 +876,116 @@ test("bash editor refreshGhostSuggestion reuses the ghost scheduling path", asyn
   }
 });
 
+test("bash editor hot path avoids full expansion and coalesces ghost work", async () => {
+  const links = ensureEditorModuleLinks();
+
+  try {
+    const { BashModeEditor } = await import("../bash-mode/editor.ts");
+    const { KeybindingsManager } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js", import.meta.url).href);
+    const keybindings = KeybindingsManager.create();
+    const resolved: string[] = [];
+    let bashModeActive = false;
+    const editor = new BashModeEditor(
+      { requestRender() {}, terminal: { columns: 80, rows: 24 } },
+      { borderColor: (text: string) => text },
+      keybindings,
+      {
+        keybindings,
+        isBashModeActive: () => bashModeActive,
+        isShellRunning: () => false,
+        onExitBashMode() {},
+        onSubmitCommand() {},
+        onInterrupt() {},
+        onNotify() {},
+        getHistoryEntries: () => [],
+        resolveGhostSuggestion: async (text) => {
+          resolved.push(text);
+          return null;
+        },
+      },
+    );
+
+    (editor as { getExpandedText(): string }).getExpandedText = () => {
+      throw new Error("expanded text should not be read while typing");
+    };
+    const insertCharacter = Reflect.get(editor, "insertCharacter").bind(editor);
+    let fastInserts = 0;
+    Reflect.set(editor, "insertCharacter", (character: string) => {
+      fastInserts += 1;
+      insertCharacter(character);
+    });
+
+    editor.handleInput("a");
+    assert.equal(fastInserts, 1);
+    editor.onExtensionShortcut = (data) => data === "b";
+    editor.handleInput("b");
+    assert.equal(editor.getText(), "a");
+    assert.equal(fastInserts, 1);
+    editor.onExtensionShortcut = undefined;
+    editor.render(80);
+
+    bashModeActive = true;
+    editor.setText("");
+    editor.handleInput("g");
+    editor.handleInput("i");
+    editor.handleInput("t");
+    assert.deepEqual(resolved, []);
+    await new Promise((resolve) => setTimeout(resolve, 75));
+    assert.deepEqual(resolved, ["git"]);
+    editor.clearGhostSuggestion();
+
+    editor.setText("\n  \n  # idea");
+    assert.equal(editor.hasLeadingSigil("#"), true);
+    editor.setText("#");
+    assert.equal(editor.hasLeadingSigil("#"), false);
+    editor.setText("## idea");
+    assert.equal(editor.hasLeadingSigil("#"), false);
+  } finally {
+    links.cleanup();
+  }
+});
+
+test("bash editor fast path preserves plain custom keybindings", async () => {
+  const links = ensureEditorModuleLinks();
+
+  try {
+    const { BashModeEditor } = await import("../bash-mode/editor.ts");
+    const { KeybindingsManager } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js", import.meta.url).href);
+    const { getKeybindings, setKeybindings } = await import(new URL("../node_modules/@earendil-works/pi-tui/dist/index.js", import.meta.url).href);
+    const previousKeybindings = getKeybindings();
+    const keybindings = new KeybindingsManager({ "tui.editor.cursorLeft": "a" });
+
+    try {
+      setKeybindings(keybindings);
+      const editor = new BashModeEditor(
+        { requestRender() {}, terminal: { columns: 80, rows: 24 } },
+        { borderColor: (text: string) => text },
+        keybindings,
+        {
+          keybindings,
+          isBashModeActive: () => false,
+          isShellRunning: () => false,
+          onExitBashMode() {},
+          onSubmitCommand() {},
+          onInterrupt() {},
+          onNotify() {},
+          getHistoryEntries: () => [],
+          resolveGhostSuggestion: async () => null,
+        },
+      );
+
+      editor.setText("x");
+      editor.handleInput("a");
+      assert.equal(editor.getText(), "x");
+      assert.deepEqual(editor.getCursor(), { line: 0, col: 0 });
+    } finally {
+      setKeybindings(previousKeybindings);
+    }
+  } finally {
+    links.cleanup();
+  }
+});
+
 test("bash editor dismiss clears autocomplete when mode turns off", async () => {
   const links = ensureEditorModuleLinks();
 
@@ -1332,6 +1442,7 @@ test("bash editor command-z resets shell history and updates ghost state", async
     Reflect.set(shellEditor, "shellHistoryItems", ["git status"]);
     Reflect.set(shellEditor, "shellHistoryDraft", "git");
     shellEditor.handleInput("\x1b[122;9u");
+    await new Promise((resolve) => setTimeout(resolve, 75));
 
     assert.equal(shellEditor.getText(), "a");
     assert.equal(Reflect.get(shellEditor, "shellHistoryIndex"), -1);
@@ -1602,7 +1713,7 @@ test("bash editor does not accept a hidden ghost suggestion when the cursor is n
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
     const accepted = getMethod(BashModeEditor.prototype, "acceptGhostSuggestion").call({
       ghost: { value: "git status", source: "project-history" },
-      getExpandedText() {
+      getText() {
         return "git st";
       },
       getCursor() {

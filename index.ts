@@ -64,7 +64,7 @@ import {
   parseVibeGenerateArgs,
 } from "./working-vibes.ts";
 import { PowerlineQueueStore, currentQueueContext, formatIdeaIssuePrompt, formatQueueDeliveryText, parseCompactQueuedPrompt, parseSigilIdeaCapture, parseTargetPrefix, targetForIdea } from "./queue/store.ts";
-import type { PowerlineQueueItem, QueueContext, QueueIntent, QueueTarget } from "./queue/types.ts";
+import type { PowerlineQueueItem, QueueContext, QueueIntent, QueueSummary, QueueTarget } from "./queue/types.ts";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Configuration
@@ -172,6 +172,7 @@ const STREAMING_LAYOUT_CACHE_TTL_MS = 1000;
 const STATUS_RENDER_DEBOUNCE_MS = 33;
 const CONTEXT_STATUS_RENDER_MS = 250;
 const EDITOR_STATUS_DEFER_MS = 150;
+const QUEUE_SUMMARY_CACHE_TTL_MS = 250;
 const PROMPT_HISTORY_TRACKED = Symbol.for("powerlinePromptHistoryTracked");
 const PROMPT_HISTORY_STATE_KEY = Symbol.for("powerlinePromptHistoryState");
 
@@ -995,6 +996,13 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let welcomeOverlayShouldDismiss = false;
   let lastUserPrompt = "";
   let showLastPrompt = true;
+  let lastPromptRenderCache: {
+    source: string;
+    compact: string;
+    width: number;
+    color: string;
+    lines: string[];
+  } | null = null;
   let stashedEditorText: string | null = null;
   let stashedPromptHistory: string[] = readPersistedStashHistory();
   let currentEditor: any = null;
@@ -1003,6 +1011,13 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let bashCompletionEngine = new BashCompletionEngine();
   let shellSession: ManagedShellSession | null = null;
   const queueStore = new PowerlineQueueStore();
+  let queueSummaryCache: {
+    cwd: string;
+    sessionId?: string;
+    compacting: boolean;
+    expiresAt: number;
+    summary: QueueSummary;
+  } | null = null;
   let powerlineCompacting = false;
   let deliverAfterRetrySettles = false;
   let queueDeliveryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1242,7 +1257,32 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     return currentQueueContext(ctx.cwd ?? process.cwd(), getQueueSessionId(ctx));
   }
 
+  function getQueueSummary(ctx: any): QueueSummary {
+    const context = getQueueContext(ctx);
+    const now = Date.now();
+    if (
+      queueSummaryCache
+      && queueSummaryCache.cwd === context.cwd
+      && queueSummaryCache.sessionId === context.sessionId
+      && queueSummaryCache.compacting === powerlineCompacting
+      && now < queueSummaryCache.expiresAt
+    ) {
+      return queueSummaryCache.summary;
+    }
+
+    const summary = queueStore.summarize(context, powerlineCompacting);
+    queueSummaryCache = {
+      cwd: context.cwd,
+      ...(context.sessionId ? { sessionId: context.sessionId } : {}),
+      compacting: powerlineCompacting,
+      expiresAt: now + QUEUE_SUMMARY_CACHE_TTL_MS,
+      summary,
+    };
+    return summary;
+  }
+
   function requestQueueRender(): void {
+    queueSummaryCache = null;
     requestImmediateStatusRender({ deferDuringTyping: false });
   }
 
@@ -1297,13 +1337,11 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     return item;
   }
 
-  function isSigilIdeaDraft(text: string): boolean {
+  function isSigilIdeaDraft(editor: BashModeEditor): boolean {
     const sigil = config.queue.captureSigil;
     if (sigil === false) return false;
     const normalizedSigil = sigil.trim();
-    if (!normalizedSigil) return false;
-    const trimmed = text.trimStart();
-    return trimmed.startsWith(normalizedSigil) && /^\s/.test(trimmed.slice(normalizedSigil.length));
+    return normalizedSigil.length > 0 && editor.hasLeadingSigil(normalizedSigil);
   }
 
   function captureSigilGlyph(): string {
@@ -2614,7 +2652,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       : false;
 
     const thinkingLevel = currentThinkingLevel ?? thinkingLevelFromSession ?? getThinkingLevelFn?.() ?? "off";
-    const queueSummary = queueStore.summarize(getQueueContext(ctx), powerlineCompacting);
+    const queueSummary = getQueueSummary(ctx);
 
     return {
       model: ctx.model,
@@ -2724,7 +2762,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   function renderPowerlineQueuePreviewLines(width: number, theme: Theme): string[] {
     if (!currentCtx) return [];
-    const summary = queueStore.summarize(getQueueContext(currentCtx), powerlineCompacting);
+    const summary = getQueueSummary(currentCtx);
     if (!summary.leadingText) return [];
 
     const prefix = summary.leadingStatus === "blocked" || summary.leadingStatus === "failed"
@@ -2773,18 +2811,27 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   function renderLastPromptLines(width: number): string[] {
     if (bashModeActive || !showLastPrompt || !lastUserPrompt) return [];
 
-    const prefix = ` ${getFgAnsiCode("sep")}↳${ansi.reset} `;
+    const color = getFgAnsiCode("sep");
+    if (
+      lastPromptRenderCache
+      && lastPromptRenderCache.source === lastUserPrompt
+      && lastPromptRenderCache.width === width
+      && lastPromptRenderCache.color === color
+    ) {
+      return lastPromptRenderCache.lines;
+    }
+
+    const compact = lastPromptRenderCache?.source === lastUserPrompt
+      ? lastPromptRenderCache.compact
+      : lastUserPrompt.replace(/\s+/g, " ").trim();
+    const prefix = ` ${color}↳${ansi.reset} `;
     const availableWidth = width - visibleWidth(prefix);
-    if (availableWidth < 10) return [];
+    const lines = compact && availableWidth >= 10
+      ? [truncateToWidth(`${prefix}${color}${truncateToWidth(compact, availableWidth, "…")}${ansi.reset}`, width, "…")]
+      : [];
 
-    let promptText = lastUserPrompt.replace(/\s+/g, " ").trim();
-    if (!promptText) return [];
-
-    promptText = truncateToWidth(promptText, availableWidth, "…");
-
-    const styledPrompt = `${getFgAnsiCode("sep")}${promptText}${ansi.reset}`;
-    const line = `${prefix}${styledPrompt}`;
-    return [truncateToWidth(line, width, "…")];
+    lastPromptRenderCache = { source: lastUserPrompt, compact, width, color, lines };
+    return lines;
   }
 
   function installPowerlineWidgets(ctx: any) {
@@ -3052,7 +3099,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         }
 
         const bc = (s: string) => `${getFgAnsiCode("sep")}${s}${ansi.reset}`;
-        const captureDraft = !bashModeActive && isSigilIdeaDraft(editor.getExpandedText());
+        const captureDraft = !bashModeActive && isSigilIdeaDraft(editor);
         const promptGlyph = bashModeActive ? "$" : captureDraft ? captureSigilGlyph() : ">";
         const promptColor = captureDraft ? getFgAnsiCode("queue") : ansi.getFgAnsi(200, 200, 200);
         const prompt = `${promptColor}${promptGlyph}${ansi.reset}`;

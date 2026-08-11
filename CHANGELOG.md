@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- **Editor typing responsiveness** — Avoid expanding paste markers or joining full drafts in editor hot paths, debounce bash ghost completion, run git completion lookups asynchronously, and cache queue/prompt render work so typing stays smooth in large drafts and bash mode.
+
 ## [0.12.3] - 2026-08-09
 
 ### Fixed
