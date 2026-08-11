@@ -4,6 +4,7 @@
 
 ### Changed
 - **Editor typing responsiveness** — Avoid expanding paste markers or joining full drafts in editor hot paths, debounce bash ghost completion, run git completion lookups asynchronously, and cache queue/prompt render work so typing stays smooth in large drafts and bash mode.
+- **GitHub Actions runtime** — Updated checkout and Node setup actions to their Node 24 runtime versions.
 
 ### Fixed
 - **Git polling no longer takes `.git/index.lock`** — Read-only git commands now run with `GIT_OPTIONAL_LOCKS=0`, so polling `git status` stops refreshing the index as a side effect, which raced interactive git in the same repo and could leave an orphaned lock behind. Thanks to Max Kaye (@XertroV) for #156.
