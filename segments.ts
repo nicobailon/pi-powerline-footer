@@ -257,9 +257,6 @@ const queueSegment: StatusLineSegment = {
       parts.push(`q ${summary.queueCount}`);
     }
 
-    if (summary.ideaCount > 0) {
-      parts.push(`ideas ${summary.ideaCount}`);
-    }
 
     if (summary.blockedCount > 0) {
       parts.push(`blocked ${summary.blockedCount}`);

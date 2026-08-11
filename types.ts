@@ -156,11 +156,10 @@ export interface GitStatus {
 // Usage statistics
 export interface QueueSummary {
   queueCount: number;
-  ideaCount: number;
   blockedCount: number;
   compacting: boolean;
   leadingText: string | null;
-  leadingIntent: "steer" | "follow-up" | "post-compact" | "idea" | null;
+  leadingIntent: "steer" | "follow-up" | "post-compact" | null;
   leadingStatus: "queued" | "blocked" | "delivering" | "sent" | "failed" | null;
 }
 

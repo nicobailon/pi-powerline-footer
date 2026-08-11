@@ -63,7 +63,7 @@ import {
   generateVibesBatch,
   parseVibeGenerateArgs,
 } from "./working-vibes.ts";
-import { PowerlineQueueStore, currentQueueContext, formatIdeaIssuePrompt, formatQueueDeliveryText, parseCompactQueuedPrompt, parseSigilIdeaCapture, parseTargetPrefix, targetForIdea } from "./queue/store.ts";
+import { PowerlineQueueStore, currentQueueContext, formatQueueDeliveryText, parseCompactQueuedPrompt } from "./queue/store.ts";
 import type { PowerlineQueueItem, QueueContext, QueueIntent, QueueSummary, QueueTarget } from "./queue/types.ts";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -83,7 +83,6 @@ let config: PowerlineConfig = {
   invalidPlacement: null,
   welcome: true,
   stashSharpSShortcut: false,
-  queue: { captureSigil: "#" },
 };
 
 const CUSTOM_COMPACTION_STATUS_KEY = "compact-policy";
@@ -95,7 +94,6 @@ export interface PowerlineShortcuts {
   stashHistory: ShortcutBinding;
   copyEditor: ShortcutBinding;
   cutEditor: ShortcutBinding;
-  ideaCapture: ShortcutBinding;
   queueOpen: ShortcutBinding;
   editorStart: ShortcutBinding;
   editorEnd: ShortcutBinding;
@@ -106,7 +104,6 @@ type PowerlineShortcutAction =
   | { kind: "stashHistory" }
   | { kind: "copyEditor" }
   | { kind: "cutEditor" }
-  | { kind: "ideaCapture" }
   | { kind: "queueOpen" }
   | { kind: "bashMode" };
 const STASH_HISTORY_LIMIT = 12;
@@ -116,7 +113,6 @@ const DEFAULT_SHORTCUTS: PowerlineShortcuts = {
   stashHistory: "ctrl+alt+h",
   copyEditor: "ctrl+alt+c",
   cutEditor: "ctrl+alt+x",
-  ideaCapture: null,
   queueOpen: "ctrl+alt+q",
   editorStart: "super+shift+up",
   editorEnd: "super+shift+down",
@@ -126,7 +122,7 @@ const DEFAULT_BASH_MODE_SETTINGS = {
   transcriptMaxLines: 2000,
   transcriptMaxBytes: 512 * 1024,
 } as const satisfies BashModeSettings;
-const SHORTCUT_KEYS: PowerlineShortcutKey[] = ["stashHistory", "copyEditor", "cutEditor", "ideaCapture", "queueOpen", "editorStart", "editorEnd"];
+const SHORTCUT_KEYS: PowerlineShortcutKey[] = ["stashHistory", "copyEditor", "cutEditor", "queueOpen", "editorStart", "editorEnd"];
 const APP_RESERVED_SHORTCUTS = [
   "escape",
   "ctrl+c",
@@ -1308,47 +1304,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     return item;
   }
 
-  function captureIdeaFromParsedInput(ctx: any, parsed: { target: string | null; text: string }): PowerlineQueueItem | null {
-    const trimmed = parsed.text.trim();
-    if (!trimmed) {
-      ctx.ui.notify("Nothing to capture", "info");
-      return null;
-    }
-
-    const target = targetForIdea(parsed.target, queueStore, ctx.cwd ?? process.cwd());
-    const item = captureQueueItem(ctx, trimmed, "idea", target);
-    ctx.ui.notify(`Idea saved (${item.id}) — /ideas to review`, "info");
-    return item;
-  }
-
-  function captureIdeaFromText(ctx: any, text: string): PowerlineQueueItem | null {
-    return captureIdeaFromParsedInput(ctx, parseTargetPrefix(text));
-  }
-
-  function captureCurrentProjectIdea(ctx: any, text: string): PowerlineQueueItem | null {
-    const trimmed = text.trim();
-    if (!trimmed) {
-      ctx.ui.notify("Nothing to capture", "info");
-      return null;
-    }
-
-    const item = captureQueueItem(ctx, trimmed, "idea", { kind: "project", cwd: ctx.cwd ?? process.cwd() });
-    ctx.ui.notify(`Idea saved (${item.id}) — /ideas to review`, "info");
-    return item;
-  }
-
-  function isSigilIdeaDraft(editor: BashModeEditor): boolean {
-    const sigil = config.queue.captureSigil;
-    if (sigil === false) return false;
-    const normalizedSigil = sigil.trim();
-    return normalizedSigil.length > 0 && editor.hasLeadingSigil(normalizedSigil);
-  }
-
-  function captureSigilGlyph(): string {
-    const sigil = config.queue.captureSigil === false ? "#" : config.queue.captureSigil;
-    return Array.from(sigil)[0] ?? "#";
-  }
-
   function capturePostCompactPrompt(ctx: any, text: string): PowerlineQueueItem | null {
     const trimmed = text.trim();
     if (!trimmed) return null;
@@ -1478,12 +1433,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     }
   }
 
-  async function openQueuePicker(ctx: any, mode: "ideas" | "queue"): Promise<void> {
-    const active = queueStore.activeItems(getQueueContext(ctx)).filter((item) => (
-      mode === "ideas" ? item.intent === "idea" : item.intent !== "idea"
-    ));
+  async function openQueuePicker(ctx: any): Promise<void> {
+    const active = queueStore.activeItems(getQueueContext(ctx));
     if (active.length === 0) {
-      ctx.ui.notify(mode === "ideas" ? "No ideas captured" : "No queued items", "info");
+      ctx.ui.notify("No queued items", "info");
       return;
     }
 
@@ -1494,7 +1447,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     }));
     const selected = await showSelectOverlay(
       ctx,
-      mode === "ideas" ? "Powerline ideas" : "Powerline queue",
+      "Powerline queue",
       "↑↓ navigate • enter manage • esc cancel",
       items,
       Math.min(active.length, 12),
@@ -1507,7 +1460,12 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   function resolveCommandTarget(ctx: any, spec: string): QueueTarget {
     const normalized = spec.trim().replace(/^@/, "");
-    return targetForIdea(normalized || null, queueStore, ctx.cwd ?? process.cwd());
+    if (normalized === "current") return { kind: "current-session" };
+    if (normalized === "global") return { kind: "global" };
+
+    const cwd = queueStore.resolveAlias(normalized);
+    if (!cwd) throw new Error(`Unknown project alias @${normalized}. Use /queue alias ${normalized} <path> first.`);
+    return { kind: "project", cwd, alias: normalized };
   }
 
   function sendOrRetryQueueItem(ctx: any, idPrefix: string): void {
@@ -1518,42 +1476,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     }
     const updated = queueStore.update(item.id, { status: "queued", error: undefined });
     if (updated) deliverQueueItem(ctx, updated);
-  }
-
-  function findNextIdea(ctx: any): PowerlineQueueItem | null {
-    return queueStore.activeItems(getQueueContext(ctx)).find((candidate) => candidate.intent === "idea") ?? null;
-  }
-
-  function sendIdeaIssueHandoff(ctx: any, item: PowerlineQueueItem): void {
-    queueStore.update(item.id, { status: "delivering", error: undefined });
-    requestQueueRender();
-
-    try {
-      const deliverAs = deliveryModeForItem(ctx, item);
-      const issuePrompt = formatIdeaIssuePrompt(item);
-      if (deliverAs) {
-        pi.sendUserMessage(issuePrompt, { deliverAs });
-      } else {
-        pi.sendUserMessage(issuePrompt);
-      }
-      queueStore.update(item.id, { status: "sent", error: undefined });
-      ctx.ui.notify(`Sent idea ${item.id} for issue triage`, "info");
-      requestQueueRender();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      queueStore.update(item.id, { status: "failed", error: message });
-      ctx.ui.notify(`Failed to send ${item.id}: ${message}`, "error");
-      requestQueueRender();
-    }
-  }
-
-  function sendIdeaIssueHandoffById(ctx: any, id: string | undefined): void {
-    const item = id ? queueStore.get(id) : findNextIdea(ctx);
-    if (!item || item.intent !== "idea") {
-      ctx.ui.notify(id ? `No unique idea matches ${id}` : "No ideas captured", id ? "warning" : "info");
-      return;
-    }
-    sendIdeaIssueHandoff(ctx, item);
   }
 
   // Track session start
@@ -1588,10 +1510,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
     if (ctx.hasUI) {
       ctx.ui.setStatus("stash", undefined);
-      const pendingIdeas = queueStore.activeItems(getQueueContext(ctx)).filter((item) => item.intent === "idea").length;
-      if (pendingIdeas > 0) {
-        ctx.ui.notify(`${pendingIdeas} idea${pendingIdeas === 1 ? "" : "s"} waiting — /ideas`, "info");
-      }
     }
 
     // Initialize vibe manager (needs modelRegistry from ctx)
@@ -1967,20 +1885,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   }
 
   async function handleSelectedStashHistoryEntry(ctx: any, selected: string): Promise<void> {
-    const action = await ctx.ui.select("Stashed prompt", ["Insert", "Promote to idea", "Cancel"]);
-
-    if (action === "Insert") {
-      await insertSelectedPromptHistoryEntry(ctx, selected);
-      return;
-    }
-
-    if (action === "Promote to idea") {
-      try {
-        captureIdeaFromText(ctx, selected);
-      } catch (error) {
-        ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
-      }
-    }
+    const action = await ctx.ui.select("Stashed prompt", ["Insert", "Cancel"]);
+    if (action === "Insert") await insertSelectedPromptHistoryEntry(ctx, selected);
   }
 
   function isStashShortcutInput(data: string): boolean {
@@ -2007,9 +1913,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     }
     if (matchesConfiguredShortcut(data, resolvedShortcuts.cutEditor)) {
       return { kind: "cutEditor" };
-    }
-    if (matchesConfiguredShortcut(data, resolvedShortcuts.ideaCapture)) {
-      return { kind: "ideaCapture" };
     }
     if (matchesConfiguredShortcut(data, resolvedShortcuts.queueOpen)) {
       return { kind: "queueOpen" };
@@ -2039,19 +1942,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       return;
     }
 
-    if (action.kind === "ideaCapture") {
-      const text = getEditorTextForClipboard(ctx);
-      if (!text) return;
-
-      const item = captureCurrentProjectIdea(ctx, text);
-      if (item) {
-        ctx.ui.setEditorText("");
-      }
-      return;
-    }
-
     if (action.kind === "queueOpen") {
-      void openQueuePicker(ctx, "queue");
+      void openQueuePicker(ctx);
       return;
     }
 
@@ -2161,98 +2053,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   registerCdCommand(pi, () => currentCtx?.cwd ?? process.cwd());
 
-  pi.registerCommand("idea", {
-    description: "Capture an idea without interrupting the current agent. Usage: /idea [@alias|@global|@current] <text> | /idea issue [id]",
-    handler: async (args, ctx) => {
-      currentCtx = ctx;
-      const trimmedArgs = args.trim();
-      const [action, id] = trimmedArgs.split(/\s+/).filter(Boolean);
-      if (action === "issue") {
-        sendIdeaIssueHandoffById(ctx, id);
-        return;
-      }
-
-      const raw = trimmedArgs || getCurrentEditorText(ctx, currentEditor).trim();
-      if (!raw) {
-        ctx.ui.notify("Usage: /idea [@alias|@global|@current] <text> | /idea issue [id]", "info");
-        return;
-      }
-
-      try {
-        const item = captureIdeaFromText(ctx, raw);
-        if (item && !trimmedArgs) {
-          ctx.ui.setEditorText("");
-        }
-      } catch (error) {
-        ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
-      }
-    },
-  });
-
-  pi.registerCommand("ideas", {
-    description: "Review or send captured ideas. Usage: /ideas next | /ideas issue [id] | /ideas [send|retry|clear|edit] <id>",
-    handler: async (args, ctx) => {
-      currentCtx = ctx;
-      const parts = args.trim().split(/\s+/).filter(Boolean);
-      const action = parts[0];
-      const id = parts[1];
-
-      if (!action) {
-        await openQueuePicker(ctx, "ideas");
-        return;
-      }
-
-      if (action === "next") {
-        const item = findNextIdea(ctx);
-        if (!item) {
-          ctx.ui.notify("No ideas captured", "info");
-          return;
-        }
-        const updated = queueStore.update(item.id, { status: "queued", target: { kind: "current-session" }, error: undefined });
-        if (updated) deliverQueueItem(ctx, updated);
-        return;
-      }
-
-      if (action === "issue") {
-        sendIdeaIssueHandoffById(ctx, id);
-        return;
-      }
-
-      if (!id) {
-        ctx.ui.notify("Usage: /ideas next | /ideas issue [id] | /ideas [send|retry|clear|edit] <id>", "info");
-        return;
-      }
-
-      const item = queueStore.get(id);
-      if (!item || item.intent !== "idea") {
-        ctx.ui.notify(`No unique idea matches ${id}`, "warning");
-        return;
-      }
-
-      if (action === "send" || action === "retry") {
-        const updated = queueStore.update(item.id, { status: "queued", target: { kind: "current-session" }, error: undefined });
-        if (updated) deliverQueueItem(ctx, updated);
-        return;
-      }
-
-      if (action === "edit") {
-        ctx.ui.setEditorText(item.text);
-        queueStore.clear(item.id);
-        requestQueueRender();
-        return;
-      }
-
-      if (action === "clear") {
-        queueStore.clear(item.id);
-        ctx.ui.notify(`Cleared idea ${item.id}`, "info");
-        requestQueueRender();
-        return;
-      }
-
-      ctx.ui.notify("Usage: /ideas next | /ideas issue [id] | /ideas [send|retry|clear|edit] <id>", "info");
-    },
-  });
-
   pi.registerCommand("queue", {
     description: "Manage Powerline queued prompts and project aliases",
     handler: async (args, ctx) => {
@@ -2261,7 +2061,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       const action = parts[0];
 
       if (!action) {
-        await openQueuePicker(ctx, "queue");
+        await openQueuePicker(ctx);
         return;
       }
 
@@ -2299,7 +2099,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       if (action === "clear") {
         const id = parts[1];
         if (id === "all") {
-          const active = queueStore.activeItems(getQueueContext(ctx)).filter((item) => item.intent !== "idea");
+          const active = queueStore.activeItems(getQueueContext(ctx));
           for (const item of active) queueStore.clear(item.id);
           ctx.ui.notify(`Cleared ${active.length} queued item${active.length === 1 ? "" : "s"}`, "info");
           requestQueueRender();
@@ -2310,7 +2110,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           return;
         }
         const item = queueStore.get(id);
-        if (!item || item.intent === "idea") {
+        if (!item) {
           ctx.ui.notify(`No unique queued item matches ${id}`, "warning");
           return;
         }
@@ -2769,9 +2569,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       ? "blocked: "
       : summary.leadingStatus === "delivering"
         ? "sending: "
-        : summary.leadingIntent === "idea"
-          ? "idea: "
-          : "queued: ";
+        : "queued: ";
     const text = `${prefix}${summary.leadingText.replace(/\s+/g, " ").trim()}`;
     const color = summary.leadingStatus === "blocked" || summary.leadingStatus === "failed" ? "warning" : "dim";
     return [` ${theme.fg(color, truncateToWidth(text, Math.max(1, width - 1), "…"))}`];
@@ -3012,23 +2810,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
         const isSubmit = keybindings.matches(data, "tui.input.submit") && !keybindings.matches(data, "tui.input.newLine");
         const isFollowUpSubmit = keybindings.matches(data, "app.message.followUp");
-        if (!bashModeActive && (isSubmit || isFollowUpSubmit)) {
-          const sigilCapture = parseSigilIdeaCapture(editor.getExpandedText(), config.queue.captureSigil);
-          if (sigilCapture) {
-            try {
-              const item = captureIdeaFromParsedInput(ctx, sigilCapture);
-              if (item) {
-                editor.addToHistory?.(editor.getExpandedText().trim());
-                editor.setText("");
-              }
-            } catch (error) {
-              ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
-            }
-            scheduleDismissWelcome(ctx);
-            return;
-          }
-        }
-
         if (!powerlineCompacting && !bashModeActive && isSubmit && typeof ctx.compact === "function") {
           const editorText = editor.getExpandedText().trim();
           const compactQueuedPrompt = parseCompactQueuedPrompt(editorText);
@@ -3099,9 +2880,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         }
 
         const bc = (s: string) => `${getFgAnsiCode("sep")}${s}${ansi.reset}`;
-        const captureDraft = !bashModeActive && isSigilIdeaDraft(editor);
-        const promptGlyph = bashModeActive ? "$" : captureDraft ? captureSigilGlyph() : ">";
-        const promptColor = captureDraft ? getFgAnsiCode("queue") : ansi.getFgAnsi(200, 200, 200);
+        const promptGlyph = bashModeActive ? "$" : ">";
+        const promptColor = ansi.getFgAnsi(200, 200, 200);
         const prompt = `${promptColor}${promptGlyph}${ansi.reset}`;
         const promptPrefix = ` ${prompt} `;
         const contPrefix = "   ";

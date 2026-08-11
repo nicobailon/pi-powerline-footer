@@ -934,12 +934,6 @@ test("bash editor hot path avoids full expansion and coalesces ghost work", asyn
     assert.deepEqual(resolved, ["git"]);
     editor.clearGhostSuggestion();
 
-    editor.setText("\n  \n  # idea");
-    assert.equal(editor.hasLeadingSigil("#"), true);
-    editor.setText("#");
-    assert.equal(editor.hasLeadingSigil("#"), false);
-    editor.setText("## idea");
-    assert.equal(editor.hasLeadingSigil("#"), false);
   } finally {
     links.cleanup();
   }

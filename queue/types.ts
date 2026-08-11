@@ -1,4 +1,4 @@
-export type QueueIntent = "steer" | "follow-up" | "post-compact" | "idea";
+export type QueueIntent = "steer" | "follow-up" | "post-compact";
 export type QueueStatus = "queued" | "blocked" | "delivering" | "sent" | "failed";
 
 export type QueueTarget =
@@ -29,7 +29,6 @@ export interface QueueAliasMap {
 
 export interface QueueSummary {
   queueCount: number;
-  ideaCount: number;
   blockedCount: number;
   compacting: boolean;
   leadingText: string | null;

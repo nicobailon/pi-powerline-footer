@@ -384,24 +384,6 @@ export class BashModeEditor extends CustomEditor {
     return Array.isArray(lines) && typeof lines[0] === "string" && lines[0].startsWith("!");
   }
 
-  hasLeadingSigil(sigil: string): boolean {
-    const state = Reflect.get(this, "state");
-    const lines = state && typeof state === "object" ? Reflect.get(state, "lines") : null;
-    if (!Array.isArray(lines)) return false;
-
-    for (let index = 0; index < lines.length; index += 1) {
-      const line = typeof lines[index] === "string" ? lines[index] : "";
-      const trimmed = line.trimStart();
-      if (!trimmed) continue;
-      if (!trimmed.startsWith(sigil)) return false;
-
-      const nextCharacter = trimmed.slice(sigil.length, sigil.length + 1);
-      return nextCharacter ? /^\s$/.test(nextCharacter) : index < lines.length - 1;
-    }
-
-    return false;
-  }
-
   private moveCursorToEditorBoundary(position: "start" | "end"): void {
     const state = Reflect.get(this, "state");
     const lines = state && typeof state === "object" ? Reflect.get(state, "lines") : null;

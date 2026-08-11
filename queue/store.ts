@@ -46,7 +46,7 @@ function normalizeTarget(value: unknown): QueueTarget | null {
 }
 
 function normalizeIntent(value: unknown): QueueIntent | null {
-  return value === "steer" || value === "follow-up" || value === "post-compact" || value === "idea"
+  return value === "steer" || value === "follow-up" || value === "post-compact"
     ? value
     : null;
 }
@@ -189,23 +189,18 @@ export class PowerlineQueueStore {
   }
 
   queuedDeliveryItems(context: QueueContext, intent?: QueueIntent): PowerlineQueueItem[] {
-    return this.activeItems(context).filter((item) => {
-      if (item.status !== "queued") return false;
-      if (item.intent === "idea") return false;
-      return intent ? item.intent === intent : true;
-    });
+    return this.activeItems(context).filter((item) => (
+      item.status === "queued" && (intent ? item.intent === intent : true)
+    ));
   }
 
   summarize(context: QueueContext, compacting: boolean): QueueSummary {
-    const active = this.activeItems(context);
-    const queueItems = active.filter((item) => item.intent !== "idea");
-    const ideaItems = active.filter((item) => item.intent === "idea");
-    const blockedItems = active.filter((item) => item.status === "blocked" || item.status === "failed");
-    const leading = [...blockedItems, ...queueItems, ...ideaItems][0] ?? null;
+    const queueItems = this.activeItems(context);
+    const blockedItems = queueItems.filter((item) => item.status === "blocked" || item.status === "failed");
+    const leading = [...blockedItems, ...queueItems][0] ?? null;
 
     return {
       queueCount: queueItems.length,
-      ideaCount: ideaItems.length,
       blockedCount: blockedItems.length,
       compacting,
       leadingText: leading?.text ?? null,
@@ -304,51 +299,8 @@ export function isActiveForContext(item: PowerlineQueueItem, context: QueueConte
   return item.source.cwd === currentCwd;
 }
 
-export function targetForIdea(rawTarget: string | null, store: PowerlineQueueStore, cwd: string): QueueTarget {
-  if (!rawTarget) return { kind: "project", cwd: normalizeCwd(cwd) };
-  if (rawTarget === "current") return { kind: "current-session" };
-  if (rawTarget === "global") return { kind: "global" };
-
-  const aliasCwd = store.resolveAlias(rawTarget);
-  if (!aliasCwd) {
-    throw new Error(`Unknown project alias @${rawTarget}. Use /queue alias ${rawTarget} <path> first.`);
-  }
-  return { kind: "project", cwd: aliasCwd, alias: rawTarget };
-}
-
-export function parseTargetPrefix(text: string): { target: string | null; text: string } {
-  const trimmed = text.trim();
-  const match = /^@([a-zA-Z0-9_-]+)(?:\s+|$)/.exec(trimmed);
-  if (!match) return { target: null, text: trimmed };
-  return { target: match[1], text: trimmed.slice(match[0].length).trim() };
-}
-
-export function parseSigilIdeaCapture(text: string, sigil: string | false): { target: string | null; text: string } | null {
-  if (sigil === false) return null;
-  const normalizedSigil = sigil.trim();
-  if (!normalizedSigil) return null;
-
-  const trimmed = text.trim();
-  if (!trimmed.startsWith(normalizedSigil)) return null;
-
-  const afterSigil = trimmed.slice(normalizedSigil.length);
-  if (!/^\s/.test(afterSigil)) return null;
-
-  const parsed = parseTargetPrefix(afterSigil.trim());
-  return parsed.text ? parsed : null;
-}
-
 export function formatQueueDeliveryText(item: PowerlineQueueItem): string {
-  if (item.intent !== "idea") return item.text;
-  return `[powerline idea ${item.id}, captured ${new Date(item.createdAt).toISOString()} from ${item.source.cwd}]\n${item.text}`;
-}
-
-export function formatIdeaIssuePrompt(item: PowerlineQueueItem): string {
-  const target = item.target.kind === "project"
-    ? `project ${item.target.alias ? `@${item.target.alias} ` : ""}${item.target.cwd}`
-    : item.target.kind;
-
-  return `Please process this saved Powerline idea as a GitHub issue candidate.\n\n${formatQueueDeliveryText(item)}\n\nIssue filing rules:\n- If subagents are available, spawn one low-budget issue-filing lane for this idea; otherwise do the same checks directly.\n- First identify the target repository from the idea target (${target}), source cwd (${item.source.cwd}), and current session context.\n- If the target repository is unclear or is not owned/controlled by the user, ask before filing anything.\n- If the target repository is clear and owned/controlled by the user, dedupe against existing open issues first.\n- If a matching open issue already exists, report it and do not create another issue.\n- If no matching issue exists, create one self-contained GitHub issue in that repository with a clear title, context, acceptance criteria, and the Powerline idea provenance above.\n- Use explicit repository targeting for GitHub commands and do not change source files for this handoff.`;
+  return item.text;
 }
 
 export function parseCompactQueuedPrompt(text: string): string | null {
