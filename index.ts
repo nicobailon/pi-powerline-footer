@@ -5,7 +5,7 @@ import {
   type Theme,
 } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { isKeyRelease, type AutocompleteProvider, type SelectItem, SelectList, truncateToWidth, TUI_KEYBINDINGS, visibleWidth } from "@earendil-works/pi-tui";
+import { CURSOR_MARKER, isKeyRelease, type AutocompleteProvider, type SelectItem, SelectList, truncateToWidth, TUI_KEYBINDINGS, visibleWidth } from "@earendil-works/pi-tui";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 
@@ -603,6 +603,10 @@ function hasNonWhitespaceText(text: string): boolean {
   return text.trim().length > 0;
 }
 
+function isPlainPrintableInput(data: string): boolean {
+  return data.length === 1 && data.charCodeAt(0) >= 32;
+}
+
 function getCurrentEditorText(ctx: any, editor: any): string {
   const editorText = editor?.getExpandedText?.();
   if (typeof editorText === "string" && editorText.length > 0) return editorText;
@@ -840,6 +844,165 @@ export function parseBashModeSettings(settings: Record<string, unknown>, powerli
     transcriptMaxLines,
     transcriptMaxBytes,
   };
+}
+
+const FAST_EDITOR_RENDER_LINE_THRESHOLD = 80;
+const FAST_EDITOR_RENDER_COLUMN_THRESHOLD = 1200;
+
+interface FastEditorState {
+  lines: string[];
+  cursorLine: number;
+  cursorCol: number;
+}
+
+interface FastEditorVisualLine {
+  text: string;
+  cursorCol?: number;
+}
+
+function readFastEditorState(editor: unknown): FastEditorState | null {
+  const state = Reflect.get(editor as object, "state");
+  if (!isRecord(state) || !Array.isArray(state.lines)) return null;
+  if (typeof state.cursorLine !== "number" || typeof state.cursorCol !== "number") return null;
+
+  const lines = state.lines as string[];
+  const cursorLine = Math.max(0, Math.min(lines.length - 1, Math.floor(state.cursorLine)));
+  const cursorText = lines[cursorLine] ?? "";
+  if (typeof cursorText !== "string") return null;
+  const cursorCol = Math.max(0, Math.min(cursorText.length, Math.floor(state.cursorCol)));
+  return { lines, cursorLine, cursorCol };
+}
+
+function fastChunkCount(line: string, width: number): number {
+  return Math.max(1, Math.ceil(Math.max(1, line.length) / width));
+}
+
+function fastChunk(line: string, width: number, chunkIndex: number): { text: string; startCol: number } {
+  const startCol = chunkIndex * width;
+  return { text: line.slice(startCol, startCol + width), startCol };
+}
+
+function isFastRenderableText(text: string): boolean {
+  return /^[\x20-\x7E]*$/.test(text);
+}
+
+function pushTrailingChunks(target: FastEditorVisualLine[], line: string, width: number, maxCount: number): void {
+  const count = fastChunkCount(line, width);
+  const start = Math.max(0, count - maxCount);
+  for (let index = start; index < count; index++) {
+    target.push({ text: fastChunk(line, width, index).text });
+  }
+}
+
+function collectFastEditorVisualLines(state: FastEditorState, layoutWidth: number, maxVisibleLines: number): {
+  lines: FastEditorVisualLine[];
+  hasBefore: boolean;
+  hasAfter: boolean;
+} {
+  const cursorText = state.lines[state.cursorLine] ?? "";
+  const cursorChunkIndex = Math.floor(state.cursorCol / layoutWidth);
+  const cursorChunkCount = Math.max(fastChunkCount(cursorText, layoutWidth), cursorChunkIndex + 1);
+  const firstCursorChunk = Math.max(0, cursorChunkIndex - maxVisibleLines + 1);
+
+  const visualLines: FastEditorVisualLine[] = [];
+  for (let lineIndex = state.cursorLine - 1; lineIndex >= 0 && visualLines.length < maxVisibleLines - 1; lineIndex--) {
+    const chunks: FastEditorVisualLine[] = [];
+    pushTrailingChunks(chunks, state.lines[lineIndex] ?? "", layoutWidth, maxVisibleLines - 1 - visualLines.length);
+    visualLines.unshift(...chunks);
+  }
+
+  for (let chunkIndex = firstCursorChunk; chunkIndex < cursorChunkIndex && visualLines.length < maxVisibleLines - 1; chunkIndex++) {
+    visualLines.push({ text: fastChunk(cursorText, layoutWidth, chunkIndex).text });
+  }
+
+  const cursorChunk = fastChunk(cursorText, layoutWidth, cursorChunkIndex);
+  visualLines.push({
+    text: cursorChunk.text,
+    cursorCol: state.cursorCol - cursorChunk.startCol,
+  });
+
+  for (let chunkIndex = cursorChunkIndex + 1; chunkIndex < cursorChunkCount && visualLines.length < maxVisibleLines; chunkIndex++) {
+    visualLines.push({ text: fastChunk(cursorText, layoutWidth, chunkIndex).text });
+  }
+
+  for (let lineIndex = state.cursorLine + 1; lineIndex < state.lines.length && visualLines.length < maxVisibleLines; lineIndex++) {
+    const line = state.lines[lineIndex] ?? "";
+    const count = fastChunkCount(line, layoutWidth);
+    for (let chunkIndex = 0; chunkIndex < count && visualLines.length < maxVisibleLines; chunkIndex++) {
+      visualLines.push({ text: fastChunk(line, layoutWidth, chunkIndex).text });
+    }
+  }
+
+  return {
+    lines: visualLines.slice(-maxVisibleLines),
+    hasBefore: state.cursorLine > 0 || firstCursorChunk > 0,
+    hasAfter: state.cursorLine < state.lines.length - 1 || cursorChunkIndex < cursorChunkCount - 1,
+  };
+}
+
+function renderFastCursorLine(line: string, cursorCol: number, focused: boolean): string {
+  const before = line.slice(0, cursorCol);
+  const target = line[cursorCol];
+  const marker = focused ? CURSOR_MARKER : "";
+  if (target) {
+    return `${before}${marker}\x1b[7m${target}\x1b[0m${line.slice(cursorCol + target.length)}`;
+  }
+  return `${before}${marker}\x1b[7m \x1b[0m`;
+}
+
+function padToWidth(line: string, width: number): string {
+  return `${line}${" ".repeat(Math.max(0, width - visibleWidth(line)))}`;
+}
+
+export function renderFastPowerlineEditor(
+  editor: unknown,
+  width: number,
+  options: { bashModeActive: boolean; completionsEnabled: boolean },
+): string[] | null {
+  if (width < 10 || options.completionsEnabled) return null;
+  if (Reflect.get(editor as object, "isInPaste") === true || Reflect.get(editor as object, "jumpMode") != null) return null;
+  if (Reflect.get(editor as object, "autocompleteState") != null) return null;
+
+  const isShowingAutocomplete = Reflect.get(editor as object, "isShowingAutocomplete");
+  if (typeof isShowingAutocomplete === "function" && isShowingAutocomplete.call(editor)) return null;
+
+  const state = readFastEditorState(editor);
+  if (!state) return null;
+
+  const cursorText = state.lines[state.cursorLine] ?? "";
+  if (state.lines.length < FAST_EDITOR_RENDER_LINE_THRESHOLD && cursorText.length < FAST_EDITOR_RENDER_COLUMN_THRESHOLD) {
+    return null;
+  }
+
+  const terminalRows = Reflect.get(Reflect.get(editor as object, "tui") ?? {}, "terminal")?.rows;
+  const maxVisibleLines = Math.max(5, Math.floor((typeof terminalRows === "number" ? terminalRows : 24) * 0.3));
+  const innerWidth = Math.max(1, width - 3);
+  const layoutWidth = Math.max(1, innerWidth - 1);
+  const viewport = collectFastEditorVisualLines(state, layoutWidth, maxVisibleLines);
+  if (viewport.lines.some((line) => !isFastRenderableText(line.text))) return null;
+
+  Reflect.set(editor as object, "lastWidth", layoutWidth);
+
+  const borderColor = getFgAnsiCode("sep");
+  const border = (marker: "↑" | "↓" | "─") => {
+    const text = marker === "─" ? "─".repeat(width - 2) : `${marker}${"─".repeat(Math.max(0, width - 3))}`;
+    return ` ${borderColor}${text}${ansi.reset}`;
+  };
+  const promptGlyph = options.bashModeActive ? "$" : ">";
+  const prompt = `${ansi.getFgAnsi(200, 200, 200)}${promptGlyph}${ansi.reset}`;
+  const promptPrefix = ` ${prompt} `;
+  const contPrefix = "   ";
+
+  const lines = [border(viewport.hasBefore ? "↑" : "─")];
+  for (let index = 0; index < viewport.lines.length; index++) {
+    const visual = viewport.lines[index]!;
+    const content = visual.cursorCol === undefined
+      ? visual.text
+      : renderFastCursorLine(visual.text, visual.cursorCol, Reflect.get(editor as object, "focused") === true);
+    lines.push(`${index === 0 ? promptPrefix : contPrefix}${padToWidth(content, innerWidth)}`);
+  }
+  lines.push(border(viewport.hasAfter ? "↓" : "─"));
+  return lines;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2731,7 +2894,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     ctx.ui.setWidget("powerline-queue-preview", undefined);
     ctx.ui.setWidget("powerline-last-prompt", undefined);
 
-    let autocompleteFixed = false;
+    let autocompleteFixed = !bashModeSettings.completions;
     const previousEditorFactory = typeof ctx.ui.getEditorComponent === "function" ? ctx.ui.getEditorComponent() : undefined;
 
     const editorFactory = (tui: any, editorTheme: any, keybindings: any) => {
@@ -2815,6 +2978,12 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       editor.handleInput = (data: string) => {
         lastEditorInputAt = Date.now();
 
+        if (isPlainPrintableInput(data)) {
+          scheduleDismissWelcome(ctx);
+          originalHandleInput(data);
+          return;
+        }
+
         const isSubmit = keybindings.matches(data, "tui.input.submit") && !keybindings.matches(data, "tui.input.newLine");
         const isFollowUpSubmit = keybindings.matches(data, "app.message.followUp");
         if (!powerlineCompacting && !bashModeActive && isSubmit && typeof ctx.compact === "function") {
@@ -2875,13 +3044,21 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           return;
         }
 
-        attachAutocompleteProvider();
+        if (bashModeSettings.completions) {
+          attachAutocompleteProvider();
+        }
         scheduleDismissWelcome(ctx);
         originalHandleInput(data);
       };
 
       const originalRender = editor.render.bind(editor);
       editor.render = (width: number): string[] => {
+        const fastLines = renderFastPowerlineEditor(editor, width, {
+          bashModeActive,
+          completionsEnabled: bashModeSettings.completions,
+        });
+        if (fastLines) return fastLines;
+
         if (width < 10) {
           return originalRender(width);
         }

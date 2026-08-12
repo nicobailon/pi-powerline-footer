@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { CURSOR_MARKER } from "@earendil-works/pi-tui";
 import { isSupportedSuperShortcut, matchesConfiguredShortcut, shortcutConflictKey } from "../shortcuts.ts";
-import { parseBashModeSettings, resolveShortcutConfig } from "../index.ts";
+import { parseBashModeSettings, renderFastPowerlineEditor, resolveShortcutConfig } from "../index.ts";
 
 test("surviving editor shortcuts resolve without app-owned chat scrolling", () => {
   const resolved = resolveShortcutConfig({});
@@ -39,4 +40,77 @@ test("bash completions are opt-in", () => {
   assert.equal(parseBashModeSettings({}).completions, false);
   assert.equal(parseBashModeSettings({ bashMode: { completions: true } }).completions, true);
   assert.equal(parseBashModeSettings({ bashMode: { completions: false } }).completions, false);
+});
+
+test("fast editor render keeps Powerline chrome for large drafts", () => {
+  const editor = {
+    focused: true,
+    isShowingAutocomplete: () => false,
+    tui: { terminal: { rows: 24 } },
+  };
+  Reflect.set(editor, "state", {
+    lines: ["intro", "x".repeat(5000)],
+    cursorLine: 1,
+    cursorCol: 5000,
+  });
+
+  const rendered = renderFastPowerlineEditor(editor, 80, {
+    bashModeActive: false,
+    completionsEnabled: false,
+  });
+
+  assert.ok(rendered);
+  assert.ok(rendered[0]?.includes("↑"));
+  assert.ok(rendered.some((line) => line.includes(CURSOR_MARKER)));
+  assert.ok(rendered.some((line) => line.includes(">")));
+});
+
+test("fast editor render falls back for short drafts and enabled completions", () => {
+  const editor = {
+    focused: true,
+    isShowingAutocomplete: () => false,
+    tui: { terminal: { rows: 24 } },
+  };
+  Reflect.set(editor, "state", { lines: ["short"], cursorLine: 0, cursorCol: 5 });
+
+  assert.equal(renderFastPowerlineEditor(editor, 80, {
+    bashModeActive: false,
+    completionsEnabled: false,
+  }), null);
+
+  Reflect.set(editor, "state", { lines: ["x".repeat(5000)], cursorLine: 0, cursorCol: 5000 });
+  assert.equal(renderFastPowerlineEditor(editor, 80, {
+    bashModeActive: false,
+    completionsEnabled: true,
+  }), null);
+});
+
+test("fast editor render falls back for wide characters", () => {
+  const editor = {
+    focused: true,
+    isShowingAutocomplete: () => false,
+    tui: { terminal: { rows: 24 } },
+  };
+  Reflect.set(editor, "state", { lines: ["漢".repeat(1300)], cursorLine: 0, cursorCol: 1291 });
+
+  assert.equal(renderFastPowerlineEditor(editor, 80, {
+    bashModeActive: false,
+    completionsEnabled: false,
+  }), null);
+});
+
+test("fast editor render updates the editor navigation width", () => {
+  const editor = {
+    focused: true,
+    isShowingAutocomplete: () => false,
+    lastWidth: 12,
+    tui: { terminal: { rows: 24 } },
+  };
+  Reflect.set(editor, "state", { lines: ["x".repeat(5000)], cursorLine: 0, cursorCol: 5000 });
+
+  assert.ok(renderFastPowerlineEditor(editor, 80, {
+    bashModeActive: false,
+    completionsEnabled: false,
+  }));
+  assert.equal(Reflect.get(editor, "lastWidth"), 76);
 });
