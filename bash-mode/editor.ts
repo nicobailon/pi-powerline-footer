@@ -31,7 +31,7 @@ const DEFAULT_EDITOR_BOUNDARY_SHORTCUTS: EditorBoundaryShortcuts = {
 };
 
 const GHOST_UPDATE_DEBOUNCE_MS = 50;
-const FAST_BACKSPACE_COLUMN_THRESHOLD = 1200;
+const FAST_ASCII_LINE_COLUMN_THRESHOLD = 1200;
 
 export function isPrintableInput(data: string): boolean {
   if (data.length === 1) {
@@ -118,6 +118,8 @@ export class BashModeEditor extends CustomEditor {
   private ghostToken = 0;
   private plainBoundInputs: Set<string> | null = null;
   private readonly backspaceBindingConflicts = new Map<string, boolean>();
+  private readonly forwardDeleteBindingConflicts = new Map<string, boolean>();
+  private readonly horizontalMoveBindingConflicts = new Map<string, boolean>();
 
   constructor(tui: any, theme: any, keybindings: KeybindingsManager, options: BashModeEditorOptions) {
     super(tui, theme, keybindings);
@@ -174,6 +176,8 @@ export class BashModeEditor extends CustomEditor {
   handleInput(data: string): void {
     if (BashModeEditor.prototype.tryFastPrintableInput.call(this, data)) return;
     if (BashModeEditor.prototype.tryFastAsciiBackspace.call(this, data)) return;
+    if (BashModeEditor.prototype.tryFastAsciiForwardDelete.call(this, data)) return;
+    if (BashModeEditor.prototype.tryFastAsciiHorizontalMove.call(this, data)) return;
 
     const droppedPathText = droppedPathTextFromInput(data);
     if (droppedPathText !== null) {
@@ -363,17 +367,24 @@ export class BashModeEditor extends CustomEditor {
     return true;
   }
 
-  private tryFastAsciiBackspace(data: string): boolean {
-    if (!this.keybindingsRef.matches(data, "tui.editor.deleteCharBackward")) return false;
-    let hasBindingConflict = this.backspaceBindingConflicts.get(data);
-    if (hasBindingConflict === undefined) {
-      hasBindingConflict = Object.entries(this.keybindingsRef.getEffectiveConfig()).some(([id, binding]) => {
-        if (id === "tui.editor.deleteCharBackward" || !binding) return false;
+  private hasBindingConflict(data: string, editorAction: string, cache: Map<string, boolean> | undefined): boolean {
+    const getEffectiveConfig = this.keybindingsRef.getEffectiveConfig;
+    if (!(cache instanceof Map) || typeof getEffectiveConfig !== "function") return true;
+
+    let hasConflict = cache.get(data);
+    if (hasConflict === undefined) {
+      hasConflict = Object.entries(getEffectiveConfig.call(this.keybindingsRef)).some(([id, binding]) => {
+        if (id === editorAction || !binding) return false;
         return (Array.isArray(binding) ? binding : [binding]).some((key) => matchesKey(data, key));
       });
-      this.backspaceBindingConflicts.set(data, hasBindingConflict);
+      cache.set(data, hasConflict);
     }
-    if (hasBindingConflict) return false;
+    return hasConflict;
+  }
+
+  private tryFastAsciiBackspace(data: string): boolean {
+    if (!this.keybindingsRef.matches(data, "tui.editor.deleteCharBackward")) return false;
+    if (BashModeEditor.prototype.hasBindingConflict.call(this, data, "tui.editor.deleteCharBackward", this.backspaceBindingConflicts)) return false;
     if (Reflect.get(this, "isInPaste") === true || Reflect.get(this, "jumpMode") !== null) return false;
     if (Reflect.get(this, "autocompleteState") !== null) return false;
 
@@ -384,13 +395,12 @@ export class BashModeEditor extends CustomEditor {
     if (!Array.isArray(lines) || lines.length !== 1 || cursorLine !== 0 || typeof cursorCol !== "number") return false;
 
     const line = lines[0];
-    if (typeof line !== "string" || cursorCol < FAST_BACKSPACE_COLUMN_THRESHOLD || cursorCol !== line.length) return false;
+    if (typeof line !== "string" || cursorCol < FAST_ASCII_LINE_COLUMN_THRESHOLD || cursorCol !== line.length) return false;
     const previousCode = line.charCodeAt(cursorCol - 2);
     const deletedCode = line.charCodeAt(cursorCol - 1);
     if (previousCode < 0x20 || previousCode > 0x7e || deletedCode < 0x20 || deletedCode > 0x7e) return false;
 
-    const pastes = Reflect.get(this as object, "pastes");
-    if (pastes instanceof Map && pastes.size) return false;
+    if (BashModeEditor.prototype.hasActivePastes.call(this)) return false;
 
     const nextLine = line.slice(0, -1);
     const isInSlashCommandContext = Reflect.get(this, "isInSlashCommandContext");
@@ -420,6 +430,106 @@ export class BashModeEditor extends CustomEditor {
       this.clearGhostSuggestion();
     }
     return true;
+  }
+
+  private tryFastAsciiForwardDelete(data: string): boolean {
+    if (!this.keybindingsRef.matches(data, "tui.editor.deleteCharForward")) return false;
+    if (BashModeEditor.prototype.hasBindingConflict.call(this, data, "tui.editor.deleteCharForward", this.forwardDeleteBindingConflicts)) return false;
+    if (Reflect.get(this, "isInPaste") === true || Reflect.get(this, "jumpMode") !== null) return false;
+    if (Reflect.get(this, "autocompleteState") !== null) return false;
+
+    const state = Reflect.get(this, "state");
+    const lines = state && typeof state === "object" ? Reflect.get(state, "lines") : null;
+    const cursorLine = state && typeof state === "object" ? Reflect.get(state, "cursorLine") : null;
+    const cursorCol = state && typeof state === "object" ? Reflect.get(state, "cursorCol") : null;
+    if (!Array.isArray(lines) || lines.length !== 1 || cursorLine !== 0 || typeof cursorCol !== "number") return false;
+
+    const line = lines[0];
+    if (typeof line !== "string" || cursorCol >= line.length || line.length < FAST_ASCII_LINE_COLUMN_THRESHOLD) return false;
+    if (!BashModeEditor.prototype.isPlainAsciiCursorMove.call(this, line, cursorCol)) return false;
+
+    if (BashModeEditor.prototype.hasActivePastes.call(this)) return false;
+
+    const nextBeforeCursor = line.slice(0, cursorCol);
+    const nextLine = nextBeforeCursor + line.slice(cursorCol + 1);
+    const isInSlashCommandContext = Reflect.get(this, "isInSlashCommandContext");
+    if (typeof isInSlashCommandContext === "function" && isInSlashCommandContext.call(this, nextBeforeCursor)) return false;
+    const autocompleteTriggerPattern = Reflect.get(this as object, "autocompleteTriggerPattern");
+    if (autocompleteTriggerPattern instanceof RegExp && autocompleteTriggerPattern.test(nextBeforeCursor)) return false;
+
+    const exitHistoryBrowsing = Reflect.get(this, "exitHistoryBrowsing");
+    const pushUndoSnapshot = Reflect.get(this, "pushUndoSnapshot");
+    if (typeof exitHistoryBrowsing !== "function" || typeof pushUndoSnapshot !== "function") return false;
+    if (this.onExtensionShortcut?.(data)) return true;
+
+    exitHistoryBrowsing.call(this);
+    pushUndoSnapshot.call(this);
+    Reflect.set(this, "lastAction", null);
+    lines[0] = nextLine;
+    this.onChange?.(nextLine);
+
+    resetShellHistoryBrowse(this);
+    if (this.isShellCompletionContext()) {
+      this.scheduleGhostUpdate();
+    } else {
+      this.clearGhostSuggestion();
+    }
+    return true;
+  }
+
+  private tryFastAsciiHorizontalMove(data: string): boolean {
+    const direction = this.keybindingsRef.matches(data, "tui.editor.cursorLeft")
+      ? -1
+      : this.keybindingsRef.matches(data, "tui.editor.cursorRight") ? 1 : 0;
+    if (direction === 0) return false;
+    if (BashModeEditor.prototype.hasBindingConflict.call(this, data, direction < 0 ? "tui.editor.cursorLeft" : "tui.editor.cursorRight", this.horizontalMoveBindingConflicts)) return false;
+    if (Reflect.get(this, "isInPaste") === true || Reflect.get(this, "jumpMode") !== null) return false;
+    if (Reflect.get(this, "autocompleteState") !== null) return false;
+    if (BashModeEditor.prototype.isShellCompletionContext.call(this)) return false;
+    if (BashModeEditor.prototype.hasActivePastes.call(this)) return false;
+
+    const state = Reflect.get(this, "state");
+    const lines = state && typeof state === "object" ? Reflect.get(state, "lines") : null;
+    const cursorLine = state && typeof state === "object" ? Reflect.get(state, "cursorLine") : null;
+    const cursorCol = state && typeof state === "object" ? Reflect.get(state, "cursorCol") : null;
+    if (!Array.isArray(lines) || lines.length !== 1 || cursorLine !== 0 || typeof cursorCol !== "number") return false;
+
+    const line = lines[0];
+    if (typeof line !== "string" || line.length < FAST_ASCII_LINE_COLUMN_THRESHOLD) return false;
+    if (direction < 0) {
+      if (cursorCol <= 0 || !BashModeEditor.prototype.isPlainAsciiCursorMove.call(this, line, cursorCol - 1)) return false;
+    } else if (cursorCol >= line.length || !BashModeEditor.prototype.isPlainAsciiCursorMove.call(this, line, cursorCol)) {
+      return false;
+    }
+
+    const setCursorCol = Reflect.get(this, "setCursorCol");
+    if (typeof setCursorCol !== "function") return false;
+    if (this.onExtensionShortcut?.(data)) return true;
+
+    Reflect.set(this, "lastAction", null);
+    setCursorCol.call(this, cursorCol + direction);
+    resetShellHistoryBrowse(this);
+    return true;
+  }
+
+  private hasActivePastes(): boolean {
+    const pastes = Reflect.get(this as object, "pastes");
+    return !(pastes instanceof Map) || pastes.size > 0;
+  }
+
+  private isPlainAsciiCursorMove(line: string, index: number): boolean {
+    return BashModeEditor.prototype.isPlainAsciiAt.call(this, line, index)
+      && BashModeEditor.prototype.isPlainAsciiOrEdge.call(this, line, index - 1)
+      && BashModeEditor.prototype.isPlainAsciiOrEdge.call(this, line, index + 1);
+  }
+
+  private isPlainAsciiOrEdge(line: string, index: number): boolean {
+    return index < 0 || index >= line.length || BashModeEditor.prototype.isPlainAsciiAt.call(this, line, index);
+  }
+
+  private isPlainAsciiAt(line: string, index: number): boolean {
+    const code = line.charCodeAt(index);
+    return code >= 0x20 && code <= 0x7e;
   }
 
   render(width: number): string[] {
