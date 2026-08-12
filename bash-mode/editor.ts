@@ -343,7 +343,7 @@ export class BashModeEditor extends CustomEditor {
         for (const key of Array.isArray(binding) ? binding : [binding]) {
           if (isPrintableInput(key)) this.plainBoundInputs.add(key);
           if (key === "space") this.plainBoundInputs.add(" ");
-          if (/^shift\+[a-z]$/.test(key)) this.plainBoundInputs.add(key.at(-1)!.toUpperCase());
+          if (/^shift\+[a-z]$/.test(key)) this.plainBoundInputs.add(key.slice(-1).toUpperCase());
         }
       }
     }
@@ -389,15 +389,14 @@ export class BashModeEditor extends CustomEditor {
     const deletedCode = line.charCodeAt(cursorCol - 1);
     if (previousCode < 0x20 || previousCode > 0x7e || deletedCode < 0x20 || deletedCode > 0x7e) return false;
 
-    const pastes = Reflect.get(this, "pastes") as Map<number, string> | undefined;
-    if (pastes?.size) return false;
+    const pastes = Reflect.get(this as object, "pastes");
+    if (pastes instanceof Map && pastes.size) return false;
 
     const nextLine = line.slice(0, -1);
-    const nextBeforeCursor = nextLine;
     const isInSlashCommandContext = Reflect.get(this, "isInSlashCommandContext");
-    if (typeof isInSlashCommandContext === "function" && isInSlashCommandContext.call(this, nextBeforeCursor)) return false;
-    const autocompleteTriggerPattern = Reflect.get(this, "autocompleteTriggerPattern") as RegExp | undefined;
-    if (autocompleteTriggerPattern?.test(nextBeforeCursor)) return false;
+    if (typeof isInSlashCommandContext === "function" && isInSlashCommandContext.call(this, nextLine)) return false;
+    const autocompleteTriggerPattern = Reflect.get(this as object, "autocompleteTriggerPattern");
+    if (autocompleteTriggerPattern instanceof RegExp && autocompleteTriggerPattern.test(nextLine)) return false;
 
     const exitHistoryBrowsing = Reflect.get(this, "exitHistoryBrowsing");
     const pushUndoSnapshot = Reflect.get(this, "pushUndoSnapshot");
