@@ -945,12 +945,13 @@ test("bash editor hot path avoids full expansion and coalesces ghost work", asyn
       insertCharacter(character);
     });
 
-    editor.handleInput("a");
-    assert.equal(fastInserts, 1);
+    for (const character of ["a", "A", ".", "漢", "🙂"]) editor.handleInput(character);
+    assert.equal(editor.getText(), "aA.漢🙂");
+    assert.equal(fastInserts, 5);
     editor.onExtensionShortcut = (data) => data === "b";
     editor.handleInput("b");
-    assert.equal(editor.getText(), "a");
-    assert.equal(fastInserts, 1);
+    assert.equal(editor.getText(), "aA.漢🙂");
+    assert.equal(fastInserts, 5);
     editor.onExtensionShortcut = undefined;
     editor.render(80);
 
@@ -964,6 +965,94 @@ test("bash editor hot path avoids full expansion and coalesces ghost work", asyn
     assert.deepEqual(resolved, ["git"]);
     editor.clearGhostSuggestion();
 
+  } finally {
+    links.cleanup();
+  }
+});
+
+test("bash editor long ASCII backspace keeps undo without scanning the full line", async () => {
+  const links = ensureEditorModuleLinks();
+
+  try {
+    const { BashModeEditor } = await import("../bash-mode/editor.ts");
+    const { KeybindingsManager } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js", import.meta.url).href);
+    const keybindings = KeybindingsManager.create();
+    const editor = new BashModeEditor(
+      { requestRender() {}, terminal: { columns: 80, rows: 24 } },
+      { borderColor: (text: string) => text },
+      keybindings,
+      {
+        keybindings,
+        isBashModeActive: () => false,
+        isShellRunning: () => false,
+        onExitBashMode() {},
+        onSubmitCommand() {},
+        onInterrupt() {},
+        onNotify() {},
+        getHistoryEntries: () => [],
+        resolveGhostSuggestion: async () => null,
+      },
+    );
+    const original = "x".repeat(5000);
+    editor.setText(original);
+    Reflect.get(editor, "undoStack").clear();
+    const segment = Reflect.get(editor, "segment").bind(editor);
+    Reflect.set(editor, "segment", () => {
+      throw new Error("long ASCII backspace must not segment the full line");
+    });
+
+    editor.handleInput("\x7f");
+    assert.equal(editor.getText(), original.slice(0, -1));
+
+    editor.handleInput("\x1b[122;9u");
+    assert.equal(editor.getText(), original);
+
+    Reflect.set(editor, "segment", segment);
+    editor.setText(`${"x".repeat(4998)}\u0600a`);
+    editor.handleInput("\x7f");
+    assert.equal(editor.getText(), "x".repeat(4998));
+  } finally {
+    links.cleanup();
+  }
+});
+
+test("bash editor long ASCII backspace preserves custom app bindings by input sequence", async () => {
+  const links = ensureEditorModuleLinks();
+
+  try {
+    const { BashModeEditor } = await import("../bash-mode/editor.ts");
+    const { KeybindingsManager } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js", import.meta.url).href);
+    const keybindings = new KeybindingsManager({ "app.clear": "ctrl+h" });
+    const editor = new BashModeEditor(
+      { requestRender() {}, terminal: { columns: 80, rows: 24 } },
+      { borderColor: (text: string) => text },
+      keybindings,
+      {
+        keybindings,
+        isBashModeActive: () => false,
+        isShellRunning: () => false,
+        onExitBashMode() {},
+        onSubmitCommand() {},
+        onInterrupt() {},
+        onNotify() {},
+        getHistoryEntries: () => [],
+        resolveGhostSuggestion: async () => null,
+      },
+    );
+    let cleared = false;
+    editor.onAction("app.clear", () => {
+      cleared = true;
+    });
+    const original = "x".repeat(5000);
+    editor.setText(original);
+
+    editor.handleInput("\x7f");
+    assert.equal(editor.getText(), original.slice(0, -1));
+    assert.equal(cleared, false);
+
+    editor.handleInput("\x08");
+    assert.equal(cleared, true);
+    assert.equal(editor.getText(), original.slice(0, -1));
   } finally {
     links.cleanup();
   }
@@ -1000,6 +1089,12 @@ test("bash editor fast path preserves plain custom keybindings", async () => {
 
       editor.setText("x");
       editor.handleInput("a");
+      assert.equal(editor.getText(), "x");
+      assert.deepEqual(editor.getCursor(), { line: 0, col: 0 });
+
+      keybindings.setUserBindings({ "tui.editor.cursorLeft": "shift+a" });
+      Reflect.set(editor, "plainBoundInputs", null);
+      editor.handleInput("A");
       assert.equal(editor.getText(), "x");
       assert.deepEqual(editor.getCursor(), { line: 0, col: 0 });
     } finally {

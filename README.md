@@ -91,6 +91,14 @@ You can also set it in the agent settings file (`~/.pi/agent/settings.json` by d
 
 **Environment:** `POWERLINE_NERD_FONTS=1` to force Nerd Fonts, `=0` for ASCII.
 
+For typing diagnostics, start Pi with `POWERLINE_DEBUG_PERF=1`, reproduce the slow editor case, then run `/powerline-perf`. Use `/powerline-perf reset` before a focused run. Profiling is off by default. While it is enabled, these A/B flags can disable one render seam before `/reload`:
+
+- `POWERLINE_PERF_FAST_RENDER=0`
+- `POWERLINE_PERF_EDITOR_CHROME=0`
+- `POWERLINE_PERF_WIDGETS=0`
+- `POWERLINE_PERF_BASH_WIDGETS=0`
+- `POWERLINE_PERF_LAST_PROMPT=0`
+
 Preset selection is saved under `powerline` in the agent settings file and restored on startup.
 Run `/powerline default` to switch back to the default preset.
 

@@ -31,9 +31,17 @@ const DEFAULT_EDITOR_BOUNDARY_SHORTCUTS: EditorBoundaryShortcuts = {
 };
 
 const GHOST_UPDATE_DEBOUNCE_MS = 50;
+const FAST_BACKSPACE_COLUMN_THRESHOLD = 1200;
 
-function isPrintableInput(data: string): boolean {
-  return data.length === 1 && data.charCodeAt(0) >= 32;
+export function isPrintableInput(data: string): boolean {
+  if (data.length === 1) {
+    const code = data.charCodeAt(0);
+    return code >= 0x20 && (code < 0x7f || code > 0x9f) && (code < 0xd800 || code > 0xdfff);
+  }
+  if (data.length !== 2) return false;
+  const first = data.charCodeAt(0);
+  const second = data.charCodeAt(1);
+  return first >= 0xd800 && first <= 0xdbff && second >= 0xdc00 && second <= 0xdfff;
 }
 
 function isCommandUndoShortcut(data: string): boolean {
@@ -109,6 +117,7 @@ export class BashModeEditor extends CustomEditor {
   private ghostTimer: ReturnType<typeof setTimeout> | null = null;
   private ghostToken = 0;
   private plainBoundInputs: Set<string> | null = null;
+  private readonly backspaceBindingConflicts = new Map<string, boolean>();
 
   constructor(tui: any, theme: any, keybindings: KeybindingsManager, options: BashModeEditorOptions) {
     super(tui, theme, keybindings);
@@ -164,6 +173,7 @@ export class BashModeEditor extends CustomEditor {
 
   handleInput(data: string): void {
     if (BashModeEditor.prototype.tryFastPrintableInput.call(this, data)) return;
+    if (BashModeEditor.prototype.tryFastAsciiBackspace.call(this, data)) return;
 
     const droppedPathText = droppedPathTextFromInput(data);
     if (droppedPathText !== null) {
@@ -323,7 +333,7 @@ export class BashModeEditor extends CustomEditor {
   }
 
   private tryFastPrintableInput(data: string): boolean {
-    if (!/^[a-z0-9 ]$/.test(data)) return false;
+    if (!isPrintableInput(data)) return false;
     if (Reflect.get(this, "isInPaste") === true || Reflect.get(this, "jumpMode") !== null) return false;
 
     if (!this.plainBoundInputs) {
@@ -331,8 +341,9 @@ export class BashModeEditor extends CustomEditor {
       for (const binding of Object.values(this.keybindingsRef.getEffectiveConfig())) {
         if (!binding) continue;
         for (const key of Array.isArray(binding) ? binding : [binding]) {
-          if (key.length === 1) this.plainBoundInputs.add(key);
+          if (isPrintableInput(key)) this.plainBoundInputs.add(key);
           if (key === "space") this.plainBoundInputs.add(" ");
+          if (/^shift\+[a-z]$/.test(key)) this.plainBoundInputs.add(key.at(-1)!.toUpperCase());
         }
       }
     }
@@ -342,6 +353,66 @@ export class BashModeEditor extends CustomEditor {
     const insertCharacter = Reflect.get(this, "insertCharacter");
     if (typeof insertCharacter !== "function") return false;
     insertCharacter.call(this, data);
+
+    resetShellHistoryBrowse(this);
+    if (this.isShellCompletionContext()) {
+      this.scheduleGhostUpdate();
+    } else {
+      this.clearGhostSuggestion();
+    }
+    return true;
+  }
+
+  private tryFastAsciiBackspace(data: string): boolean {
+    if (!this.keybindingsRef.matches(data, "tui.editor.deleteCharBackward")) return false;
+    let hasBindingConflict = this.backspaceBindingConflicts.get(data);
+    if (hasBindingConflict === undefined) {
+      hasBindingConflict = Object.entries(this.keybindingsRef.getEffectiveConfig()).some(([id, binding]) => {
+        if (id === "tui.editor.deleteCharBackward" || !binding) return false;
+        return (Array.isArray(binding) ? binding : [binding]).some((key) => matchesKey(data, key));
+      });
+      this.backspaceBindingConflicts.set(data, hasBindingConflict);
+    }
+    if (hasBindingConflict) return false;
+    if (Reflect.get(this, "isInPaste") === true || Reflect.get(this, "jumpMode") !== null) return false;
+    if (Reflect.get(this, "autocompleteState") !== null) return false;
+
+    const state = Reflect.get(this, "state");
+    const lines = state && typeof state === "object" ? Reflect.get(state, "lines") : null;
+    const cursorLine = state && typeof state === "object" ? Reflect.get(state, "cursorLine") : null;
+    const cursorCol = state && typeof state === "object" ? Reflect.get(state, "cursorCol") : null;
+    if (!Array.isArray(lines) || lines.length !== 1 || cursorLine !== 0 || typeof cursorCol !== "number") return false;
+
+    const line = lines[0];
+    if (typeof line !== "string" || cursorCol < FAST_BACKSPACE_COLUMN_THRESHOLD || cursorCol !== line.length) return false;
+    const previousCode = line.charCodeAt(cursorCol - 2);
+    const deletedCode = line.charCodeAt(cursorCol - 1);
+    if (previousCode < 0x20 || previousCode > 0x7e || deletedCode < 0x20 || deletedCode > 0x7e) return false;
+
+    const pastes = Reflect.get(this, "pastes") as Map<number, string> | undefined;
+    if (pastes?.size) return false;
+
+    const nextLine = line.slice(0, -1);
+    const nextBeforeCursor = nextLine;
+    const isInSlashCommandContext = Reflect.get(this, "isInSlashCommandContext");
+    if (typeof isInSlashCommandContext === "function" && isInSlashCommandContext.call(this, nextBeforeCursor)) return false;
+    const autocompleteTriggerPattern = Reflect.get(this, "autocompleteTriggerPattern") as RegExp | undefined;
+    if (autocompleteTriggerPattern?.test(nextBeforeCursor)) return false;
+
+    const exitHistoryBrowsing = Reflect.get(this, "exitHistoryBrowsing");
+    const pushUndoSnapshot = Reflect.get(this, "pushUndoSnapshot");
+    const setCursorCol = Reflect.get(this, "setCursorCol");
+    if (typeof exitHistoryBrowsing !== "function" || typeof pushUndoSnapshot !== "function" || typeof setCursorCol !== "function") {
+      return false;
+    }
+    if (this.onExtensionShortcut?.(data)) return true;
+
+    exitHistoryBrowsing.call(this);
+    pushUndoSnapshot.call(this);
+    Reflect.set(this, "lastAction", null);
+    lines[0] = nextLine;
+    setCursorCol.call(this, cursorCol - 1);
+    this.onChange?.(nextLine);
 
     resetShellHistoryBrowse(this);
     if (this.isShellCompletionContext()) {

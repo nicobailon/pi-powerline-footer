@@ -19,7 +19,7 @@ import {
   ModeAwareAutocompleteProvider,
   OneOffBashAutocompleteProvider,
 } from "./bash-mode/completion.ts";
-import { BashModeEditor } from "./bash-mode/editor.ts";
+import { BashModeEditor, isPrintableInput } from "./bash-mode/editor.ts";
 import { ManagedShellSession } from "./bash-mode/shell-session.ts";
 import { matchHistoryEntries, readGlobalShellHistory, readProjectHistory, appendProjectHistory } from "./bash-mode/history.ts";
 import type { BashModeSettings } from "./bash-mode/types.ts";
@@ -35,6 +35,7 @@ import { WelcomeComponent, WelcomeHeader, discoverLoadedCounts, getRecentSession
 import { createWelcomeDismissScheduler } from "./welcome-dismiss.ts";
 import { createRenderScheduler } from "./render-scheduler.ts";
 import { getEditorAutocompleteProvider, passAutocompleteProviderThroughPreviousEditor } from "./editor-composition.ts";
+import { EditorPerfProfiler, readEditorPerfOptions } from "./editor-performance.ts";
 import { CoreContextUsageCache, estimateInitialContextTokens, estimateUnknownContextUsage, resolveDisplayContextUsage, type CoreContextUsage } from "./context-usage.ts";
 import { isStaleExtensionContextError, shouldShowStartupWelcome } from "./lifecycle.ts";
 import { getDefaultColors } from "./theme.ts";
@@ -603,10 +604,6 @@ function hasNonWhitespaceText(text: string): boolean {
   return text.trim().length > 0;
 }
 
-function isPlainPrintableInput(data: string): boolean {
-  return data.length === 1 && data.charCodeAt(0) >= 32;
-}
-
 function getCurrentEditorText(ctx: any, editor: any): string {
   const editorText = editor?.getExpandedText?.();
   if (typeof editorText === "string" && editorText.length > 0) return editorText;
@@ -1137,6 +1134,7 @@ function warnInvalidSegmentSettings(ctx: any): void {
 }
 
 export default function powerlineFooter(pi: ExtensionAPI) {
+  const editorPerf = new EditorPerfProfiler(readEditorPerfOptions());
   const startupSettings = readSettings();
   config = parsePowerlineConfig(startupSettings.powerline, PRESET_NAMES);
   let resolvedShortcuts = resolveShortcutConfig(startupSettings);
@@ -2438,6 +2436,22 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     },
   });
 
+  pi.registerCommand("powerline-perf", {
+    description: "Show or reset opt-in editor performance profiling",
+    handler: async (args, ctx) => {
+      if (!editorPerf.options.enabled) {
+        ctx.ui.notify("Set POWERLINE_DEBUG_PERF=1 and reload to enable editor profiling", "info");
+        return;
+      }
+      if (args.trim().toLowerCase() === "reset") {
+        editorPerf.reset();
+        ctx.ui.notify("Powerline editor performance counters reset", "info");
+        return;
+      }
+      ctx.ui.notify(editorPerf.report(), "info");
+    },
+  });
+
   pi.registerCommand("bash-reset", {
     description: "Reset the managed bash session",
     handler: async (_args, ctx) => {
@@ -2675,7 +2689,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     const presetDef = getPreset(config.preset);
     let segmentCtx: SegmentContext;
     try {
-      segmentCtx = buildSegmentContext(currentCtx, theme);
+      segmentCtx = editorPerf.options.enabled
+        ? editorPerf.measure("layout.segment-context", () => buildSegmentContext(currentCtx, theme))
+        : buildSegmentContext(currentCtx, theme);
     } catch (error) {
       if (!isStaleExtensionContextError(error)) throw error;
       currentCtx = null;
@@ -2801,13 +2817,19 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   }
 
   function installPowerlineWidgets(ctx: any) {
+    if (!editorPerf.options.widgets) return;
+
+    const measureWidget = (name: string, render: () => string[]): string[] => {
+      return editorPerf.options.enabled ? editorPerf.measure(`widget.${name}`, render) : render();
+    };
+
     ctx.ui.setWidget("powerline-status", () => ({
       dispose() {},
       invalidate() {
         requestStatusRender();
       },
       render(width: number): string[] {
-        return renderPowerlineStatusLines(width);
+        return measureWidget("status", () => renderPowerlineStatusLines(width));
       },
     }), { placement: "aboveEditor" });
 
@@ -2817,7 +2839,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         resetLayoutCache();
       },
       render(width: number): string[] {
-        return renderPowerlinePrimaryLines(width, theme);
+        return measureWidget("primary", () => renderPowerlinePrimaryLines(width, theme));
       },
     }), { placement: config.placement === "below" ? "belowEditor" : "aboveEditor" });
 
@@ -2827,33 +2849,37 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         resetLayoutCache();
       },
       render(width: number): string[] {
-        return renderPowerlineSecondaryLines(width, theme);
+        return measureWidget("secondary", () => renderPowerlineSecondaryLines(width, theme));
       },
     }), { placement: "belowEditor" });
 
-    ctx.ui.setWidget("powerline-bash-transcript", (_tui: any, theme: Theme) => ({
-      dispose() {},
-      invalidate() {},
-      render(width: number): string[] {
-        return renderBashTranscriptLines(width, theme);
-      },
-    }), { placement: "belowEditor" });
+    if (editorPerf.options.bashWidgets) {
+      ctx.ui.setWidget("powerline-bash-transcript", (_tui: any, theme: Theme) => ({
+        dispose() {},
+        invalidate() {},
+        render(width: number): string[] {
+          return measureWidget("bash-transcript", () => renderBashTranscriptLines(width, theme));
+        },
+      }), { placement: "belowEditor" });
+    }
 
     ctx.ui.setWidget("powerline-queue-preview", (_tui: any, theme: Theme) => ({
       dispose() {},
       invalidate() {},
       render(width: number): string[] {
-        return renderPowerlineQueuePreviewLines(width, theme);
+        return measureWidget("queue-preview", () => renderPowerlineQueuePreviewLines(width, theme));
       },
     }), { placement: "belowEditor" });
 
-    ctx.ui.setWidget("powerline-last-prompt", () => ({
-      dispose() {},
-      invalidate() {},
-      render(width: number): string[] {
-        return renderLastPromptLines(width);
-      },
-    }), { placement: "belowEditor" });
+    if (editorPerf.options.lastPrompt) {
+      ctx.ui.setWidget("powerline-last-prompt", () => ({
+        dispose() {},
+        invalidate() {},
+        render(width: number): string[] {
+          return measureWidget("last-prompt", () => renderLastPromptLines(width));
+        },
+      }), { placement: "belowEditor" });
+    }
   }
 
   function setupCustomEditor(ctx: any) {
@@ -2974,11 +3000,14 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       restorePromptHistory(editor);
       attachAutocompleteProvider();
 
-      const originalHandleInput = editor.handleInput.bind(editor);
-      editor.handleInput = (data: string) => {
+      const baseHandleInput = editor.handleInput.bind(editor);
+      const originalHandleInput = editorPerf.options.enabled
+        ? (data: string) => editorPerf.measure("input.base-editor", () => baseHandleInput(data))
+        : baseHandleInput;
+      const handlePowerlineEditorInput = (data: string) => {
         lastEditorInputAt = Date.now();
 
-        if (isPlainPrintableInput(data)) {
+        if (isPrintableInput(data)) {
           scheduleDismissWelcome(ctx);
           originalHandleInput(data);
           return;
@@ -3050,58 +3079,92 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         scheduleDismissWelcome(ctx);
         originalHandleInput(data);
       };
+      editor.handleInput = editorPerf.options.enabled
+        ? (data: string) => {
+            editorPerf.measure("input.total", () => handlePowerlineEditorInput(data));
+            const state = Reflect.get(editor, "state");
+            const lines = state && typeof state === "object" ? Reflect.get(state, "lines") : null;
+            if (Array.isArray(lines)) editorPerf.observeDraft(lines);
+          }
+        : handlePowerlineEditorInput;
 
       const originalRender = editor.render.bind(editor);
       editor.render = (width: number): string[] => {
-        const fastLines = renderFastPowerlineEditor(editor, width, {
-          bashModeActive,
-          completionsEnabled: bashModeSettings.completions,
-        });
-        if (fastLines) return fastLines;
-
-        if (width < 10) {
-          return originalRender(width);
-        }
-
-        const bc = (s: string) => `${getFgAnsiCode("sep")}${s}${ansi.reset}`;
-        const promptGlyph = bashModeActive ? "$" : ">";
-        const promptColor = ansi.getFgAnsi(200, 200, 200);
-        const prompt = `${promptColor}${promptGlyph}${ansi.reset}`;
-        const promptPrefix = ` ${prompt} `;
-        const contPrefix = "   ";
-        const contentWidth = Math.max(1, width - 3);
-        const lines = originalRender(contentWidth);
-
-        if (lines.length === 0) return lines;
-
-        let bottomBorderIndex = lines.length - 1;
-        for (let i = lines.length - 1; i >= 1; i--) {
-          const stripped = lines[i]?.replace(/\x1b\[[0-9;]*m/g, "") || "";
-          if (stripped.length > 0 && /^─{3,}/.test(stripped)) {
-            bottomBorderIndex = i;
-            break;
+        const renderPowerlineEditor = (): string[] => {
+          if (!editorPerf.options.editorChrome) {
+            return editorPerf.options.enabled
+              ? editorPerf.measure("editor.render.base", () => originalRender(width))
+              : originalRender(width);
           }
-        }
 
-        const result: string[] = [];
-        result.push(" " + bc("─".repeat(width - 2)));
+          if (editorPerf.options.fastRender) {
+            const fastLines = editorPerf.options.enabled
+              ? editorPerf.measure("editor.render.fast-probe", () => renderFastPowerlineEditor(editor, width, {
+                  bashModeActive,
+                  completionsEnabled: bashModeSettings.completions,
+                }))
+              : renderFastPowerlineEditor(editor, width, {
+                  bashModeActive,
+                  completionsEnabled: bashModeSettings.completions,
+                });
+            if (fastLines) {
+              if (editorPerf.options.enabled) editorPerf.count("editor.render.fast-hit");
+              return fastLines;
+            }
+          }
 
-        for (let i = 1; i < bottomBorderIndex; i++) {
-          const prefix = i === 1 ? promptPrefix : contPrefix;
-          result.push(`${prefix}${lines[i] || ""}`);
-        }
+          if (width < 10) {
+            return editorPerf.options.enabled
+              ? editorPerf.measure("editor.render.base", () => originalRender(width))
+              : originalRender(width);
+          }
 
-        if (bottomBorderIndex === 1) {
-          result.push(`${promptPrefix}${" ".repeat(contentWidth)}`);
-        }
+          const bc = (s: string) => `${getFgAnsiCode("sep")}${s}${ansi.reset}`;
+          const promptGlyph = bashModeActive ? "$" : ">";
+          const promptColor = ansi.getFgAnsi(200, 200, 200);
+          const prompt = `${promptColor}${promptGlyph}${ansi.reset}`;
+          const promptPrefix = ` ${prompt} `;
+          const contPrefix = "   ";
+          const contentWidth = Math.max(1, width - 3);
+          const lines = editorPerf.options.enabled
+            ? editorPerf.measure("editor.render.base", () => originalRender(contentWidth))
+            : originalRender(contentWidth);
 
-        result.push(" " + bc("─".repeat(width - 2)));
+          if (lines.length === 0) return lines;
 
-        for (let i = bottomBorderIndex + 1; i < lines.length; i++) {
-          result.push(lines[i] || "");
-        }
+          let bottomBorderIndex = lines.length - 1;
+          for (let i = lines.length - 1; i >= 1; i--) {
+            const stripped = lines[i]?.replace(/\x1b\[[0-9;]*m/g, "") || "";
+            if (stripped.length > 0 && /^─{3,}/.test(stripped)) {
+              bottomBorderIndex = i;
+              break;
+            }
+          }
 
-        return result;
+          const result: string[] = [];
+          result.push(" " + bc("─".repeat(width - 2)));
+
+          for (let i = 1; i < bottomBorderIndex; i++) {
+            const prefix = i === 1 ? promptPrefix : contPrefix;
+            result.push(`${prefix}${lines[i] || ""}`);
+          }
+
+          if (bottomBorderIndex === 1) {
+            result.push(`${promptPrefix}${" ".repeat(contentWidth)}`);
+          }
+
+          result.push(" " + bc("─".repeat(width - 2)));
+
+          for (let i = bottomBorderIndex + 1; i < lines.length; i++) {
+            result.push(lines[i] || "");
+          }
+
+          return result;
+        };
+
+        return editorPerf.options.enabled
+          ? editorPerf.measure("editor.render.total", renderPowerlineEditor)
+          : renderPowerlineEditor();
       };
 
       return editor;
