@@ -4,6 +4,7 @@
 
 ### Changed
 - **Editor typing responsiveness** — Avoid expanding paste markers or joining full drafts in editor hot paths, debounce bash ghost completion, run git completion lookups asynchronously, and cache queue/prompt render work so typing stays smooth in large drafts and bash mode.
+- **Bash completions are opt-in** — Disable Powerline bash ghost suggestions and one-off `!command` predictions by default. Set `bashMode.completions` to `true` to re-enable them.
 - **GitHub Actions runtime** — Updated checkout and Node setup actions to their Node 24 runtime versions.
 
 ### Fixed

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { isSupportedSuperShortcut, matchesConfiguredShortcut, shortcutConflictKey } from "../shortcuts.ts";
-import { resolveShortcutConfig } from "../index.ts";
+import { parseBashModeSettings, resolveShortcutConfig } from "../index.ts";
 
 test("surviving editor shortcuts resolve without app-owned chat scrolling", () => {
   const resolved = resolveShortcutConfig({});
@@ -33,4 +33,10 @@ test("editor boundary shortcuts remain configurable", () => {
 
   assert.equal(resolved.editorStart, "ctrl+shift+u");
   assert.equal(resolved.editorEnd, "ctrl+shift+d");
+});
+
+test("bash completions are opt-in", () => {
+  assert.equal(parseBashModeSettings({}).completions, false);
+  assert.equal(parseBashModeSettings({ bashMode: { completions: true } }).completions, true);
+  assert.equal(parseBashModeSettings({ bashMode: { completions: false } }).completions, false);
 });

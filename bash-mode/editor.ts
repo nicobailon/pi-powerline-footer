@@ -21,6 +21,7 @@ interface BashModeEditorOptions {
   onInterrupt: () => void;
   onNotify: (message: string, level?: "info" | "warning" | "error") => void;
   getHistoryEntries: (prefix: string) => string[];
+  areCompletionsEnabled?: () => boolean;
   resolveGhostSuggestion: (text: string, signal: AbortSignal) => Promise<GhostSuggestion | null>;
 }
 
@@ -134,7 +135,11 @@ export class BashModeEditor extends CustomEditor {
   }
 
   refreshGhostSuggestion(): void {
-    this.scheduleGhostUpdate();
+    if (this.areCompletionsEnabled()) {
+      this.scheduleGhostUpdate();
+    } else {
+      this.clearGhostSuggestion();
+    }
   }
 
   clearGhostSuggestion(): void {
@@ -375,7 +380,12 @@ export class BashModeEditor extends CustomEditor {
   }
 
   private isShellCompletionContext(): boolean {
-    return this.optionsRef.isBashModeActive() || this.isOneOffBashCommandContext();
+    return this.areCompletionsEnabled()
+      && (this.optionsRef.isBashModeActive() || this.isOneOffBashCommandContext());
+  }
+
+  private areCompletionsEnabled(): boolean {
+    return this.optionsRef.areCompletionsEnabled?.() ?? true;
   }
 
   private isOneOffBashCommandContext(): boolean {
@@ -472,6 +482,11 @@ export class BashModeEditor extends CustomEditor {
   }
 
   private scheduleGhostUpdate(): void {
+    if (!this.areCompletionsEnabled()) {
+      this.clearGhostSuggestion();
+      return;
+    }
+
     const text = this.getText();
     const currentToken = ++this.ghostToken;
     if (this.ghostTimer) clearTimeout(this.ghostTimer);

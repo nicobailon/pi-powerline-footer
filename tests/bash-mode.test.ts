@@ -865,12 +865,42 @@ test("bash editor refreshGhostSuggestion reuses the ghost scheduling path", asyn
     let scheduled = false;
 
     getMethod(BashModeEditor.prototype, "refreshGhostSuggestion").call({
+      areCompletionsEnabled() {
+        return true;
+      },
       scheduleGhostUpdate() {
         scheduled = true;
       },
     });
 
     assert.equal(scheduled, true);
+  } finally {
+    links.cleanup();
+  }
+});
+
+test("bash editor refreshGhostSuggestion clears ghosts when completions are disabled", async () => {
+  const links = ensureEditorModuleLinks();
+
+  try {
+    const { BashModeEditor } = await import("../bash-mode/editor.ts");
+    let cleared = false;
+    let scheduled = false;
+
+    getMethod(BashModeEditor.prototype, "refreshGhostSuggestion").call({
+      areCompletionsEnabled() {
+        return false;
+      },
+      clearGhostSuggestion() {
+        cleared = true;
+      },
+      scheduleGhostUpdate() {
+        scheduled = true;
+      },
+    });
+
+    assert.equal(cleared, true);
+    assert.equal(scheduled, false);
   } finally {
     links.cleanup();
   }

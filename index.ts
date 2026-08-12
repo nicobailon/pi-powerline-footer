@@ -119,6 +119,7 @@ const DEFAULT_SHORTCUTS: PowerlineShortcuts = {
 };
 const DEFAULT_BASH_MODE_SETTINGS = {
   toggleShortcut: "ctrl+shift+b",
+  completions: false,
   transcriptMaxLines: 2000,
   transcriptMaxBytes: 512 * 1024,
 } as const satisfies BashModeSettings;
@@ -823,6 +824,9 @@ export function parseBashModeSettings(settings: Record<string, unknown>, powerli
       `[powerline-footer] Bash mode shortcut conflict: "${configuredToggleShortcut}" replaced with "${toggleShortcut ?? "disabled"}"`,
     );
   }
+  const completions = typeof raw.completions === "boolean"
+    ? raw.completions
+    : DEFAULT_BASH_MODE_SETTINGS.completions;
   const transcriptMaxLines = typeof raw.transcriptMaxLines === "number" && Number.isFinite(raw.transcriptMaxLines)
     ? Math.max(100, Math.floor(raw.transcriptMaxLines))
     : DEFAULT_BASH_MODE_SETTINGS.transcriptMaxLines;
@@ -832,6 +836,7 @@ export function parseBashModeSettings(settings: Record<string, unknown>, powerli
 
   return {
     toggleShortcut,
+    completions,
     transcriptMaxLines,
     transcriptMaxBytes,
   };
@@ -2749,6 +2754,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         },
         onNotify: (message, level = "info") => ctx.ui.notify(message, level),
         getHistoryEntries: (prefix) => getShellHistoryEntries(prefix),
+        areCompletionsEnabled: () => bashModeSettings.completions,
         resolveGhostSuggestion: async (text, signal) => {
           const oneOffBash = getOneOffBashCommandContext(text);
           if (oneOffBash) {
@@ -2782,6 +2788,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       };
 
       const attachAutocompleteProvider = (): boolean => {
+        if (!bashModeSettings.completions) return false;
         if (editor.hasWrappedProvider()) return true;
         const defaultProvider = getInstalledAutocompleteProvider();
         if (!defaultProvider) return false;
