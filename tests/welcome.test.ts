@@ -173,6 +173,34 @@ test("welcome discovery respects PI_CODING_AGENT_DIR for agent-global files", ()
   });
 });
 
+test("welcome input dismissal is synchronous", () => {
+  const dismissForInputStart = indexSource.indexOf("function dismissWelcomeForInput");
+  const directDismissStart = indexSource.indexOf("dismissWelcome(ctx);", dismissForInputStart);
+  const inputHandlerStart = indexSource.indexOf("const handlePowerlineEditorInput = (data: string) => {");
+  const inputDismissStart = indexSource.indexOf("dismissWelcomeForInput(ctx);", inputHandlerStart);
+  const printableStart = indexSource.indexOf("if (isPrintableInput(data))", inputHandlerStart);
+
+  assert.ok(dismissForInputStart >= 0);
+  assert.ok(directDismissStart > dismissForInputStart);
+  assert.ok(inputDismissStart > inputHandlerStart);
+  assert.ok(printableStart > inputDismissStart);
+  assert.equal(indexSource.includes("welcomeDismissScheduler"), false);
+});
+
+test("welcome overlay forwards the dismissing keypress to the editor", () => {
+  const overlayStart = indexSource.indexOf("function setupWelcomeOverlay");
+  const handleInputStart = indexSource.indexOf("handleInput: (data: string) => {", overlayStart);
+  const wantsKeyReleaseStart = indexSource.indexOf("wantsKeyRelease: true,", overlayStart);
+  const dismissStart = indexSource.indexOf("dismiss();", handleInputStart);
+  const forwardStart = indexSource.indexOf("if (!isKeyRelease(data)) currentEditor?.handleInput(data);", handleInputStart);
+
+  assert.ok(overlayStart >= 0);
+  assert.ok(wantsKeyReleaseStart > overlayStart);
+  assert.ok(handleInputStart > wantsKeyReleaseStart);
+  assert.ok(dismissStart > handleInputStart);
+  assert.ok(forwardStart > dismissStart);
+});
+
 test("getRecentSessions reads custom agent sessions and existing legacy sessions", () => {
   withTemporaryHome((home) => {
     const root = mkdtempSync(join(tmpdir(), "powerline-welcome-sessions-"));

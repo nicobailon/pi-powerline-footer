@@ -32,7 +32,6 @@ import { getGitStatus, invalidateGitStatus, invalidateGitBranch, subscribeGitUpd
 import { SessionBranchCache, SessionTokenStatsCache } from "./token-stats.ts";
 import { ansi, getFgAnsiCode } from "./colors.ts";
 import { WelcomeComponent, WelcomeHeader, discoverLoadedCounts, getRecentSessions } from "./welcome.ts";
-import { createWelcomeDismissScheduler } from "./welcome-dismiss.ts";
 import { createRenderScheduler } from "./render-scheduler.ts";
 import { getEditorAutocompleteProvider, passAutocompleteProviderThroughPreviousEditor } from "./editor-composition.ts";
 import { EditorPerfProfiler, readEditorPerfOptions } from "./editor-performance.ts";
@@ -1201,12 +1200,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   const getShellPath = () => process.env.SHELL || "/bin/sh";
   const getShellCwd = () => shellSession?.state.cwd ?? currentCtx?.cwd ?? process.cwd();
-  const welcomeDismissScheduler = createWelcomeDismissScheduler({
-    dismiss: (ctx: unknown) => dismissWelcome(ctx),
-    getGeneration: () => sessionGeneration,
-    isEnabled: () => enabled,
-  });
-
   const statusRenderScheduler = createRenderScheduler(() => {
     const msSinceInput = Date.now() - lastEditorInputAt;
     if (layoutDirty && !forceNextLayoutRecompute && msSinceInput < EDITOR_STATUS_DEFER_MS) {
@@ -1702,7 +1695,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     dismissWelcomeOverlay = null;
     welcomeHeaderActive = false;
     welcomeOverlayShouldDismiss = false;
-    welcomeDismissScheduler.cancel();
     statusRenderScheduler.cancel();
     restoreFooterStatusRepaintHook?.();
     restoreFooterStatusRepaintHook = null;
@@ -1911,8 +1903,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   }
 
   function dismissWelcome(ctx: any) {
-    welcomeDismissScheduler.cancel();
-
     if (dismissWelcomeOverlay) {
       dismissWelcomeOverlay();
       dismissWelcomeOverlay = null;
@@ -1926,9 +1916,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     }
   }
 
-  function scheduleDismissWelcome(ctx: any) {
+  function dismissWelcomeForInput(ctx: any) {
     if (!dismissWelcomeOverlay && welcomeOverlayShouldDismiss && !welcomeHeaderActive) return;
-    welcomeDismissScheduler.schedule(ctx);
+    dismissWelcome(ctx);
   }
 
   function addStashHistoryEntry(text: string): void {
@@ -2335,7 +2325,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           dismissWelcomeOverlay = null;
           welcomeHeaderActive = false;
           welcomeOverlayShouldDismiss = false;
-          welcomeDismissScheduler.cancel();
           getPromptHistoryState().savedPromptHistory = [];
           stashedEditorText = null;
                 ctx.ui.setStatus("stash", undefined);
@@ -2896,7 +2885,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         }
         if (isStashShortcutInput(data)) {
           stashOrRestoreEditorText(ctx);
-          scheduleDismissWelcome(ctx);
+          dismissWelcomeForInput(ctx);
           tuiRef?.requestRender();
           return { consume: true };
         }
@@ -2907,7 +2896,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         }
 
         runPowerlineShortcut(ctx, powerlineShortcutAction);
-        scheduleDismissWelcome(ctx);
+        dismissWelcomeForInput(ctx);
         tuiRef?.requestRender();
         return { consume: true };
       })
@@ -3006,9 +2995,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         : baseHandleInput;
       const handlePowerlineEditorInput = (data: string) => {
         lastEditorInputAt = Date.now();
+        dismissWelcomeForInput(ctx);
 
         if (isPrintableInput(data)) {
-          scheduleDismissWelcome(ctx);
           originalHandleInput(data);
           return;
         }
@@ -3033,7 +3022,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
                 ctx.ui.notify(error.message, "error");
               },
             });
-            scheduleDismissWelcome(ctx);
             return;
           }
         }
@@ -3048,20 +3036,17 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           editor.addToHistory?.(text);
           editor.setText("");
           capturePostCompactPrompt(ctx, text);
-          scheduleDismissWelcome(ctx);
           return;
         }
 
         if (isStashShortcutInput(data)) {
           stashOrRestoreEditorText(ctx);
-          scheduleDismissWelcome(ctx);
           return;
         }
 
         const powerlineShortcutAction = getPowerlineShortcutAction(data);
         if (powerlineShortcutAction) {
           runPowerlineShortcut(ctx, powerlineShortcutAction);
-          scheduleDismissWelcome(ctx);
           return;
         }
 
@@ -3076,7 +3061,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         if (bashModeSettings.completions) {
           attachAutocompleteProvider();
         }
-        scheduleDismissWelcome(ctx);
         originalHandleInput(data);
       };
       editor.handleInput = editorPerf.options.enabled
@@ -3286,9 +3270,13 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
           return {
             focused: false,
+            wantsKeyRelease: true,
             invalidate: () => welcome.invalidate(),
             render: (width: number) => welcome.render(width),
-            handleInput: () => dismiss(),
+            handleInput: (data: string) => {
+              dismiss();
+              if (!isKeyRelease(data)) currentEditor?.handleInput(data);
+            },
             dispose: () => {
               dismissed = true;
               if (interval) clearInterval(interval);
