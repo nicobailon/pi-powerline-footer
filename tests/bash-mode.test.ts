@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { appendProjectHistory, matchHistoryEntries, readGlobalShellHistory } from "../bash-mode/history.ts";
 import { BashTranscriptStore } from "../bash-mode/transcript.ts";
 import {
@@ -29,6 +31,13 @@ function resolveManagedShellPath(): string | null {
     if (existsSync(shellPath)) return shellPath;
   }
   return null;
+}
+
+// pi-coding-agent ships an npm shrinkwrap, so npm may install its own pi-tui copy.
+// Resolve pi-tui through pi-coding-agent so module-level mutations affect the same instance its editor uses.
+function resolvePiTuiModuleUrl(subpath: string): string {
+  const requireFromCodingAgent = createRequire(join(process.cwd(), "node_modules", "@earendil-works", "pi-coding-agent", "package.json"));
+  return pathToFileURL(requireFromCodingAgent.resolve(`@earendil-works/pi-tui/${subpath}`)).href;
 }
 
 function ensureEditorModuleLinks(): { cleanup: () => void } {
@@ -1356,7 +1365,7 @@ test("bash editor fast path preserves plain custom keybindings", async () => {
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
     const { KeybindingsManager } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js", import.meta.url).href);
-    const { getKeybindings, setKeybindings } = await import(new URL("../node_modules/@earendil-works/pi-tui/dist/index.js", import.meta.url).href);
+    const { getKeybindings, setKeybindings } = await import(resolvePiTuiModuleUrl("dist/index.js"));
     const previousKeybindings = getKeybindings();
     const keybindings = new KeybindingsManager({ "tui.editor.cursorLeft": "a" });
 
@@ -1682,8 +1691,9 @@ test("bash editor runs copied Pi app action handlers for alt-enter", async () =>
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
     const { KeybindingsManager } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js", import.meta.url).href);
-    const { setKittyProtocolActive } = await import(new URL("../node_modules/@earendil-works/pi-tui/dist/keys.js", import.meta.url).href);
-    const keybindings = KeybindingsManager.create();
+    const { setKittyProtocolActive } = await import(resolvePiTuiModuleUrl("dist/keys.js"));
+    // Avoid loading user-level keybindings.json in this test.
+    const keybindings = new KeybindingsManager();
     const editor = new BashModeEditor(
       { requestRender() {}, terminal: { columns: 80, rows: 24 } },
       {},
@@ -1728,7 +1738,7 @@ test("bash editor command-z undoes deleted text for supported encodings only", a
   try {
     const { BashModeEditor } = await import("../bash-mode/editor.ts");
     const { KeybindingsManager } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js", import.meta.url).href);
-    const keybindings = KeybindingsManager.create();
+    const keybindings = new KeybindingsManager();
     const createEditor = (options: {
       keybindings?: typeof keybindings;
       isBashModeActive?: () => boolean;

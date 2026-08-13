@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- **Pi 0.84 compatibility** — Widened Pi package peer dependency ranges to `>=0.81.0 <0.85.0` and refreshed dev dependencies against `@earendil-works/*` 0.84.1, so `pi-powerline-footer` can install alongside extensions that require Pi 0.84.x packages.
+
 ## [0.14.1] - 2026-08-13
 
 ### Fixed
