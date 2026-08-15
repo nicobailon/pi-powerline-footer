@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Post-compaction queue delivery** — Mark queued prompts sent only after Pi starts the delivered message, and requeue them if startup never happens.
+
 ## [0.14.1] - 2026-08-13
 
 ### Fixed

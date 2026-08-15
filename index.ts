@@ -1182,6 +1182,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let powerlineCompacting = false;
   let deliverAfterRetrySettles = false;
   let queueDeliveryTimer: ReturnType<typeof setTimeout> | null = null;
+  const pendingQueueDeliveries = new Map<string, { text: string; timer: ReturnType<typeof setTimeout> }>();
 
   // Cache for the top and secondary powerline widgets.
   let lastLayoutWidth = 0;
@@ -1478,6 +1479,54 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     return item.intent === "steer" ? "steer" : "followUp";
   }
 
+  function clearPendingQueueDelivery(id: string): void {
+    const pending = pendingQueueDeliveries.get(id);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    pendingQueueDeliveries.delete(id);
+  }
+
+  function trackPendingQueueDelivery(item: PowerlineQueueItem, text: string): void {
+    clearPendingQueueDelivery(item.id);
+    const timer = setTimeout(() => {
+      pendingQueueDeliveries.delete(item.id);
+      const current = queueStore.get(item.id);
+      if (current?.status === "delivering") {
+        queueStore.update(item.id, { status: "queued", error: "Queued message did not start" });
+        requestQueueRender();
+      }
+    }, 60_000);
+    pendingQueueDeliveries.set(item.id, { text, timer });
+  }
+
+  function requeuePendingQueueDeliveries(error: string): void {
+    for (const id of [...pendingQueueDeliveries.keys()]) {
+      clearPendingQueueDelivery(id);
+      const current = queueStore.get(id);
+      if (current?.status === "delivering") {
+        queueStore.update(id, { status: "queued", error });
+      }
+    }
+  }
+
+  function finishPendingQueueDelivery(text: string, ctx: any): void {
+    const normalized = text.replace(/\s+/g, " ").trim();
+    for (const [id, pending] of pendingQueueDeliveries) {
+      if (pending.text.replace(/\s+/g, " ").trim() !== normalized) continue;
+      clearPendingQueueDelivery(id);
+      const updated = queueStore.update(id, { status: "sent", error: undefined });
+      if (!updated) return;
+      try {
+        ctx.ui.notify(`Sent queued item ${id}`, "info");
+      } catch (error) {
+        if (!isStaleExtensionContextError(error)) throw error;
+        currentCtx = null;
+      }
+      requestQueueRender();
+      return;
+    }
+  }
+
   function deliverQueueItem(ctx: any, item: PowerlineQueueItem): boolean {
     if (powerlineCompacting) {
       queueStore.update(item.id, { status: "queued" });
@@ -1488,28 +1537,20 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     queueStore.update(item.id, { status: "delivering", error: undefined });
     requestQueueRender();
 
-    let sent = false;
     try {
       const deliverAs = deliveryModeForItem(ctx, item);
       const deliveryText = formatQueueDeliveryText(item);
+      trackPendingQueueDelivery(item, deliveryText);
       if (deliverAs) {
         pi.sendUserMessage(deliveryText, { deliverAs });
       } else {
         pi.sendUserMessage(deliveryText);
       }
-      sent = true;
-      queueStore.update(item.id, { status: "sent", error: undefined });
-      try {
-        ctx.ui.notify(`Sent queued item ${item.id}`, "info");
-      } catch (error) {
-        if (!isStaleExtensionContextError(error)) throw error;
-        currentCtx = null;
-      }
-      requestQueueRender();
       return true;
     } catch (error) {
+      clearPendingQueueDelivery(item.id);
       if (isStaleExtensionContextError(error)) {
-        if (!sent) queueStore.update(item.id, { status: "queued", error: undefined });
+        queueStore.update(item.id, { status: "queued", error: undefined });
         currentCtx = null;
         throw error;
       }
@@ -1706,6 +1747,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       clearTimeout(queueDeliveryTimer);
       queueDeliveryTimer = null;
     }
+    requeuePendingQueueDeliveries("Session ended before queued message started");
     powerlineCompacting = false;
     deliverAfterRetrySettles = false;
     bashModeActive = false;
@@ -1782,6 +1824,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   // Generate themed working message before agent starts (has access to user's prompt)
   pi.on("before_agent_start", async (event, ctx) => {
+    finishPendingQueueDelivery(event.prompt, ctx);
     lastUserPrompt = event.prompt;
     if (ctx.hasUI) {
       onVibeBeforeAgentStart(event.prompt, ctx.ui.setWorkingMessage);
@@ -1807,6 +1850,14 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       currentCtx = ctx;
       layoutDirty = true;
       statusRenderScheduler.schedule(CONTEXT_STATUS_RENDER_MS);
+    }
+  });
+
+  pi.on("message_start", async (event, ctx) => {
+    currentCtx = ctx;
+    const message = event.message;
+    if (isRecord(message) && message.role === "user") {
+      finishPendingQueueDelivery(getPromptHistoryText(message.content), ctx);
     }
   });
 

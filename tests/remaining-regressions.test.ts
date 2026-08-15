@@ -151,7 +151,11 @@ test("post-compaction queue delivery does not read ctx.cwd from the delayed call
   assert.match(source, /const queueContext = getQueueContext\(ctx\);\r?\n\s+const scheduledGeneration = sessionGeneration;\r?\n\s+queueDeliveryTimer = setTimeout/);
   assert.match(source, /if \(scheduledGeneration !== sessionGeneration\) return;\r?\n\s+try \{\r?\n\s+const item = queueStore\.queuedDeliveryItems\(queueContext, "post-compact"\)\[0\];/);
   assert.match(source, /catch \(error\) \{\r?\n\s+if \(!isStaleExtensionContextError\(error\)\) throw error;\r?\n\s+currentCtx = null;/);
-  assert.match(source, /if \(isStaleExtensionContextError\(error\)\) \{\r?\n\s+if \(!sent\) queueStore\.update\(item\.id, \{ status: "queued", error: undefined \}\);/);
+  assert.match(source, /trackPendingQueueDelivery\(item, deliveryText\);\r?\n\s+if \(deliverAs\) \{/);
+  assert.match(source, /function requeuePendingQueueDeliveries\(error: string\): void \{/);
+  assert.match(source, /requeuePendingQueueDeliveries\("Session ended before queued message started"\);/);
+  assert.match(source, /finishPendingQueueDelivery\(event\.prompt, ctx\);/);
+  assert.match(source, /finishPendingQueueDelivery\(getPromptHistoryText\(message\.content\), ctx\);/);
 });
 
 test("editor-adjacent widgets cache queue and last-prompt work", () => {
