@@ -4,7 +4,8 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync }
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { parseVibeGenerateArgs } from "../working-vibes.ts";
+import { initVibeManager, onVibeAgentEnd, onVibeAgentStart, onVibeBeforeAgentStart, parseVibeGenerateArgs, setVibeMode, setVibeTheme, setVibeWorkingMessageColor, setVibeWorkingMessageTheme } from "../working-vibes.ts";
+import { rainbow } from "../theme.ts";
 
 const FAUX_PROVIDER_PATH = new URL("../node_modules/@earendil-works/pi-ai/dist/providers/faux.js", import.meta.url).href;
 
@@ -60,6 +61,53 @@ test("parseVibeGenerateArgs supports multi-word themes", () => {
   assert.deepEqual(parseVibeGenerateArgs(["star", "trek", "abc"]), { theme: "star trek abc", count: 100 });
   assert.deepEqual(parseVibeGenerateArgs(["lord", "of", "rings", "999"]), { theme: "lord of rings", count: 500 });
   assert.equal(parseVibeGenerateArgs([]), null);
+});
+
+
+test("working-vibe color styles semantic, hex, and rainbow messages", () => {
+  const home = mkdtempSync(join(tmpdir(), "powerline-vibes-home-"));
+  const previousHome = process.env.HOME;
+  process.env.HOME = home;
+
+  try {
+    initVibeManager({ modelRegistry: { find() { return undefined; } } } as any);
+    setVibeWorkingMessageTheme({
+      fg(color, text) {
+        return `<${color}>${text}</${color}>`;
+      },
+    });
+    setVibeTheme("star trek");
+    setVibeMode("file");
+    onVibeAgentStart();
+
+    const semantic: Array<string | undefined> = [];
+    setVibeWorkingMessageColor("warning");
+    onVibeBeforeAgentStart("fix a bug", (message) => semantic.push(message));
+    assert.equal(semantic[0], "<warning>Channeling star trek...</warning>");
+
+    const hex: Array<string | undefined> = [];
+    setVibeWorkingMessageColor("#89d281");
+    onVibeBeforeAgentStart("fix a bug", (message) => hex.push(message));
+    assert.equal(hex[0], "\x1b[38;2;137;210;129mChanneling star trek...\x1b[0m");
+
+    const rainbowUpdates: Array<string | undefined> = [];
+    setVibeWorkingMessageColor("rainbow");
+    onVibeBeforeAgentStart("fix a bug", (message) => rainbowUpdates.push(message));
+    assert.equal(rainbowUpdates[0], rainbow("Channeling star trek..."));
+
+    const defaultUpdates: Array<string | undefined> = [];
+    setVibeWorkingMessageColor(undefined);
+    onVibeBeforeAgentStart("fix a bug", (message) => defaultUpdates.push(message));
+    assert.equal(defaultUpdates[0], "Channeling star trek...");
+    onVibeAgentEnd(() => {});
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousHome;
+    }
+    rmSync(home, { recursive: true, force: true });
+  }
 });
 
 test("generateVibesBatch includes a system prompt so faux providers can return text", async () => {

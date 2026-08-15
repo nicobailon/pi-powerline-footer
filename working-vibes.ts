@@ -7,6 +7,8 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { getAgentPath } from "./paths.ts";
+import { applyColor, rainbow } from "./theme.ts";
+import type { ColorValue, ThemeLike } from "./types.ts";
 
 type VibeMode = "generate" | "file";
 
@@ -82,6 +84,8 @@ let extensionCtx: ExtensionContext | null = null;
 let currentGeneration: AbortController | null = null;
 let isStreaming = false;
 let lastVibeTime = 0;
+let workingMessageTheme: ThemeLike | null = null;
+let workingMessageColor: ColorValue | "rainbow" | undefined;
 
 // File-based mode state
 let vibeCache: string[] = [];        // Cached vibes from file
@@ -180,6 +184,7 @@ function loadConfig(): VibeConfig {
     typeof settings.workingVibeMaxLength === "number" && Number.isFinite(settings.workingVibeMaxLength)
       ? Math.max(4, Math.floor(settings.workingVibeMaxLength))
       : 65;
+
 
   return {
     theme,
@@ -438,8 +443,19 @@ function trackRecentVibe(vibe: string): void {
   recentVibes = [vibe, ...recentVibes.filter(v => v !== vibe)].slice(0, MAX_RECENT_VIBES);
 }
 
+function setStyledWorkingMessage(setWorkingMessage: (msg?: string) => void, message?: string): void {
+  if (!message || !workingMessageColor || !workingMessageTheme) {
+    setWorkingMessage(message);
+    return;
+  }
+
+  setWorkingMessage(workingMessageColor === "rainbow"
+    ? rainbow(message)
+    : applyColor(workingMessageTheme, workingMessageColor, message));
+}
+
 function updateVibeFromFile(setWorkingMessage: (msg?: string) => void): void {
-  setWorkingMessage(getNextVibeFromFile());
+  setStyledWorkingMessage(setWorkingMessage, getNextVibeFromFile());
 }
 
 async function generateAndUpdate(
@@ -475,7 +491,7 @@ async function generateAndUpdate(
     // Only update if still streaming and THIS generation wasn't aborted
     if (isStreaming && !controller.signal.aborted) {
       trackRecentVibe(vibe);
-      setWorkingMessage(vibe);
+      setStyledWorkingMessage(setWorkingMessage, vibe);
     }
   } catch (error) {
     // AbortError is expected on timeout/cancel - don't log as error
@@ -491,6 +507,14 @@ async function generateAndUpdate(
 // ═══════════════════════════════════════════════════════════════════════════
 // Exported Functions (called from index.ts)
 // ═══════════════════════════════════════════════════════════════════════════
+
+export function setVibeWorkingMessageTheme(theme: ThemeLike): void {
+  workingMessageTheme = theme;
+}
+
+export function setVibeWorkingMessageColor(color: ColorValue | "rainbow" | undefined): void {
+  workingMessageColor = color;
+}
 
 export function initVibeManager(ctx: ExtensionContext): void {
   extensionCtx = ctx;
@@ -525,7 +549,7 @@ export function onVibeBeforeAgentStart(
   
   // Queue themed placeholder BEFORE agent_start creates the loader
   // This sets pendingWorkingMessage which is applied when loader is created
-  setWorkingMessage(`Channeling ${config.theme}...`);
+  setStyledWorkingMessage(setWorkingMessage, `Channeling ${config.theme}...`);
   
   // Mark vibe generation time for rate limiting
   lastVibeTime = Date.now();

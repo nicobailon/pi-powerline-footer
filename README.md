@@ -351,6 +351,7 @@ In the agent settings file:
 ```json
 {
   "workingVibe": "star trek",                              // Theme phrase
+  "powerline": { "workingVibes": { "color": "rainbow" } }, // Optional: Pi theme color, hex, or "rainbow"
   "workingVibeMode": "generate",                           // "generate" (on-demand) or "file" (pre-generated)
   "workingVibeModel": "openai-codex/gpt-5.4-mini",         // Optional: model to use (default)
   "workingVibeFallback": "Working",                        // Optional: fallback message
@@ -359,6 +360,8 @@ In the agent settings file:
   "workingVibeMaxLength": 65                         // Optional: max message length (default 65)
 }
 ```
+
+Set `powerline.workingVibes.color` to a Pi theme color such as `accent` or `warning`, a hex color such as `#89d281`, or `rainbow` to style each working-vibe message. Omit it to keep Pi's default muted message color.
 
 ### Modes
 

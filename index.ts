@@ -62,6 +62,8 @@ import {
   getVibeFileCount,
   generateVibesBatch,
   parseVibeGenerateArgs,
+  setVibeWorkingMessageTheme,
+  setVibeWorkingMessageColor,
 } from "./working-vibes.ts";
 import { PowerlineQueueStore, currentQueueContext, formatQueueDeliveryText, parseCompactQueuedPrompt } from "./queue/store.ts";
 import type { PowerlineQueueItem, QueueContext, QueueIntent, QueueSummary, QueueTarget } from "./queue/types.ts";
@@ -83,6 +85,7 @@ let config: PowerlineConfig = {
   invalidPlacement: null,
   welcome: true,
   stashSharpSShortcut: false,
+  workingVibes: {},
 };
 
 const CUSTOM_COMPACTION_STATUS_KEY = "compact-policy";
@@ -1714,6 +1717,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
     // Initialize vibe manager (needs modelRegistry from ctx)
     initVibeManager(ctx);
+    setVibeWorkingMessageColor(config.workingVibes.color);
 
     if (enabled && ctx.hasUI) {
       setupCustomEditor(ctx);
@@ -2631,6 +2635,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   });
 
   function buildSegmentContext(ctx: any, theme: Theme): SegmentContext {
+    setVibeWorkingMessageTheme(theme);
     const presetDef = getPreset(config.preset);
     const colors: ColorScheme = presetDef.colors ?? getDefaultColors();
 

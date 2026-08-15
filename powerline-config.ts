@@ -16,6 +16,7 @@ export interface PowerlineConfig {
   invalidPlacement: string | null;
   welcome: boolean;
   stashSharpSShortcut: boolean;
+  workingVibes: { color?: ColorValue | "rainbow" };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -305,6 +306,7 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     invalidPlacement: null,
     welcome: true,
     stashSharpSShortcut: false,
+    workingVibes: {},
   };
 
   const directPreset = normalizePreset(value, presets);
@@ -330,6 +332,9 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     invalidPlacement,
     welcome: value.welcome !== false,
     stashSharpSShortcut: value.stashSharpSShortcut === true,
+    workingVibes: isRecord(value.workingVibes) && typeof value.workingVibes.color === "string" && value.workingVibes.color.trim()
+      ? { color: value.workingVibes.color.trim() as ColorValue | "rainbow" }
+      : {},
   };
 }
 
