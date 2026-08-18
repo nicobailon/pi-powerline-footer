@@ -158,6 +158,12 @@ test("post-compaction queue delivery does not read ctx.cwd from the delayed call
   assert.match(source, /finishPendingQueueDelivery\(getPromptHistoryText\(message\.content\), ctx\);/);
 });
 
+test("agent settlement does not fail a compaction that has not emitted session_compact", () => {
+  assert.doesNotMatch(source, /pi\.on\("agent_settled", async \(_event, ctx\) => \{\r?\n\s+if \(powerlineCompacting\)/);
+  assert.match(source, /pi\.on\("session_compact", async \(event, ctx\) => \{[\s\S]*?schedulePostCompactionDelivery\(ctx\);/);
+  assert.match(source, /onError: \(error: Error\) => \{\r?\n\s+finishFailedCompaction\(ctx, error\.message\);/);
+});
+
 test("editor-adjacent widgets cache queue and last-prompt work", () => {
   assert.match(source, /const QUEUE_SUMMARY_CACHE_TTL_MS = 250;/);
   assert.match(source, /queueSummaryCache = null;\r?\n\s+requestImmediateStatusRender/);

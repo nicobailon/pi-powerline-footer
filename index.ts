@@ -1911,10 +1911,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   });
 
   pi.on("agent_settled", async (_event, ctx) => {
-    if (powerlineCompacting) {
-      finishFailedCompaction(ctx, "Compaction did not complete");
-      return;
-    }
     if (deliverAfterRetrySettles) {
       deliverAfterRetrySettles = false;
       schedulePostCompactionDelivery(ctx);
