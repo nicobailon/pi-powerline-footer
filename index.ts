@@ -98,6 +98,7 @@ export interface PowerlineShortcuts {
   copyEditor: ShortcutBinding;
   cutEditor: ShortcutBinding;
   queueOpen: ShortcutBinding;
+  reply: ShortcutBinding;
   editorStart: ShortcutBinding;
   editorEnd: ShortcutBinding;
 }
@@ -108,6 +109,7 @@ type PowerlineShortcutAction =
   | { kind: "copyEditor" }
   | { kind: "cutEditor" }
   | { kind: "queueOpen" }
+  | { kind: "reply" }
   | { kind: "bashMode" };
 const STASH_HISTORY_LIMIT = 12;
 const PROJECT_PROMPT_HISTORY_LIMIT = 50;
@@ -117,6 +119,7 @@ const DEFAULT_SHORTCUTS: PowerlineShortcuts = {
   copyEditor: "ctrl+alt+c",
   cutEditor: "ctrl+alt+x",
   queueOpen: "ctrl+alt+q",
+  reply: null,
   editorStart: "super+shift+up",
   editorEnd: "super+shift+down",
 };
@@ -126,7 +129,7 @@ const DEFAULT_BASH_MODE_SETTINGS = {
   transcriptMaxLines: 2000,
   transcriptMaxBytes: 512 * 1024,
 } as const satisfies BashModeSettings;
-const SHORTCUT_KEYS: PowerlineShortcutKey[] = ["stashHistory", "copyEditor", "cutEditor", "queueOpen", "editorStart", "editorEnd"];
+const SHORTCUT_KEYS: PowerlineShortcutKey[] = ["stashHistory", "copyEditor", "cutEditor", "queueOpen", "reply", "editorStart", "editorEnd"];
 const APP_RESERVED_SHORTCUTS = [
   "escape",
   "ctrl+c",
@@ -724,15 +727,15 @@ function findShortcutReplacement(key: PowerlineShortcutKey, used: Set<string>): 
   if (preferred && !used.has(shortcutUsageKey(preferred))) {
     return preferred;
   }
-
-  for (const shortcutKey of SHORTCUT_KEYS) {
-    const candidate = DEFAULT_SHORTCUTS[shortcutKey];
-    if (candidate && !used.has(shortcutUsageKey(candidate))) {
-      return candidate;
-    }
-  }
-
   return null;
+}
+
+function shortcutBelongsToOtherDefault(key: PowerlineShortcutKey, shortcut: string): boolean {
+  const usageKey = shortcutUsageKey(shortcut);
+  return SHORTCUT_KEYS.some((shortcutKey) => {
+    const defaultShortcut = DEFAULT_SHORTCUTS[shortcutKey];
+    return shortcutKey !== key && defaultShortcut !== null && shortcutUsageKey(defaultShortcut) === usageKey;
+  });
 }
 
 function bashToggleShortcutReservation(settings: Record<string, unknown>): ShortcutBinding {
@@ -776,7 +779,7 @@ export function resolveShortcutConfig(settings: Record<string, unknown>): Powerl
 
     const configuredUsageKey = shortcutUsageKey(configured);
 
-    if (!used.has(configuredUsageKey)) {
+    if (!used.has(configuredUsageKey) && !shortcutBelongsToOtherDefault(key, configured)) {
       used.add(configuredUsageKey);
       continue;
     }
@@ -784,6 +787,7 @@ export function resolveShortcutConfig(settings: Record<string, unknown>): Powerl
     const replacement = findShortcutReplacement(key, used);
     if (!replacement) {
       console.debug(`[powerline-footer] Shortcut conflict for ${key}: "${configured}" is already in use`);
+      resolved[key] = null;
       continue;
     }
 
@@ -2124,6 +2128,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     if (matchesConfiguredShortcut(data, resolvedShortcuts.queueOpen)) {
       return { kind: "queueOpen" };
     }
+    if (resolvedShortcuts.reply && matchesConfiguredShortcut(data, resolvedShortcuts.reply)) {
+      return { kind: "reply" };
+    }
     if (matchesConfiguredShortcut(data, bashModeSettings.toggleShortcut)) {
       return { kind: "bashMode" };
     }
@@ -2151,6 +2158,11 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
     if (action.kind === "queueOpen") {
       void openQueuePicker(ctx);
+      return;
+    }
+
+    if (action.kind === "reply") {
+      void import("./quote-reply.ts").then(({ reply }) => reply("", ctx));
       return;
     }
 
@@ -2259,6 +2271,14 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   });
 
   registerCdCommand(pi, () => currentCtx?.cwd ?? process.cwd());
+
+  pi.registerCommand("reply", {
+    description: "Quote a previous user or assistant message into the editor",
+    handler: async (args, ctx) => {
+      const { reply } = await import("./quote-reply.ts");
+      await reply(args, ctx);
+    },
+  });
 
   pi.registerCommand("queue", {
     description: "Manage Powerline queued prompts and project aliases",

@@ -9,6 +9,7 @@ test("surviving editor shortcuts resolve without app-owned chat scrolling", () =
   assert.equal(resolved.stashHistory, "ctrl+alt+h");
   assert.equal(resolved.copyEditor, "ctrl+alt+c");
   assert.equal(resolved.cutEditor, "ctrl+alt+x");
+  assert.equal(resolved.reply, null);
   assert.equal(resolved.editorStart, "super+shift+up");
   assert.equal(resolved.editorEnd, "super+shift+down");
   assert.equal(Object.keys(resolved).some((key) => key.startsWith("scroll")), false);
@@ -34,6 +35,32 @@ test("editor boundary shortcuts remain configurable", () => {
 
   assert.equal(resolved.editorStart, "ctrl+shift+u");
   assert.equal(resolved.editorEnd, "ctrl+shift+d");
+});
+
+test("reply shortcut is opt-in and configurable", () => {
+  assert.equal(resolveShortcutConfig({ powerlineShortcuts: { reply: null } }).reply, null);
+  assert.equal(resolveShortcutConfig({ powerlineShortcuts: { reply: "ctrl+shift+r" } }).reply, "ctrl+shift+r");
+});
+
+test("conflicting reply shortcut disables reply instead of borrowing another action", () => {
+  const reserved = resolveShortcutConfig({ powerlineShortcuts: { reply: "ctrl+r" } });
+  assert.equal(reserved.reply, null);
+  assert.equal(reserved.editorStart, "super+shift+up");
+  assert.equal(reserved.editorEnd, "super+shift+down");
+
+  const duplicate = resolveShortcutConfig({ powerlineShortcuts: { reply: "ctrl+alt+h" } });
+  assert.equal(duplicate.reply, null);
+  assert.equal(duplicate.stashHistory, "ctrl+alt+h");
+
+  const editorStartDefault = resolveShortcutConfig({ powerlineShortcuts: { reply: "super+shift+up" } });
+  assert.equal(editorStartDefault.reply, null);
+  assert.equal(editorStartDefault.editorStart, "super+shift+up");
+  assert.equal(editorStartDefault.editorEnd, "super+shift+down");
+
+  const editorEndDefault = resolveShortcutConfig({ powerlineShortcuts: { reply: "super+shift+down" } });
+  assert.equal(editorEndDefault.reply, null);
+  assert.equal(editorEndDefault.editorStart, "super+shift+up");
+  assert.equal(editorEndDefault.editorEnd, "super+shift+down");
 });
 
 test("bash completions are opt-in", () => {

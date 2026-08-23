@@ -301,6 +301,24 @@ Selecting a stashed or project prompt-history entry inserts it into the editor. 
 - `cmd+shift+up` — move the editor cursor to the start of the first line
 - `cmd+shift+down` — move the editor cursor to the end of the last line
 
+### Quoting previous messages
+
+Run `/reply` to choose a previous user or assistant message and insert it as a Markdown quote while keeping the current draft. You can also pass a unique entry id prefix, for example `/reply abc123`.
+
+The shortcut is opt-in and disabled by default. Enable it in the agent settings file with `powerlineShortcuts.reply`, for example:
+
+```json
+{
+  "powerlineShortcuts": {
+    "reply": "ctrl+shift+r"
+  }
+}
+```
+
+Set `reply` to `null` to disable it. Quotes are loaded only when the command or configured shortcut is used.
+
+If you already installed the standalone `pi-quote-reply` extension, remove or disable it before using Powerline's integrated `/reply`. Pi suffixes duplicate extension commands as `/reply:1` and `/reply:2`, so keeping both installed prevents plain `/reply` from dispatching reliably.
+
 Copy/cut actions do not modify stash state or stash history. Dragging files, folders, images, or screenshots from Finder into the custom editor inserts their path strings. Pi owns chat scrolling, selection, and fixed input behavior natively.
 
 ### Shortcut configuration
@@ -314,13 +332,14 @@ You can override shortcut keys in the agent settings file:
     "copyEditor": "ctrl+alt+c",
     "cutEditor": "ctrl+alt+x",
     "queueOpen": "ctrl+alt+q",
+    "reply": null,
     "editorStart": "cmd+shift+up",
     "editorEnd": "cmd+shift+down"
   }
 }
 ```
 
-After changing bindings, run `/reload`. Invalid bindings, reserved key conflicts like `Alt+S`, or duplicate conflicts fall back to safe defaults. Set a binding to `null` or `""` to disable that action. `cmd` and `command` are accepted aliases for Pi's `super` modifier for the documented Command navigation keys.
+After changing bindings, run `/reload`. Invalid bindings fall back to safe defaults. Reserved key conflicts like `Alt+S` or duplicate conflicts fall back to that action's default when it is free, otherwise they disable the action. Set a binding to `null` or `""` to disable that action. `cmd` and `command` are accepted aliases for Pi's `super` modifier for the documented Command navigation keys.
 
 ### Editor autocomplete composition
 
