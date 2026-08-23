@@ -26,6 +26,7 @@ test("parsePowerlineConfig supports object config with custom items", () => {
   assert.equal(config.customItems[0].statusKey, "ci-status");
   assert.equal(config.customItems[1].statusKey, "review");
   assert.equal(config.customItems[1].hideWhenMissing, false);
+  assert.equal(config.customItems[0].selfColorize, false);
   assert.deepEqual(config.disabledSegments, []);
   assert.deepEqual(config.invalidDisabledSegments, []);
   assert.equal(config.layout, null);
@@ -35,6 +36,21 @@ test("parsePowerlineConfig supports object config with custom items", () => {
   assert.equal(config.invalidPlacement, null);
   assert.equal(config.welcome, true);
   assert.equal(config.stashSharpSShortcut, false);
+});
+
+test("parsePowerlineConfig accepts self-colored custom items", () => {
+  const config = parsePowerlineConfig({ customItems: [{ id: "usage", color: "warning", selfColorize: true }] }, ["default"]);
+
+  assert.deepEqual(config.customItems, [{
+    id: "usage",
+    statusKey: "usage",
+    position: "right",
+    color: "warning",
+    selfColorize: true,
+    prefix: undefined,
+    hideWhenMissing: true,
+    excludeFromExtensionStatuses: true,
+  }]);
 });
 
 test("parsePowerlineConfig supports disabled segments", () => {

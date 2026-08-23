@@ -101,6 +101,7 @@ function normalizeCustomStatusItem(raw: unknown, idOverride?: string): CustomSta
     statusKey,
     position: normalizeCustomItemPosition(raw.position),
     color: normalizeCustomColor(raw.color),
+    selfColorize: raw.selfColorize === true,
     prefix: normalizeCustomPrefix(raw.prefix),
     hideWhenMissing: raw.hideWhenMissing !== false,
     excludeFromExtensionStatuses: raw.excludeFromExtensionStatuses !== false,
@@ -430,12 +431,14 @@ export function getNotificationExtensionStatuses(
   return notifications;
 }
 
-export function normalizeExtensionStatusValue(value: string): string | null {
+export function normalizeExtensionStatusValue(value: string, preserveAnsi = false): string | null {
   if (!value || visibleWidth(value) <= 0) {
     return null;
   }
 
-  const stripped = value.replace(/(\x1b\[[0-9;]*m|\s|·|[|])+$/, "");
+  const stripped = preserveAnsi
+    ? value.replace(/(\s|·|[|])+$/, "")
+    : value.replace(/(\x1b\[[0-9;]*m|\s|·|[|])+$/, "");
   return visibleWidth(stripped) > 0 ? stripped : null;
 }
 

@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- **Self-colored custom items** — Added `customItems[].selfColorize` so extension statuses can keep embedded ANSI colors, including multiple colors within one item, without being wrapped by the configured custom-item color. Thanks to [@elecnix](https://github.com/elecnix) for #176.
+
 ## [0.15.1] - 2026-08-19
 
 ### Fixed

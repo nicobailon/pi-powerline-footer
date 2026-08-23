@@ -139,6 +139,7 @@ You can promote any extension status key into its own dedicated powerline item. 
 - `position` (optional): `left`, `right`, or `secondary` (default `right`)
 - `prefix` (optional): text shown before the live status value
 - `color` (optional): any Pi theme color (`warning`, `accent`, etc.) or hex (`#RRGGBB`)
+- `selfColorize` (optional): trust ANSI colors already embedded in the status value and do not apply `color` (default `false`)
 - `hideWhenMissing` (optional): hide item when no status is present (default `true`)
 - `excludeFromExtensionStatuses` (optional): omit this key from the aggregate `extension_statuses` segment (default `true`)
 

@@ -73,6 +73,29 @@ test("model segment can show provider-qualified ids", () => {
   assert.equal(stripAnsi(alreadyQualified.content), "openai/gpt-4.1");
 });
 
+test("self-colored custom items preserve ANSI resets and skip configured color", () => {
+  const status = "\x1b[32m50%\x1b[0m";
+  const rendered = renderSegment("custom:usage", createSegmentContext({
+    extensionStatuses: new Map([["usage", status]]),
+    customItemsById: new Map([[
+      "usage",
+      {
+        id: "usage",
+        statusKey: "usage",
+        position: "right",
+        color: "warning",
+        selfColorize: true,
+        hideWhenMissing: true,
+        excludeFromExtensionStatuses: true,
+      },
+    ]]),
+    theme: { fg: (color, text) => `<${color}>${text}</${color}>` },
+  }));
+
+  assert.equal(rendered.content, status);
+  assert.equal(rendered.visible, true);
+});
+
 test("cost segment supports subscription display modes and converted currencies", () => {
   __setCurrencyRatesForTest({ CNY: 7.2 });
 
