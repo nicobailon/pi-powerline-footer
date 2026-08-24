@@ -7,6 +7,8 @@ import { join } from "node:path";
 import { readOnlyGitEnv } from "../git-status.ts";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const gitStatusSource = readFileSync(new URL("../git-status.ts", import.meta.url), "utf-8");
+const completionSource = readFileSync(new URL("../bash-mode/completion.ts", import.meta.url), "utf-8");
 
 // Background fetches spawn git with up to 500ms timeouts; give them room.
 const FETCH_SETTLE_MS = 1200;
@@ -19,6 +21,20 @@ test("read-only git commands opt out of git's optional index lock", () => {
 
 test("readOnlyGitEnv overrides an inherited GIT_OPTIONAL_LOCKS=1", () => {
   assert.equal(readOnlyGitEnv({ GIT_OPTIONAL_LOCKS: "1" }).GIT_OPTIONAL_LOCKS, "0");
+});
+
+test("footer git polling hides Windows child consoles while preserving read-only env", () => {
+  assert.match(
+    gitStatusSource,
+    /spawn\("git", args, \{\s*stdio: \["ignore", "pipe", "pipe"\],\s*env: readOnlyGitEnv\(\),\s*windowsHide: true,\s*\}\)/s,
+  );
+});
+
+test("bash git completions hide Windows child consoles", () => {
+  assert.match(
+    completionSource,
+    /execFile\("git", args, \{ cwd, encoding: "utf8", signal, windowsHide: true \}/,
+  );
 });
 
 // Guards the regression end to end, via a `git` shim on PATH: the footer polls

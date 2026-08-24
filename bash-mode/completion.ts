@@ -211,7 +211,7 @@ function getPathSuggestions(token: string, cwd: string): ExtendedCompletionItem[
 function runGit(args: string[], cwd: string, signal: AbortSignal): Promise<string[]> {
   return new Promise((resolve) => {
     try {
-      execFile("git", args, { cwd, encoding: "utf8", signal }, (error, stdout) => {
+      execFile("git", args, { cwd, encoding: "utf8", signal, windowsHide: true }, (error, stdout) => {
         if (error || !stdout) {
           resolve([]);
           return;

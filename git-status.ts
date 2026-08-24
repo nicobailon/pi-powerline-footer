@@ -102,6 +102,7 @@ function runGit(args: string[], timeoutMs = 200): Promise<string | null> {
     const proc = spawn("git", args, {
       stdio: ["ignore", "pipe", "pipe"],
       env: readOnlyGitEnv(),
+      windowsHide: true,
     });
 
     let stdout = "";
