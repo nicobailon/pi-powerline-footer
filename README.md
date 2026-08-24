@@ -11,7 +11,7 @@ Customizes the default [pi](https://github.com/badlogic/pi-mono) editor with a p
 
 ## Features
 
-**Editor stash** — Press `Alt+S` to save your editor content and clear the editor, type a quick prompt, and your stashed text auto-restores when the agent finishes. Toggles between stash, pop, and update-existing-stash. A `stash` indicator appears in the powerline bar while text is stashed.
+**Editor stash** — Press `Alt+S` to save your editor content and clear the editor, type a quick prompt, then press `Alt+S` again with an empty editor to restore the stash. Toggles between stash, pop, and update-existing-stash. A `stash` indicator appears in the powerline bar while text is stashed.
 
 **Powerline Queue** — Messages typed during compaction are held by Powerline and delivered after successful compaction instead of disappearing into Pi's native queue. `/queue` provides a file-backed queue for aliases, retries, clears, and manual delivery. Active queued and blocked counts appear in the `queue` segment only when there is something to show.
 
@@ -275,7 +275,7 @@ Use `Alt+S` / `Option+S` as a quick stash toggle while drafting. It keeps one ac
 | Has text | Has stash | Update stash with current text, clear editor |
 | Empty | Empty | Show "Nothing to stash" |
 
-Auto-restore after an agent run only happens when the editor is still empty. If you typed meanwhile, the stash is preserved.
+Stashes are restored only by explicit user action. Agent runs do not restore stashed text automatically.
 
 The `stash` indicator appears in the powerline bar (on presets with `extension_statuses`). Active stash is still session-local and resets on session switch / disable, but stash history is persisted to the agent dir at `powerline-footer/stash-history.json` so it survives restarts. By default the agent dir is `~/.pi/agent`; set `PI_CODING_AGENT_DIR` to move global powerline settings, stash history, sessions, vibes, skills, commands, and extension discovery with Pi.
 
@@ -289,7 +289,7 @@ Open prompt history with either:
 Prompt history now has two sources:
 
 - stashed prompts — up to 12 recent stashed prompts (newest first)
-- recent project prompts — up to 50 recent user-submitted prompts pulled from pi sessions in the current project folder
+- recent project prompts — up to 50 recent user-submitted prompts pulled on demand from newest pi sessions in the current project folder
 
 Selecting a stashed or project prompt-history entry inserts it into the editor. If the editor already has text, you can choose `Replace`, `Append`, or `Cancel`.
 

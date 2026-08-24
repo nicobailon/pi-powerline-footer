@@ -6,7 +6,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { CURSOR_MARKER, isKeyRelease, type AutocompleteProvider, type SelectItem, SelectList, truncateToWidth, TUI_KEYBINDINGS, visibleWidth } from "@earendil-works/pi-tui";
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 
 import type { ColorScheme, SegmentContext, StatusLinePreset, StatusLineSegmentId, StatusLineSeparatorStyle } from "./types.ts";
@@ -113,6 +113,9 @@ type PowerlineShortcutAction =
   | { kind: "bashMode" };
 const STASH_HISTORY_LIMIT = 12;
 const PROJECT_PROMPT_HISTORY_LIMIT = 50;
+const PROJECT_PROMPT_HISTORY_FILE_LIMIT = 50;
+const PROJECT_PROMPT_HISTORY_MAX_BYTES = 3 * 1024 * 1024;
+const PROJECT_PROMPT_HISTORY_FILE_MAX_BYTES = 64 * 1024;
 const STASH_PREVIEW_WIDTH = 72;
 const DEFAULT_SHORTCUTS: PowerlineShortcuts = {
   stashHistory: "ctrl+alt+h",
@@ -414,19 +417,56 @@ function getPromptHistoryText(content: unknown): string {
   return parts.join("\n").replace(/\s+/g, " ").trim();
 }
 
+function readFileTail(filePath: string, size: number, maxBytes: number): string {
+  const bytesToRead = Math.min(size, maxBytes);
+  if (bytesToRead === 0) {
+    return "";
+  }
+
+  const fd = openSync(filePath, "r");
+  try {
+    const buffer = Buffer.allocUnsafe(bytesToRead);
+    const bytesRead = readSync(fd, buffer, 0, bytesToRead, size - bytesToRead);
+    const text = buffer.toString("utf8", 0, bytesRead);
+    if (size <= bytesToRead) {
+      return text;
+    }
+
+    const firstNewline = text.indexOf("\n");
+    return firstNewline === -1 ? "" : text.slice(firstNewline + 1);
+  } finally {
+    closeSync(fd);
+  }
+}
+
 function readRecentProjectPrompts(cwd: string, limit: number): string[] {
   const sessionsPath = getProjectSessionsPath(cwd);
   if (!existsSync(sessionsPath)) {
     return [];
   }
 
-  const promptEntries: { text: string; timestamp: number }[] = [];
-  const fileNames = readdirSync(sessionsPath)
-    .filter((fileName) => fileName.endsWith(".jsonl"));
+  const files = readdirSync(sessionsPath)
+    .filter((fileName) => fileName.endsWith(".jsonl"))
+    .map((fileName) => {
+      const filePath = join(sessionsPath, fileName);
+      const stats = statSync(filePath);
+      return { fileName, filePath, mtimeMs: stats.mtimeMs, size: stats.size };
+    })
+    .sort((a, b) => b.mtimeMs - a.mtimeMs || b.fileName.localeCompare(a.fileName))
+    .slice(0, PROJECT_PROMPT_HISTORY_FILE_LIMIT);
 
-  for (const fileName of fileNames) {
-    const filePath = join(sessionsPath, fileName);
-    const lines = readFileSync(filePath, "utf-8").split("\n");
+  const prompts: string[] = [];
+  const seen = new Set<string>();
+  let remainingBytes = PROJECT_PROMPT_HISTORY_MAX_BYTES;
+
+  for (const file of files) {
+    if (remainingBytes <= 0) {
+      break;
+    }
+
+    const bytesToRead = Math.min(file.size, PROJECT_PROMPT_HISTORY_FILE_MAX_BYTES, remainingBytes);
+    remainingBytes -= bytesToRead;
+    const lines = readFileTail(file.filePath, file.size, bytesToRead).split("\n");
 
     for (let i = lines.length - 1; i >= 0; i--) {
       const line = lines[i];
@@ -439,7 +479,7 @@ function readRecentProjectPrompts(cwd: string, limit: number): string[] {
         entry = JSON.parse(line);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        throw new Error(`Failed to parse session file ${filePath}: ${message}`, { cause: error });
+        throw new Error(`Failed to parse session file ${file.filePath}: ${message}`, { cause: error });
       }
 
       if (!isRecord(entry) || entry.type !== "message" || !isRecord(entry.message) || entry.message.role !== "user") {
@@ -451,29 +491,15 @@ function readRecentProjectPrompts(cwd: string, limit: number): string[] {
         continue;
       }
 
-      const timestamp = typeof entry.message.timestamp === "number"
-        ? entry.message.timestamp
-        : typeof entry.timestamp === "string"
-          ? Date.parse(entry.timestamp)
-          : 0;
+      if (seen.has(text)) {
+        continue;
+      }
 
-      promptEntries.push({ text, timestamp: Number.isFinite(timestamp) ? timestamp : 0 });
-    }
-  }
-
-  promptEntries.sort((a, b) => b.timestamp - a.timestamp);
-
-  const prompts: string[] = [];
-  const seen = new Set<string>();
-  for (const entry of promptEntries) {
-    if (seen.has(entry.text)) {
-      continue;
-    }
-
-    seen.add(entry.text);
-    prompts.push(entry.text);
-    if (prompts.length >= limit) {
-      return prompts;
+      seen.add(text);
+      prompts.push(text);
+      if (prompts.length >= limit) {
+        return prompts;
+      }
     }
   }
 
@@ -2036,33 +2062,23 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   async function selectPromptHistorySource(
     ctx: any,
     stashCount: number,
-    projectPromptCount: number,
   ): Promise<"stash" | "project" | null> {
+    if (stashCount === 0) {
+      return "project";
+    }
+
     const items: SelectItem[] = [];
 
-    if (stashCount > 0) {
-      items.push({
-        value: "stash",
-        label: "Stashed prompts",
-        description: `${stashCount} saved`,
-      });
-    }
-
-    if (projectPromptCount > 0) {
-      items.push({
-        value: "project",
-        label: "Recent project prompts",
-        description: `${projectPromptCount} recent`,
-      });
-    }
-
-    if (items.length === 0) {
-      return null;
-    }
-
-    if (items.length === 1) {
-      return items[0]?.value === "project" ? "project" : "stash";
-    }
+    items.push({
+      value: "stash",
+      label: "Stashed prompts",
+      description: `${stashCount} saved`,
+    });
+    items.push({
+      value: "project",
+      label: "Recent project prompts",
+      description: "load on demand",
+    });
 
     const selected = await showSelectOverlay(
       ctx, "Prompt history", "↑↓ navigate • enter open • esc cancel",
@@ -2197,36 +2213,37 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   }
 
   async function openStashHistory(ctx: any): Promise<void> {
-    let projectPrompts: string[] = [];
-
-    try {
-      projectPrompts = readRecentProjectPrompts(ctx.cwd, PROJECT_PROMPT_HISTORY_LIMIT);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      ctx.ui.notify(`Failed to load project prompts: ${message}`, "warning");
-    }
-
-    if (stashedPromptHistory.length === 0 && projectPrompts.length === 0) {
-      ctx.ui.notify("No prompt history yet", "info");
-      return;
-    }
-
-    const source = await selectPromptHistorySource(ctx, stashedPromptHistory.length, projectPrompts.length);
+    const source = await selectPromptHistorySource(ctx, stashedPromptHistory.length);
     if (!source) {
       return;
     }
 
-    const selected = source === "project"
-      ? await selectProjectPromptFromHistory(ctx, projectPrompts)
-      : await selectStashedPromptFromHistory(ctx);
-    if (!selected) return;
+    if (source === "project") {
+      let projectPrompts: string[] = [];
+      try {
+        projectPrompts = readRecentProjectPrompts(ctx.cwd, PROJECT_PROMPT_HISTORY_LIMIT);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        ctx.ui.notify(`Failed to load project prompts: ${message}`, "warning");
+        return;
+      }
 
-    if (source === "stash") {
-      await handleSelectedStashHistoryEntry(ctx, selected);
+      if (projectPrompts.length === 0) {
+        ctx.ui.notify(stashedPromptHistory.length === 0 ? "No prompt history yet" : "No recent project prompts", "info");
+        return;
+      }
+
+      const selected = await selectProjectPromptFromHistory(ctx, projectPrompts);
+      if (!selected) return;
+
+      await insertSelectedPromptHistoryEntry(ctx, selected);
       return;
     }
 
-    await insertSelectedPromptHistoryEntry(ctx, selected);
+    const selected = await selectStashedPromptFromHistory(ctx);
+    if (!selected) return;
+
+    await handleSelectedStashHistoryEntry(ctx, selected);
   }
 
   pi.on("agent_end", async (_event, ctx) => {
@@ -2247,16 +2264,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     try {
       if (hasUI) {
         onVibeAgentEnd(ctx.ui.setWorkingMessage); // working-vibes internal state + reset message
-        if (stashedEditorText !== null) {
-          if (ctx.ui.getEditorText().trim() === "") {
-            ctx.ui.setEditorText(stashedEditorText);
-            stashedEditorText = null;
-            ctx.ui.setStatus("stash", undefined);
-            ctx.ui.notify("Stash restored", "info");
-          } else {
-            ctx.ui.notify("Stash preserved — clear editor then Alt+S to restore", "info");
-          }
-        }
       }
     } catch (error) {
       if (!isStaleExtensionContextError(error)) throw error;

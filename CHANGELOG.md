@@ -6,6 +6,10 @@
 - **Quote previous messages** — Added `/reply` to insert a previous user or assistant message as a Markdown quote. An optional `powerlineShortcuts.reply` shortcut is disabled by default and loads the picker only when used.
 - **Self-colored custom items** — Added `customItems[].selfColorize` so extension statuses can keep embedded ANSI colors, including multiple colors within one item, without being wrapped by the configured custom-item color. Thanks to [@elecnix](https://github.com/elecnix) for #176.
 
+### Changed
+- **Editor stash restore** — Stashed editor text now stays stashed after agent runs and restores only after an explicit `Alt+S` or stash-history action. Closes #183.
+- **Stash history loading** — Recent project prompts now load only when that source is selected, and the project scan is bounded to newest session file tails. Closes #184.
+
 ### Fixed
 - **Windows git polling** — Hide spawned git child-process consoles so detached Windows hosts do not flash a visible window on each footer poll or bash completion. Thanks to [@xing-shuyin](https://github.com/xing-shuyin) for #180.
 
