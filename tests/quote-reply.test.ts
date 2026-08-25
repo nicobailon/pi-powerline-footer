@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import { reply } from "../quote-reply.ts";
 
-function contextFor(entries: unknown[], editorText = "draft") {
+function contextFor(entries: SessionEntry[], editorText = "draft") {
   let text = editorText;
   const notifications: string[] = [];
   return {
@@ -15,7 +16,7 @@ function contextFor(entries: unknown[], editorText = "draft") {
         notify: (message: string) => { notifications.push(message); },
         select: async () => undefined,
       },
-    } as any,
+    },
     get text() { return text; },
     notifications,
   };
@@ -23,7 +24,7 @@ function contextFor(entries: unknown[], editorText = "draft") {
 
 test("reply quotes a matching message and preserves the current draft", async () => {
   const harness = contextFor([
-    { type: "message", id: "old", timestamp: "2026-08-23T00:00:00.000Z", message: { role: "toolResult", content: [{ type: "text", text: "ignore" }] } },
+    { type: "message", id: "old", timestamp: "2026-08-23T00:00:00.000Z", message: { role: "tool", content: [{ type: "text", text: "ignore" }] } },
     { type: "message", id: "abc123", timestamp: "2026-08-23T00:01:00.000Z", message: { role: "user", content: [{ type: "text", text: "Please inspect this." }] } },
   ]);
 

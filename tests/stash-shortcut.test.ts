@@ -32,13 +32,53 @@ function sessionLine(text: string, timestamp: number): string {
   });
 }
 
+type FakeTheme = ReturnType<typeof fakeTheme>;
+interface FakeComponent {
+  render(width: number): string[];
+  handleInput(data: string): void;
+}
+type CustomFactory = (
+  tui: { requestRender(): void },
+  theme: FakeTheme,
+  keybindings: Record<string, never>,
+  done: (result: unknown) => void,
+) => FakeComponent;
+interface FakeCtx {
+  cwd: string;
+  hasUI: boolean;
+  model: { name: string; provider: string };
+  modelRegistry: Record<string, never>;
+  ui: {
+    getEditorText(): string;
+    setEditorText(next: string): void;
+    setStatus(key: string, value: string | undefined): void;
+    notify(message: string, level?: string): void;
+    setWorkingMessage(): void;
+    onTerminalInput(handler: (data: string) => unknown): () => void;
+    custom(factory: CustomFactory): Promise<unknown>;
+    select(): Promise<string>;
+    setWidget(): void;
+    setFooter(): void;
+    setHeader(): void;
+    setEditorComponent(): void;
+    getEditorComponent(): undefined;
+  };
+}
+type TestHandler = (event: unknown, ctx: FakeCtx) => Promise<void> | void;
+type TestCommand = { handler: (args: string, ctx: FakeCtx) => Promise<void> | void };
+interface TestPi {
+  on(name: string, handler: TestHandler): void;
+  registerCommand(name: string, command: TestCommand): void;
+  sendUserMessage(): void;
+}
+
 async function loadPowerline(agentDir: string) {
   const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = agentDir;
   const moduleUrl = new URL("../index.ts", import.meta.url);
   const mod = await import(`${moduleUrl.href}?stashTest=${Date.now()}-${Math.random()}`);
   return {
-    extension: mod.default as (pi: any) => void,
+    extension: mod.default as (pi: TestPi) => void,
     restoreEnv: () => {
       if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
       else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
@@ -54,16 +94,16 @@ function fakeTheme() {
 }
 
 function createFakePi() {
-  const handlers = new Map<string, (event: any, ctx: any) => Promise<void>>();
-  const commands = new Map<string, { handler: (args: string, ctx: any) => Promise<void> }>();
+  const handlers = new Map<string, TestHandler>();
+  const commands = new Map<string, TestCommand>();
   return {
     handlers,
     commands,
     pi: {
-      on(name: string, handler: (event: any, ctx: any) => Promise<void>) {
+      on(name: string, handler: TestHandler) {
         handlers.set(name, handler);
       },
-      registerCommand(name: string, command: { handler: (args: string, ctx: any) => Promise<void> }) {
+      registerCommand(name: string, command: TestCommand) {
         commands.set(name, command);
       },
       sendUserMessage() {},
@@ -80,7 +120,7 @@ function createCtx(options: { cwd: string; text?: string; customInputs?: string[
   const customTitles: string[] = [];
   const customInputs = [...(options.customInputs ?? [])];
 
-  const ctx = {
+  const ctx: FakeCtx = {
     cwd: options.cwd,
     hasUI: true,
     model: { name: "test", provider: "test" },
@@ -98,7 +138,7 @@ function createCtx(options: { cwd: string; text?: string; customInputs?: string[
         terminalInput = handler;
         return () => { terminalInput = null; };
       },
-      custom: async (factory: any) => new Promise((resolve) => {
+      custom: async (factory: CustomFactory) => new Promise((resolve) => {
         const done = (result: unknown) => resolve(result);
         const component = factory({ requestRender() {} }, fakeTheme(), {}, done);
         const rendered = component.render(80).join("\n");

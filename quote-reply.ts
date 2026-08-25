@@ -2,6 +2,13 @@ import type { ExtensionContext, SessionEntry, Theme } from "@earendil-works/pi-c
 import { decodeKittyPrintable, fuzzyFilter, Key, matchesKey, truncateToWidth, visibleWidth, type Component, type OverlayHandle } from "@earendil-works/pi-tui";
 
 type QuoteRole = "assistant" | "user";
+type QuoteReplyUi = Pick<ExtensionContext["ui"], "getEditorText" | "notify" | "select" | "setEditorText"> & Partial<Pick<ExtensionContext["ui"], "custom">>;
+
+interface QuoteReplyContext {
+  mode: ExtensionContext["mode"];
+  sessionManager: Pick<ExtensionContext["sessionManager"], "getBranch">;
+  ui: QuoteReplyUi;
+}
 
 interface QuoteCandidate {
   id: string;
@@ -57,7 +64,7 @@ function buildCandidate(entry: SessionEntry): QuoteCandidate | undefined {
   };
 }
 
-function collectCandidates(ctx: ExtensionContext): QuoteCandidate[] {
+function collectCandidates(ctx: QuoteReplyContext): QuoteCandidate[] {
   const candidates: QuoteCandidate[] = [];
   const branch = ctx.sessionManager.getBranch();
   for (let index = branch.length - 1; index >= 0 && candidates.length < MAX_CANDIDATES; index--) {
@@ -97,7 +104,7 @@ function formatQuote(candidate: QuoteCandidate): string {
   return lines.join("\n");
 }
 
-function insertQuote(ctx: ExtensionContext, candidate: QuoteCandidate): void {
+function insertQuote(ctx: QuoteReplyContext, candidate: QuoteCandidate): void {
   ctx.ui.setEditorText(`${formatQuote(candidate)}${ctx.ui.getEditorText()}`);
   ctx.ui.notify(`Inserted quote from ${candidate.role} message ${candidate.id}.`, "info");
 }
@@ -230,8 +237,8 @@ class QuotePicker implements Component {
   private help(): string { return this.theme.fg("dim", `${this.theme.italic("↑↓")} navigate  ${this.theme.italic("enter")} quote  ${this.theme.italic("esc")} cancel  ${this.theme.italic("⌫")} edit`); }
 }
 
-async function pickCandidate(ctx: ExtensionContext, candidates: QuoteCandidate[]): Promise<QuoteCandidate | undefined> {
-  if (ctx.mode !== "tui") {
+async function pickCandidate(ctx: QuoteReplyContext, candidates: QuoteCandidate[]): Promise<QuoteCandidate | undefined> {
+  if (ctx.mode !== "tui" || !ctx.ui.custom) {
     const options = candidates.slice(0, MAX_RPC_OPTIONS).map((candidate) => `${candidate.id} ${candidate.role}: ${excerpt(candidate.text)}`);
     const selected = await ctx.ui.select("Reply to previous message", options);
     if (!selected) return undefined;
@@ -258,7 +265,7 @@ async function pickCandidate(ctx: ExtensionContext, candidates: QuoteCandidate[]
   }, { overlay: true, overlayOptions: { width: "85%", minWidth: 72, maxHeight: "80%" }, onHandle: (handle) => { overlayHandle = handle; } });
 }
 
-export async function reply(args: string, ctx: ExtensionContext): Promise<void> {
+export async function reply(args: string, ctx: QuoteReplyContext): Promise<void> {
   const candidates = collectCandidates(ctx);
   if (candidates.length === 0) {
     ctx.ui.notify("No user or assistant messages are available to quote.", "warning");

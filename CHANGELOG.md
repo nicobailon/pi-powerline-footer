@@ -9,6 +9,7 @@
 ### Changed
 - **Editor stash restore** — Stashed editor text now stays stashed after agent runs and restores only after an explicit `Alt+S` or stash-history action. Closes #183.
 - **Stash history loading** — Recent project prompts now load only when that source is selected, and the project scan is bounded to newest session file tails. Closes #184.
+- **Reply internals** — Narrowed `/reply` to the session and UI members it uses, and kept the new reply/stash test doubles type-checked against those contracts.
 
 ### Fixed
 - **Windows git polling** — Hide spawned git child-process consoles so detached Windows hosts do not flash a visible window on each footer poll or bash completion. Thanks to [@xing-shuyin](https://github.com/xing-shuyin) for #180.
