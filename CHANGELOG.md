@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- **Powerline placement** — Clarified that the primary Powerline row can be shown above or below the editor. Thanks to [@smileBeda](https://github.com/smileBeda) for #188.
+
 ## [0.16.0] - 2026-08-25
 
 ### Highlights

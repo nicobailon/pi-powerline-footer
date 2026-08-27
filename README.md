@@ -19,7 +19,7 @@ Customizes the default [pi](https://github.com/badlogic/pi-mono) editor with a p
 
 **Welcome overlay** — Branded splash screen shown as centered overlay on startup. Shows gradient logo, model info, keyboard tips, loaded AGENTS.md/extensions/skills/templates counts, an approximate initial system-prompt token count, and recent sessions. Auto-dismisses after 30 seconds or on any key press. Set `powerline.welcome` to `false` to disable it while keeping the footer enabled.
 
-**Rounded box design** — Status renders directly in the editor's top border, not as a separate footer.
+**Powerline placement** — The primary Powerline row can be shown above or below the editor.
 
 **Native Pi layout** — Pi owns fixed input, feed scrolling, selection, and terminal behavior; this extension supplies powerline widgets and the custom bash/stash/editor integrations.
 
