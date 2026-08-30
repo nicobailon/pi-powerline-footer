@@ -85,6 +85,7 @@ let config: PowerlineConfig = {
   invalidPlacement: null,
   welcome: true,
   stashSharpSShortcut: false,
+  queue: { compactPromptMode: "queue" },
   workingVibes: {},
 };
 
@@ -3085,7 +3086,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         const isFollowUpSubmit = keybindings.matches(data, "app.message.followUp");
         if (!powerlineCompacting && !bashModeActive && isSubmit && typeof ctx.compact === "function") {
           const editorText = editor.getExpandedText().trim();
-          const compactQueuedPrompt = parseCompactQueuedPrompt(editorText);
+          const compactQueuedPrompt = config.queue.compactPromptMode === "queue"
+            ? parseCompactQueuedPrompt(editorText)
+            : null;
           if (editorText === "/compact" || compactQueuedPrompt) {
             editor.addToHistory?.(editorText);
             editor.setText("");

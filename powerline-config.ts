@@ -3,6 +3,8 @@ import { normalizeCostCurrency } from "./currency-rates.ts";
 import { BUILTIN_STATUS_LINE_SEGMENT_IDS } from "./types.ts";
 import type { ColorValue, CustomItemPosition, CustomStatusItem, PowerlinePlacement, PresetDef, StatusLineLayout, StatusLinePreset, StatusLineSegmentId, StatusLineSegmentOptions, StatusLineSeparatorStyle } from "./types.ts";
 
+export type CompactPromptMode = "queue" | "native";
+
 export interface PowerlineConfig {
   preset: StatusLinePreset;
   customItems: CustomStatusItem[];
@@ -16,6 +18,7 @@ export interface PowerlineConfig {
   invalidPlacement: string | null;
   welcome: boolean;
   stashSharpSShortcut: boolean;
+  queue: { compactPromptMode: CompactPromptMode };
   workingVibes: { color?: ColorValue | "rainbow" };
 }
 
@@ -210,6 +213,13 @@ function normalizeLayout(
     : { layout: null, invalidLayoutSegments };
 }
 
+function normalizeQueueOptions(raw: unknown): PowerlineConfig["queue"] {
+  if (!isRecord(raw)) return { compactPromptMode: "queue" };
+  return {
+    compactPromptMode: raw.compactPromptMode === "native" ? "native" : "queue",
+  };
+}
+
 function normalizeSegmentOptions(raw: Record<string, unknown>): StatusLineSegmentOptions {
   const options: StatusLineSegmentOptions = {};
 
@@ -307,6 +317,7 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     invalidPlacement: null,
     welcome: true,
     stashSharpSShortcut: false,
+    queue: { compactPromptMode: "queue" },
     workingVibes: {},
   };
 
@@ -333,6 +344,7 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     invalidPlacement,
     welcome: value.welcome !== false,
     stashSharpSShortcut: value.stashSharpSShortcut === true,
+    queue: normalizeQueueOptions(value.queue),
     workingVibes: isRecord(value.workingVibes) && typeof value.workingVibes.color === "string" && value.workingVibes.color.trim()
       ? { color: value.workingVibes.color.trim() as ColorValue | "rainbow" }
       : {},

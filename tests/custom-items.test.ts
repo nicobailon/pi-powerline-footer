@@ -36,6 +36,7 @@ test("parsePowerlineConfig supports object config with custom items", () => {
   assert.equal(config.invalidPlacement, null);
   assert.equal(config.welcome, true);
   assert.equal(config.stashSharpSShortcut, false);
+  assert.deepEqual(config.queue, { compactPromptMode: "queue" });
 });
 
 test("parsePowerlineConfig accepts self-colored custom items", () => {
@@ -168,8 +169,23 @@ test("parsePowerlineConfig validates primary powerline placement", () => {
   assert.equal(invalid.invalidPlacement, "sideways");
 });
 
+test("parsePowerlineConfig supports queue compact prompt mode", () => {
+  const defaultConfig = parsePowerlineConfig({}, ["default", "compact"]);
+  const native = parsePowerlineConfig(
+    { queue: { compactPromptMode: "native" } },
+    ["default", "compact"],
+  );
+  const invalid = parsePowerlineConfig(
+    { queue: { compactPromptMode: "passthrough" } },
+    ["default", "compact"],
+  );
+  const shorthand = parsePowerlineConfig("compact", ["default", "compact"]);
 
-
+  assert.deepEqual(defaultConfig.queue, { compactPromptMode: "queue" });
+  assert.deepEqual(native.queue, { compactPromptMode: "native" });
+  assert.deepEqual(invalid.queue, { compactPromptMode: "queue" });
+  assert.deepEqual(shorthand.queue, { compactPromptMode: "queue" });
+});
 
 test("parsePowerlineConfig supports welcome and legacy sharp-S settings", () => {
   const config = parsePowerlineConfig(

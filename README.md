@@ -53,7 +53,7 @@ Use `/cd <path>` to continue the current conversation from another working direc
 
 Powerline Queue commands:
 
-- `/compact <text>` — compact now and queue `<text>` as the next prompt after successful compaction
+- `/compact <text>` — compact now and queue `<text>` as the next prompt after successful compaction by default
 - `/queue` — open the queued-prompt picker
 - `/queue alias <name> [path]` — save a project alias, defaulting to the current cwd when `path` is omitted
 - `/queue send [id]` / `/queue retry [id]` — deliver a queued prompt now
@@ -61,6 +61,20 @@ Powerline Queue commands:
 - `/queue target <id> @name|global|current` — retarget a queued prompt
 
 Queued data is stored under the Pi agent directory in `powerline-footer/inbox.jsonl` and `powerline-footer/projects.json`. `inbox.jsonl` is a stable read surface for orchestrators and helper agents; each line is a queue item with `id`, `text`, `createdAt`, `updatedAt`, `source`, `target`, `intent`, `status`, and optional `error`. Writes should still go through Powerline commands or the store so locking and atomic writes are preserved.
+
+Set `powerline.queue.compactPromptMode` to `"native"` if you want `/compact <text>` to pass `<text>` through to Pi as custom compaction instructions instead of using Powerline's post-compaction queue shorthand:
+
+```json
+{
+  "powerline": {
+    "queue": {
+      "compactPromptMode": "native"
+    }
+  }
+}
+```
+
+The default mode is `"queue"`, which preserves the existing compact-and-queue behavior.
 
 - `/powerline placement below` — move the primary powerline row below the editor
 - `/powerline placement above` — restore the default placement
