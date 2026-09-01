@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ### Added
-- **Compact prompt mode** — Added `powerline.queue.compactPromptMode: "native"` so `/compact <text>` can pass `<text>` through to Pi as custom compaction instructions instead of using Powerline's post-compaction queue shorthand.
+- **Compact prompt mode** — Added `powerline.queue.compactPromptMode: "native"` so `/compact <text>` can pass `<text>` through to Pi as custom compaction instructions instead of using Powerline's post-compaction queue shorthand. Thanks to [@joshuajbrunner](https://github.com/joshuajbrunner) for #191.
 
 ### Changed
 - **Powerline placement** — Clarified that the primary Powerline row can be shown above or below the editor. Thanks to [@smileBeda](https://github.com/smileBeda) for #188.
