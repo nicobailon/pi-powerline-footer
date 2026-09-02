@@ -171,8 +171,10 @@ export function hasNerdFonts(): boolean {
   // Check for Ghostty (survives into tmux via GHOSTTY_RESOURCES_DIR)
   if (process.env.GHOSTTY_RESOURCES_DIR) return true;
   
-  // Check common terminals known to support Nerd Fonts (case-insensitive)
-  const term = (process.env.TERM_PROGRAM || "").toLowerCase();
+  // Check common terminals known to support Nerd Fonts (case-insensitive).
+  // TERM_PROGRAM is not set by all terminals (e.g. kitty sets TERM=xterm-kitty
+  // instead), so check TERM as well.
+  const term = `${process.env.TERM || ""} ${process.env.TERM_PROGRAM || ""}`.toLowerCase();
   const nerdTerms = ["iterm", "wezterm", "kitty", "ghostty", "alacritty"];
   return nerdTerms.some(t => term.includes(t));
 }
