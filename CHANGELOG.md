@@ -8,6 +8,9 @@
 ### Changed
 - **Powerline placement** — Clarified that the primary Powerline row can be shown above or below the editor. Thanks to [@smileBeda](https://github.com/smileBeda) for #188.
 
+### Fixed
+- **Git footer after session switch** — `session_start` for `fork`/`resume`/`new` (e.g. `/cd`, `/fork`, `/clone`, `/resume`, `/new`) now invalidates the cached git branch and status, so the footer reflects the new repo immediately instead of showing the previous repo's data until the TTL expires. Thanks to [@lengxf](https://github.com/lengxf) for #192.
+
 ## [0.16.0] - 2026-08-25
 
 ### Highlights

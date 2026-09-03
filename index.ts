@@ -1720,6 +1720,14 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     sessionStartTime = Date.now();
     currentCtx = ctx;
     customCompactionEnabled = detectCustomCompactionEnabled(ctx.cwd);
+    // A session switch (/cd, /fork, /clone, /resume, /new, switchSession) can
+    // land in a different repo. Drop git branch/status cache so the footer
+    // re-fetches for the new cwd instead of showing stale data until the TTL
+    // expires or the next file/git tool_result.
+    if (event.reason === "fork" || event.reason === "resume" || event.reason === "new") {
+      invalidateGitBranch();
+      invalidateGitStatus();
+    }
     lastUserPrompt = "";
     isStreaming = false;
     liveAssistantUsage = null;
