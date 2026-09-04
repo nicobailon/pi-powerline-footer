@@ -28,6 +28,7 @@ import { getAgentPath } from "./paths.ts";
 import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, mergeSegmentOptions, mergeSegmentsWithCustomItems, nextPowerlineSettingWithOptions, nextPowerlineSettingWithPreset, parsePowerlineConfig } from "./powerline-config.ts";
 import { getSeparator } from "./separators.ts";
 import { renderSegment } from "./segments.ts";
+import { resolveThinkingLevelSelection } from "./thinking-level.ts";
 import { getGitStatus, invalidateGitStatus, invalidateGitBranch, subscribeGitUpdates } from "./git-status.ts";
 import { SessionBranchCache, SessionTokenStatsCache } from "./token-stats.ts";
 import { ansi, getFgAnsiCode } from "./colors.ts";
@@ -1846,7 +1847,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   pi.on("thinking_level_select", async (event, ctx) => {
     currentCtx = ctx;
-    currentThinkingLevel = getThinkingLevelFn?.() ?? (typeof event.level === "string" ? event.level : null);
+    currentThinkingLevel = resolveThinkingLevelSelection(event.level, getThinkingLevelFn?.());
     requestImmediateStatusRender({ deferDuringTyping: false });
   });
 

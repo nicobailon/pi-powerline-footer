@@ -8,6 +8,9 @@
 ### Changed
 - **Powerline placement** — Clarified that the primary Powerline row can be shown above or below the editor. Thanks to [@smileBeda](https://github.com/smileBeda) for #188.
 
+### Fixed
+- **Live thinking-level display** — Prefer the authoritative thinking-level selection event over a stale session-start context so the footer updates from `think:off` to the selected level. Thanks to [@csp256](https://github.com/csp256) for #196.
+
 ## [0.16.0] - 2026-08-25
 
 ### Highlights
