@@ -36,7 +36,6 @@ test("footer git polling hides Windows child consoles while preserving read-only
       assert.equal(options?.windowsHide, true);
       assert.equal(options?.env?.GIT_OPTIONAL_LOCKS, "0");
     }
-    t.diagnostic(`Attached full-mode process boundary: ${calls.map(([, args]) => args?.join(" ")).join(", ")}`);
   } finally {
     t.mock.restoreAll();
     syncBuiltinESMExports();

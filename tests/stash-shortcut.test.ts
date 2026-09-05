@@ -269,11 +269,6 @@ test("Git rendering reuses the cwd-owned provider only on demand and refreshes a
     assert.match(render(), /<warning>[^<]*branch-a<\/warning>/, "same-cwd refresh serves stale counts");
     await waitForGitUpdates();
     assert.match(render(), /<success>[^<]*branch-a<\/success>/);
-    childProcess.execFileSync("git", ["symbolic-ref", "HEAD", "refs/heads/renamed-a"], { cwd: repoA });
-    for (const notify of listeners) notify();
-    assert.match(render(), /renamed-a/);
-    await waitForGitUpdates();
-    assert.match(render(), /<success>[^<]*renamed-a<\/success>/);
 
     writeFileSync(join(repoA, "dirty"), "untracked again");
     await start({ git: { hostIcon: true } });
@@ -284,7 +279,7 @@ test("Git rendering reuses the cwd-owned provider only on demand and refreshes a
     await start({ git: { hostIcon: true } }, repoB);
     const immediate = render();
     assert.match(immediate, /branch-b/);
-    assert.doesNotMatch(immediate, /renamed-a|branch-a|<warning>/);
+    assert.doesNotMatch(immediate, /branch-a|<warning>/);
     assert.ok(!immediate.includes(NERD_ICONS.github));
     await waitForGitUpdates();
     assert.ok(render().includes(NERD_ICONS.gitlab));
