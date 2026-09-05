@@ -1209,7 +1209,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     summary: QueueSummary;
   } | null = null;
   let powerlineCompacting = false;
-  let deliverAfterRetrySettles = false;
+  let compactionGeneration = 0;
+  let postCompactionDelivery: { generation: number; context: QueueContext } | null = null;
   let queueDeliveryTimer: ReturnType<typeof setTimeout> | null = null;
   const pendingQueueDeliveries = new Map<string, { text: string; timer: ReturnType<typeof setTimeout> }>();
 
@@ -1591,18 +1592,39 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     }
   }
 
-  function schedulePostCompactionDelivery(ctx: any): void {
+  function cancelPostCompactionDelivery(): void {
     if (queueDeliveryTimer) clearTimeout(queueDeliveryTimer);
-    const queueContext = getQueueContext(ctx);
-    const scheduledGeneration = sessionGeneration;
+    queueDeliveryTimer = null;
+    postCompactionDelivery = null;
+  }
+
+  function schedulePostCompactionDelivery(): void {
+    if (!postCompactionDelivery) return;
+    if (queueDeliveryTimer) clearTimeout(queueDeliveryTimer);
+    const pending = postCompactionDelivery;
     queueDeliveryTimer = setTimeout(() => {
       queueDeliveryTimer = null;
-      if (scheduledGeneration !== sessionGeneration) return;
+      if (pending !== postCompactionDelivery) return;
+      if (pending.generation !== sessionGeneration || !currentCtx) {
+        cancelPostCompactionDelivery();
+        return;
+      }
       try {
-        const item = queueStore.queuedDeliveryItems(queueContext, "post-compact")[0];
-        if (item) deliverQueueItem(ctx, item);
+        // Busy readiness checks must not read the inbox, render, or enqueue a late follow-up.
+        if (!currentCtx.isIdle()) {
+          schedulePostCompactionDelivery();
+          return;
+        }
+        const item = queueStore.queuedDeliveryItems(pending.context, "post-compact")[0];
+        if (!item) {
+          cancelPostCompactionDelivery();
+          return;
+        }
+        deliverQueueItem(currentCtx, item);
+        schedulePostCompactionDelivery();
       } catch (error) {
         if (!isStaleExtensionContextError(error)) throw error;
+        cancelPostCompactionDelivery();
         currentCtx = null;
       }
     }, 50);
@@ -1620,8 +1642,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   }
 
   function finishFailedCompaction(ctx: any, errorMessage: string): void {
+    compactionGeneration++;
     powerlineCompacting = false;
-    deliverAfterRetrySettles = false;
+    cancelPostCompactionDelivery();
     blockPostCompactionQueue(ctx, errorMessage);
     requestQueueRender();
   }
@@ -1726,7 +1749,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     liveAssistantUsage = null;
     approximateContextUsage = event.reason === "reload" ? estimateUnknownContextUsage(ctx) : null;
     powerlineCompacting = false;
-    deliverAfterRetrySettles = false;
+    cancelPostCompactionDelivery();
     stashedEditorText = null;
 
     const settings = readSettings(ctx.cwd);
@@ -1776,13 +1799,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     stashShortcutInputUnsubscribe = null;
     shellSession?.dispose();
     shellSession = null;
-    if (queueDeliveryTimer) {
-      clearTimeout(queueDeliveryTimer);
-      queueDeliveryTimer = null;
-    }
+    cancelPostCompactionDelivery();
     requeuePendingQueueDeliveries("Session ended before queued message started");
     powerlineCompacting = false;
-    deliverAfterRetrySettles = false;
     bashModeActive = false;
     currentCtx = null;
     footerDataRef = null;
@@ -1920,6 +1939,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     liveAssistantUsage = null;
     approximateContextUsage = null;
     coreContextUsageCache.reset();
+    compactionGeneration++;
+    cancelPostCompactionDelivery();
     requestQueueRender();
   });
 
@@ -1930,20 +1951,22 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     liveAssistantUsage = null;
     approximateContextUsage = estimateUnknownContextUsage(ctx);
     coreContextUsageCache.reset();
-    if (event.willRetry) {
-      deliverAfterRetrySettles = true;
-    } else {
-      deliverAfterRetrySettles = false;
-      schedulePostCompactionDelivery(ctx);
+    compactionGeneration++;
+    cancelPostCompactionDelivery();
+    const context = getQueueContext(ctx);
+    if (queueStore.queuedDeliveryItems(context, "post-compact").length > 0) {
+      postCompactionDelivery = { generation: sessionGeneration, context };
+      schedulePostCompactionDelivery();
     }
     requestQueueRender();
   });
 
-  pi.on("agent_settled", async (_event, ctx) => {
-    if (deliverAfterRetrySettles) {
-      deliverAfterRetrySettles = false;
-      schedulePostCompactionDelivery(ctx);
-    }
+  pi.on("session_compact_failed", async (event, ctx) => {
+    finishFailedCompaction(ctx, event.errorMessage ?? "Compaction cancelled");
+  });
+
+  pi.on("agent_settled", async () => {
+    schedulePostCompactionDelivery();
   });
 
   // Also dismiss on tool calls (agent is working) + refresh vibe if rate limit allows
@@ -2272,9 +2295,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     }
 
     requestStatusRender();
-    if (!powerlineCompacting && !deliverAfterRetrySettles) {
-      schedulePostCompactionDelivery(ctx);
-    }
+    schedulePostCompactionDelivery();
   });
 
   registerCdCommand(pi, () => currentCtx?.cwd ?? process.cwd());
@@ -3116,10 +3137,14 @@ export default function powerlineFooter(pi: ExtensionAPI) {
               capturePostCompactPrompt(ctx, compactQueuedPrompt);
             }
             powerlineCompacting = true;
-            deliverAfterRetrySettles = false;
+            cancelPostCompactionDelivery();
+            const generation = sessionGeneration;
+            const operation = ++compactionGeneration;
             requestQueueRender();
             ctx.compact({
               onError: (error: Error) => {
+                // Preparation can fail before session_before_compact increments the operation.
+                if (generation !== sessionGeneration || compactionGeneration > operation + 1 || !powerlineCompacting) return;
                 finishFailedCompaction(ctx, error.message);
                 ctx.ui.notify(error.message, "error");
               },

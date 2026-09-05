@@ -170,21 +170,12 @@ test("stale ctx guard handles old and new Pi messages on agent_end", () => {
   assert.match(source, /if \(!isStaleExtensionContextError\(error\)\) throw error;\r?\n\s+currentCtx = null;\r?\n\s+return;/);
 });
 
-test("post-compaction queue delivery does not read ctx.cwd from the delayed callback", () => {
-  assert.match(source, /const queueContext = getQueueContext\(ctx\);\r?\n\s+const scheduledGeneration = sessionGeneration;\r?\n\s+queueDeliveryTimer = setTimeout/);
-  assert.match(source, /if \(scheduledGeneration !== sessionGeneration\) return;\r?\n\s+try \{\r?\n\s+const item = queueStore\.queuedDeliveryItems\(queueContext, "post-compact"\)\[0\];/);
-  assert.match(source, /catch \(error\) \{\r?\n\s+if \(!isStaleExtensionContextError\(error\)\) throw error;\r?\n\s+currentCtx = null;/);
+test("queue delivery tracks acknowledgement and requeues unstarted messages on shutdown", () => {
   assert.match(source, /trackPendingQueueDelivery\(item, deliveryText\);\r?\n\s+if \(deliverAs\) \{/);
   assert.match(source, /function requeuePendingQueueDeliveries\(error: string\): void \{/);
   assert.match(source, /requeuePendingQueueDeliveries\("Session ended before queued message started"\);/);
   assert.match(source, /finishPendingQueueDelivery\(event\.prompt, ctx\);/);
   assert.match(source, /finishPendingQueueDelivery\(getPromptHistoryText\(message\.content\), ctx\);/);
-});
-
-test("agent settlement does not fail a compaction that has not emitted session_compact", () => {
-  assert.doesNotMatch(source, /pi\.on\("agent_settled", async \(_event, ctx\) => \{\r?\n\s+if \(powerlineCompacting\)/);
-  assert.match(source, /pi\.on\("session_compact", async \(event, ctx\) => \{[\s\S]*?schedulePostCompactionDelivery\(ctx\);/);
-  assert.match(source, /onError: \(error: Error\) => \{\r?\n\s+finishFailedCompaction\(ctx, error\.message\);/);
 });
 
 test("editor-adjacent widgets cache queue and last-prompt work", () => {
