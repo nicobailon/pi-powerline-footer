@@ -336,6 +336,7 @@ test("footer queue demand follows resolved layout while preview and picker stay 
       fs.readFileSync = originalRead;
       syncBuiltinESMExports();
       await fake.handlers.get("session_shutdown")?.({}, runtime.ctx);
+      await waitForGitUpdates();
       restoreEnv();
       fs.rmSync(root, { recursive: true, force: true });
     }
