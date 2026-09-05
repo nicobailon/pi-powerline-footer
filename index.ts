@@ -1615,11 +1615,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           schedulePostCompactionDelivery();
           return;
         }
-        const item = queueStore.queuedDeliveryItems(pending.context, "post-compact")[0];
-        if (!item) {
-          cancelPostCompactionDelivery();
-          return;
-        }
+        const items = queueStore.queuedDeliveryItems(pending.context, "post-compact");
+        const item = items[0];
+        if (items.length <= 1) cancelPostCompactionDelivery();
+        if (!item) return;
         deliverQueueItem(currentCtx, item);
         schedulePostCompactionDelivery();
       } catch (error) {

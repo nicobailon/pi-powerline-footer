@@ -40,6 +40,7 @@ async function readinessHarness(t) {
       assert.equal(options, undefined, "never leave a late Pi follow-up");
       sends.push(text);
       void emit("before_agent_start", { prompt: text });
+      idle = false;
     },
   });
   await emit("session_start", { reason: "new" });
@@ -53,11 +54,12 @@ async function readinessHarness(t) {
     else process.env.PI_CODING_AGENT_DIR = previous;
     rmSync(root, { recursive: true, force: true });
   });
-  return { emit, store, item, sends, setIdle: () => { idle = true; }, tick: async () => { t.mock.timers.tick(1000); await setImmediate(); } };
+  return { ctx, emit, store, item, sends, setIdle: () => { idle = true; }, tick: async () => { t.mock.timers.tick(1000); await setImmediate(); } };
 }
 
 test("successful retry keeps readiness through busy settlement without inbox I/O", async (t) => {
   const h = await readinessHarness(t);
+  const second = h.store.add({ ...h.item, text: "last queued prompt", now: h.item.createdAt + 1 });
   await h.emit("session_before_compact");
   await h.emit("session_compact", { willRetry: true });
   // Reject filesystem access, rather than counting private queue/cache calls.
@@ -84,6 +86,14 @@ test("successful retry keeps readiness through busy settlement without inbox I/O
   await h.tick();
   assert.deepEqual(h.sends, ["after retry"]);
   assert.equal(h.store.get(h.item.id)?.status, "sent");
+  assert.equal(h.store.get(second.id)?.status, "queued");
+  h.setIdle();
+  await h.tick();
+  assert.deepEqual(h.sends, ["after retry", "last queued prompt"]);
+  assert.equal(h.store.get(second.id)?.status, "sent");
+  t.mock.method(h.ctx, "isIdle", () => assert.fail("no readiness polling after the last queued item"));
+  await h.emit("agent_settled");
+  await h.tick();
 });
 
 test("new compaction cancellation and session replacement retire pending readiness", async (t) => {
