@@ -1,9 +1,10 @@
-import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { open, opendir, realpath, stat } from "node:fs/promises";
 import { join, basename } from "node:path";
 import type { Component } from "@earendil-works/pi-tui";
 import { truncateToWidth as tuiTruncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { ansi, fgOnly, getFgAnsiCode } from "./colors.ts";
-import { getAgentPath, getAgentSessionDirs, getHomeDir } from "./paths.ts";
+import { getAgentPath, getLegacyPiPath, getHomeDir } from "./paths.ts";
 
 export interface RecentSession {
   name: string;
@@ -564,12 +565,15 @@ export function discoverLoadedCounts(): LoadedCounts {
 /**
  * Get recent sessions from the sessions directory.
  */
-function readSessionHeaderProjectName(filePath: string): string | null {
-  let fd: number | null = null;
+async function readSessionHeaderProjectName(filePath: string, signal?: AbortSignal): Promise<string | null> {
+  let file: Awaited<ReturnType<typeof open>> | undefined;
   try {
-    fd = openSync(filePath, "r");
+    signal?.throwIfAborted();
+    file = await open(filePath, "r");
+    signal?.throwIfAborted();
     const buffer = Buffer.alloc(SESSION_HEADER_READ_BYTES);
-    const bytesRead = readSync(fd, buffer, 0, buffer.length, 0);
+    const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
+    signal?.throwIfAborted();
     const firstLine = buffer.toString("utf8", 0, bytesRead).split(/\r?\n/, 1)[0]?.trim();
     if (!firstLine) return null;
 
@@ -581,9 +585,10 @@ function readSessionHeaderProjectName(filePath: string): string | null {
 
     return basename(cwd) || cwd;
   } catch {
+    signal?.throwIfAborted();
     return null;
   } finally {
-    if (fd !== null) closeSync(fd);
+    await file?.close();
   }
 }
 
@@ -597,48 +602,63 @@ function sessionProjectNameFromDirectory(dir: string): string {
   return parts[parts.length - 1] || parentName;
 }
 
-export function getRecentSessions(maxCount: number = 3): RecentSession[] {
-  const sessionsDirs = getAgentSessionDirs();
-  
-  const sessions: { name: string; mtime: number }[] = [];
-  
-  function scanDir(dir: string) {
-    if (!existsSync(dir)) return;
+/**
+ * Collect metadata asynchronously, then read bounded headers newest-first.
+ * I/O is serial: at most one directory handle and one filesystem operation are
+ * active at a time. Abort rejects after the current operation and closes handles.
+ */
+export async function getRecentSessions(maxCount: number = 3, signal?: AbortSignal): Promise<RecentSession[]> {
+  signal?.throwIfAborted();
+  if (maxCount === 0) return [];
+  const pendingDirs = [...new Set([getAgentPath("sessions"), getLegacyPiPath("sessions")])]
+    .reverse().map(dir => ({ dir, ancestors: [] as string[] }));
+  const sessions: { filePath: string; dir: string; mtime: number }[] = [];
+
+  while (pendingDirs.length > 0) {
+    signal?.throwIfAborted();
+    const { dir, ancestors } = pendingDirs.pop()!;
     try {
-      const entries = readdirSync(dir);
-      for (const entry of entries) {
-        const entryPath = join(dir, entry);
+      const canonicalDir = await realpath(dir);
+      signal?.throwIfAborted();
+      if (ancestors.includes(canonicalDir)) continue;
+      const childAncestors = [...ancestors, canonicalDir];
+      const entries = await opendir(dir);
+      // The async iterator closes the directory on completion, error or abort.
+      for await (const entry of entries) {
+        signal?.throwIfAborted();
+        const entryPath = join(dir, entry.name);
         try {
-          const stats = statSync(entryPath);
+          const stats = await stat(entryPath);
+          signal?.throwIfAborted();
           if (stats.isDirectory()) {
-            scanDir(entryPath);
-          } else if (entry.endsWith(".jsonl")) {
-            const projectName = readSessionHeaderProjectName(entryPath) ?? sessionProjectNameFromDirectory(dir);
-            sessions.push({ name: projectName, mtime: stats.mtimeMs });
+            pendingDirs.push({ dir: entryPath, ancestors: childAncestors });
+          } else if (stats.isFile() && entry.name.endsWith(".jsonl")) {
+            sessions.push({ filePath: entryPath, dir, mtime: stats.mtimeMs });
           }
         } catch (error) {
+          signal?.throwIfAborted();
           logDiscoveryError(`Failed to inspect session entry ${entryPath}`, error);
         }
       }
     } catch (error) {
+      signal?.throwIfAborted();
       logDiscoveryError(`Failed to scan sessions dir ${dir}`, error);
     }
   }
-  
-  for (const sessionsDir of sessionsDirs) {
-    scanDir(sessionsDir);
-  }
-  
-  if (sessions.length === 0) return [];
-  
+
+  signal?.throwIfAborted();
   sessions.sort((a, b) => b.mtime - a.mtime);
-  
+
   const seen = new Set<string>();
-  const uniqueSessions: typeof sessions = [];
+  const uniqueSessions: { name: string; mtime: number }[] = [];
   for (const s of sessions) {
-    if (!seen.has(s.name)) {
-      seen.add(s.name);
-      uniqueSessions.push(s);
+    signal?.throwIfAborted();
+    const name = await readSessionHeaderProjectName(s.filePath, signal) ?? sessionProjectNameFromDirectory(s.dir);
+    signal?.throwIfAborted();
+    if (!seen.has(name)) {
+      seen.add(name);
+      uniqueSessions.push({ name, mtime: s.mtime });
+      if (maxCount > 0 && uniqueSessions.length >= maxCount) break;
     }
   }
 

@@ -1189,7 +1189,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let stashShortcutInputUnsubscribe: (() => void) | null = null;
   let dismissWelcomeOverlay: (() => void) | null = null;
   let welcomeHeaderActive = false;
-  let welcomeOverlayShouldDismiss = false;
+  let welcomeRequest: AbortController | null = null;
+  let welcomeTimer: ReturnType<typeof setTimeout> | null = null;
   let lastUserPrompt = "";
   let showLastPrompt = true;
   let lastPromptRenderCache: {
@@ -1715,6 +1716,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   // Track session start
   pi.on("session_start", async (event, ctx) => {
+    dismissWelcome(currentCtx ?? ctx);
     shellSession?.dispose();
     shellSession = null;
     sessionGeneration++;
@@ -1768,10 +1770,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   pi.on("session_shutdown", async (_event, ctx) => {
     sessionGeneration++;
-    dismissWelcomeOverlay?.();
-    dismissWelcomeOverlay = null;
-    welcomeHeaderActive = false;
-    welcomeOverlayShouldDismiss = false;
+    dismissWelcome(ctx);
     statusRenderScheduler.cancel();
     restoreFooterStatusRepaintHook?.();
     restoreFooterStatusRepaintHook = null;
@@ -1986,12 +1985,13 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   }
 
   function dismissWelcome(ctx: any) {
+    welcomeRequest?.abort();
+    welcomeRequest = null;
+    if (welcomeTimer) clearTimeout(welcomeTimer);
+    welcomeTimer = null;
     if (dismissWelcomeOverlay) {
       dismissWelcomeOverlay();
       dismissWelcomeOverlay = null;
-    } else {
-      // The startup overlay mounts after a delay; dismiss it immediately if it appears later.
-      welcomeOverlayShouldDismiss = true;
     }
     if (welcomeHeaderActive) {
       welcomeHeaderActive = false;
@@ -2000,7 +2000,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   }
 
   function dismissWelcomeForInput(ctx: any) {
-    if (!dismissWelcomeOverlay && welcomeOverlayShouldDismiss && !welcomeHeaderActive) return;
+    if (!welcomeRequest && !dismissWelcomeOverlay && !welcomeHeaderActive) return;
     dismissWelcome(ctx);
   }
 
@@ -2401,10 +2401,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           shellSession = null;
           bashTranscript.clear();
           bashModeActive = false;
-          dismissWelcomeOverlay?.();
-          dismissWelcomeOverlay = null;
-          welcomeHeaderActive = false;
-          welcomeOverlayShouldDismiss = false;
+          dismissWelcome(ctx);
           getPromptHistoryState().savedPromptHistory = [];
           stashedEditorText = null;
                 ctx.ui.setStatus("stash", undefined);
@@ -3265,117 +3262,132 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     installPowerlineWidgets(ctx);
   }
 
-  function setupWelcomeHeader(ctx: any) {
-    const modelName = ctx.model?.name || ctx.model?.id || "No model";
-    const providerName = ctx.model?.provider || "Unknown";
-    const loadedCounts = discoverLoadedCounts();
-    const recentSessions = getRecentSessions(3);
-    const initialContextTokens = estimateInitialContextTokens(ctx);
+  function beginWelcomeRequest(ctx: any): AbortController {
+    dismissWelcome(ctx);
+    welcomeRequest = new AbortController();
+    return welcomeRequest;
+  }
 
-    const header = new WelcomeHeader(modelName, providerName, recentSessions, loadedCounts, initialContextTokens);
-    welcomeHeaderActive = true;
-
-    ctx.ui.setHeader(() => {
-      return {
-        render(width: number): string[] {
-          return header.render(width);
-        },
-        invalidate() {
-          header.invalidate();
-        },
-      };
+  function canShowWelcome(ctx: any, request: AbortController, generation: number): boolean {
+    if (request !== welcomeRequest || request.signal.aborted || generation !== sessionGeneration
+      || !enabled || !config.welcome || !ctx.hasUI || isStreaming
+      || ctx.ui.getEditorText()) return false;
+    const sessionEvents = ctx.sessionManager?.getBranch?.() ?? [];
+    return !sessionEvents.some((entry: unknown) => {
+      if (!isRecord(entry)) return false;
+      if (entry.type === "tool_call" || entry.type === "tool_result") return true;
+      return entry.type === "message" && isRecord(entry.message) && entry.message.role === "assistant";
     });
   }
 
+  function setupWelcomeHeader(ctx: any) {
+    const request = beginWelcomeRequest(ctx);
+    const generation = sessionGeneration;
+    // Keep optional archive discovery off the session_start completion path.
+    welcomeTimer = setTimeout(async () => {
+      welcomeTimer = null;
+      try {
+        if (!canShowWelcome(ctx, request, generation)) return;
+        const recentSessions = await getRecentSessions(3, request.signal);
+        if (!canShowWelcome(ctx, request, generation)) return;
+        const modelName = ctx.model?.name || ctx.model?.id || "No model";
+        const providerName = ctx.model?.provider || "Unknown";
+        const loadedCounts = discoverLoadedCounts();
+        const initialContextTokens = estimateInitialContextTokens(ctx);
+
+        const header = new WelcomeHeader(modelName, providerName, recentSessions, loadedCounts, initialContextTokens);
+        welcomeHeaderActive = true;
+        ctx.ui.setHeader(() => header);
+      } catch (error: unknown) {
+        if (!request.signal.aborted || error !== request.signal.reason) {
+          console.debug("[powerline-footer] Welcome header failed:", error);
+        }
+      }
+    }, 0);
+  }
+
   function setupWelcomeOverlay(ctx: any) {
+    const request = beginWelcomeRequest(ctx);
     const modelName = ctx.model?.name || ctx.model?.id || "No model";
     const providerName = ctx.model?.provider || "Unknown";
-    const loadedCounts = discoverLoadedCounts();
-    const recentSessions = getRecentSessions(3);
 
     const overlaySessionGeneration = sessionGeneration;
 
     // Small delay to let pi-mono finish initialization
-    setTimeout(() => {
-      if (!enabled || welcomeOverlayShouldDismiss || isStreaming || overlaySessionGeneration !== sessionGeneration) {
-        welcomeOverlayShouldDismiss = false;
-        return;
-      }
+    welcomeTimer = setTimeout(async () => {
+      welcomeTimer = null;
+      try {
+        if (!canShowWelcome(ctx, request, overlaySessionGeneration)) return;
+        const recentSessions = await getRecentSessions(3, request.signal);
+        if (!canShowWelcome(ctx, request, overlaySessionGeneration)) return;
+        const loadedCounts = discoverLoadedCounts();
+        const initialContextTokens = estimateInitialContextTokens(ctx);
 
-      const sessionEvents = ctx.sessionManager?.getBranch?.() ?? [];
-      const hasActivity = sessionEvents.some((entry: unknown) => {
-        if (!isRecord(entry)) return false;
-        if (entry.type === "tool_call" || entry.type === "tool_result") return true;
-        return entry.type === "message" && isRecord(entry.message) && entry.message.role === "assistant";
-      });
-      if (hasActivity) {
-        return;
-      }
+        void ctx.ui.custom(
+          (tui: any, _theme: any, _keybindings: any, done: (result: void) => void) => {
+            if (!canShowWelcome(ctx, request, overlaySessionGeneration)) {
+              done();
+              return { render: () => [], invalidate() {} };
+            }
+            const welcome = new WelcomeComponent(
+              modelName,
+              providerName,
+              recentSessions,
+              loadedCounts,
+              initialContextTokens,
+            );
 
-      const initialContextTokens = estimateInitialContextTokens(ctx);
+            let countdown = 30;
+            let dismissed = false;
+            let interval: ReturnType<typeof setInterval> | null = null;
 
-      ctx.ui.custom(
-        (tui: any, _theme: any, _keybindings: any, done: (result: void) => void) => {
-          const welcome = new WelcomeComponent(
-            modelName,
-            providerName,
-            recentSessions,
-            loadedCounts,
-            initialContextTokens,
-          );
-
-          let countdown = 30;
-          let dismissed = false;
-          let interval: ReturnType<typeof setInterval> | null = null;
-
-          const dismiss = () => {
-            if (dismissed) return;
-            dismissed = true;
-            if (interval) clearInterval(interval);
-            dismissWelcomeOverlay = null;
-            done();
-          };
-
-          interval = setInterval(() => {
-            if (dismissed) return;
-            countdown--;
-            welcome.setCountdown(countdown);
-            tui.requestRender();
-            if (countdown <= 0) dismiss();
-          }, 1000);
-
-          dismissWelcomeOverlay = dismiss;
-
-          if (welcomeOverlayShouldDismiss) {
-            welcomeOverlayShouldDismiss = false;
-            dismiss();
-          }
-
-          return {
-            focused: false,
-            wantsKeyRelease: true,
-            invalidate: () => welcome.invalidate(),
-            render: (width: number) => welcome.render(width),
-            handleInput: (data: string) => {
-              dismiss();
-              if (!isKeyRelease(data)) currentEditor?.handleInput(data);
-            },
-            dispose: () => {
+            const dismiss = () => {
+              if (dismissed) return;
               dismissed = true;
               if (interval) clearInterval(interval);
-            },
-          };
-        },
-        {
-          overlay: true,
-          overlayOptions: () => ({
-            verticalAlign: "center",
-            horizontalAlign: "center",
-          }),
-        },
-      ).catch((error: unknown) => {
-        console.debug("[powerline-footer] Welcome overlay failed:", error);
-      });
+              request.abort();
+              if (welcomeRequest === request) welcomeRequest = null;
+              dismissWelcomeOverlay = null;
+              done();
+            };
+
+            interval = setInterval(() => {
+              if (dismissed) return;
+              countdown--;
+              welcome.setCountdown(countdown);
+              tui.requestRender();
+              if (countdown <= 0) dismiss();
+            }, 1000);
+
+            dismissWelcomeOverlay = dismiss;
+
+            return {
+              focused: false,
+              wantsKeyRelease: true,
+              invalidate: () => welcome.invalidate(),
+              render: (width: number) => welcome.render(width),
+              handleInput: (data: string) => {
+                dismiss();
+                if (!isKeyRelease(data)) currentEditor?.handleInput(data);
+              },
+              dispose: dismiss,
+            };
+          },
+          {
+            overlay: true,
+            overlayOptions: () => ({
+              verticalAlign: "center",
+              horizontalAlign: "center",
+            }),
+          },
+        ).catch((error: unknown) => {
+          console.debug("[powerline-footer] Welcome overlay failed:", error);
+        });
+      } catch (error: unknown) {
+        if (!request.signal.aborted || error !== request.signal.reason) {
+          console.debug("[powerline-footer] Welcome overlay failed:", error);
+        }
+      }
     }, 100);
   }
 }
