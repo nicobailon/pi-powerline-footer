@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { getAgentPath } from "../paths.ts";
@@ -125,6 +125,7 @@ export function createQueueItem(input: CreateQueueItemInput): PowerlineQueueItem
 export class PowerlineQueueStore {
   private readonly inboxPath: string;
   private readonly aliasesPath: string;
+  private displaySnapshot: { fingerprint: string; items: PowerlineQueueItem[] } | undefined;
 
   constructor(inboxPath: string = getQueueStorePaths().inboxPath, aliasesPath: string = getQueueStorePaths().aliasesPath) {
     this.inboxPath = inboxPath;
@@ -195,7 +196,7 @@ export class PowerlineQueueStore {
   }
 
   summarize(context: QueueContext, compacting: boolean): QueueSummary {
-    const queueItems = this.activeItems(context);
+    const queueItems = this.displayItems().filter((item) => isActiveForContext(item, context));
     const blockedItems = queueItems.filter((item) => item.status === "blocked" || item.status === "failed");
     const leading = [...blockedItems, ...queueItems][0] ?? null;
 
@@ -207,6 +208,41 @@ export class PowerlineQueueStore {
       leadingIntent: leading?.intent ?? null,
       leadingStatus: leading?.status ?? null,
     };
+  }
+
+  // Only summaries use this snapshot; delivery and locked mutations keep fresh reads.
+  // Cached items never escape through the public item-returning methods.
+  private displayItems(): readonly PowerlineQueueItem[] {
+    try {
+      const fingerprint = this.inboxFingerprint();
+      if (fingerprint === undefined) {
+        this.displaySnapshot = undefined;
+        return [];
+      }
+      // Stat alone does not detect parent-directory or ACL permission changes.
+      accessSync(this.inboxPath, constants.R_OK);
+      if (this.displaySnapshot?.fingerprint === fingerprint) return this.displaySnapshot.items;
+
+      this.displaySnapshot = undefined;
+      const items = this.list();
+      // Do not retain a read that raced an external write or atomic replacement.
+      if (this.inboxFingerprint() === fingerprint) this.displaySnapshot = { fingerprint, items };
+      return items;
+    } catch (error) {
+      this.displaySnapshot = undefined;
+      throw error;
+    }
+  }
+
+  private inboxFingerprint(): string | undefined {
+    try {
+      const stat = statSync(this.inboxPath, { bigint: true });
+      return `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}:${stat.mode}:${stat.uid}:${stat.gid}`;
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error
+        && (error.code === "ENOENT" || error.code === "ENOTDIR")) return undefined;
+      throw error;
+    }
   }
 
   readAliases(): QueueAliasMap {
@@ -264,6 +300,7 @@ export class PowerlineQueueStore {
   }
 
   private writeItems(items: readonly PowerlineQueueItem[]): void {
+    this.displaySnapshot = undefined;
     mkdirSync(dirname(this.inboxPath), { recursive: true });
     const activeOrRecent = items
       .filter((item) => item.status !== "sent" || Date.now() - item.updatedAt < 24 * 60 * 60 * 1000)

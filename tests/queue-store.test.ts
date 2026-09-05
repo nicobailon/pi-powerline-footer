@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { PowerlineQueueStore, currentQueueContext, formatQueueDeliveryText, parseCompactQueuedPrompt } from "../queue/store.ts";
@@ -55,6 +55,64 @@ test("queue store clears items from active summary", () => withStore((store) => 
   assert.equal(store.summarize(currentQueueContext("/tmp/project"), false).queueCount, 1);
   store.clear(item.id);
   assert.equal(store.summarize(currentQueueContext("/tmp/project"), false).queueCount, 0);
+}));
+
+test("summaries follow external edits and replacement without losing writes or exposing cached items", () => withStore((store, dir) => {
+  const path = join(dir, "inbox.jsonl");
+  const context = currentQueueContext(dir);
+  const input = { source: { cwd: dir }, target: { kind: "global" } as const, intent: "follow-up" as const };
+  const first = store.add({ ...input, text: "first", now: 100 });
+  assert.equal(store.summarize(context, false).leadingText, "first");
+
+  // Same-sized in-place edit, with mtime restored: ctime must still invalidate.
+  const originalStat = statSync(path);
+  writeFileSync(path, readFileSync(path, "utf8").replace("first", "other"));
+  utimesSync(path, originalStat.atime, originalStat.mtime);
+  assert.equal(store.summarize(context, false).leadingText, "other");
+
+  const listed = store.list();
+  listed[0].text = "mutated";
+  listed.length = 0;
+  assert.equal(store.summarize(context, false).leadingText, "other");
+
+  const external = new PowerlineQueueStore(path, join(dir, "projects.json"));
+  const second = external.add({ ...input, text: "second", now: 101 });
+  // Local read-modify-write must include the external addition, even with a warm snapshot.
+  store.update(first.id, { status: "blocked" });
+  assert.equal(store.summarize(context, false).queueCount, 2);
+  external.update(second.id, { text: "external change" });
+  store.add({ ...input, text: "third", now: 102 });
+  assert.equal(store.get(second.id)?.text, "external change");
+
+  assert.equal(store.summarize(context, false).leadingText, "other");
+
+  const replacement = join(dir, "replacement.jsonl");
+  const beforeReplacement = statSync(path);
+  writeFileSync(replacement, readFileSync(path, "utf8").replace("other", "newer"));
+  utimesSync(replacement, beforeReplacement.atime, beforeReplacement.mtime);
+  renameSync(replacement, path);
+  assert.equal(store.summarize(context, false).leadingText, "newer");
+}));
+
+test("summary snapshots recover after missing files and read errors", () => withStore((store, dir) => {
+  const path = join(dir, "inbox.jsonl");
+  const context = currentQueueContext(dir);
+  store.add({ text: "visible", source: { cwd: dir }, target: { kind: "global" }, intent: "steer" });
+  const content = readFileSync(path, "utf8");
+  assert.equal(store.summarize(context, false).leadingText, "visible");
+  if (process.platform !== "win32" && process.getuid?.() !== 0) {
+    chmodSync(path, 0);
+    try {
+      assert.throws(() => store.summarize(context, false), { code: "EACCES" });
+    } finally {
+      chmodSync(path, 0o600);
+    }
+    assert.equal(store.summarize(context, false).leadingText, "visible");
+  }
+  rmSync(path);
+  assert.equal(store.summarize(context, false).queueCount, 0);
+  writeFileSync(path, content.replace("visible", "restored"));
+  assert.equal(store.summarize(context, false).leadingText, "restored");
 }));
 
 test("queue store times out instead of stealing an existing lock", () => withStore((store, dir) => {
