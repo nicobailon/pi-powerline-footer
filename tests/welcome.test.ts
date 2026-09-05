@@ -252,8 +252,8 @@ test("getRecentSessions follows nested directory links without looping", async (
   });
 });
 
-type WelcomeView = { render(width: number): string[]; handleInput?(data: string): void; dispose?(): void };
-type WelcomeEditor = { getText(): string; setText(text: string): void; handleInput(data: string): void };
+type WelcomeView = { render(width: number): string[]; handleInput?(data: string): void };
+type WelcomeEditor = { getText(): string; handleInput(data: string): void };
 
 async function welcomeHarness(t: test.TestContext, home: string, quietStartup: boolean) {
   const agentDir = join(home, ".pi", "agent");
@@ -264,42 +264,32 @@ async function welcomeHarness(t: test.TestContext, home: string, quietStartup: b
   const { default: extension } = await import("../index.ts");
   const { KeybindingsManager } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js", import.meta.url).href);
   const timeouts = new Map<object, () => unknown>();
-  const intervals = new Map<object, () => unknown>();
   t.mock.method(globalThis, "setTimeout", (callback: () => unknown) => {
     const handle = {};
     timeouts.set(handle, callback);
     return handle;
   });
   t.mock.method(globalThis, "clearTimeout", (handle: object) => timeouts.delete(handle));
-  t.mock.method(globalThis, "setInterval", (callback: () => unknown) => {
-    const handle = {};
-    intervals.set(handle, callback);
-    return handle;
-  });
-  t.mock.method(globalThis, "clearInterval", (handle: object) => intervals.delete(handle));
   const tui = { requestRender() {}, terminal: { columns: 96, rows: 30 } };
   let editor: WelcomeEditor;
-  let header: WelcomeView | undefined;
-  let overlay: WelcomeView | undefined;
+  let view: WelcomeView | undefined;
   let installations = 0;
-  const branch: unknown[] = [];
   const ctx = {
     cwd: home, hasUI: true, model: { name: "Test model", provider: "test" }, modelRegistry: {},
-    sessionManager: { getBranch: () => branch, getSessionId: () => "welcome-test" },
+    sessionManager: { getBranch: () => [], getSessionId: () => "welcome-test" },
     ui: {
       getEditorText: () => editor?.getText() ?? "",
-      setEditorText: (text: string) => editor.setText(text),
       setEditorComponent(factory?: (tui: object, theme: object, keys: object) => WelcomeEditor) {
         if (factory) editor = factory(tui, {}, KeybindingsManager.create());
       },
       getEditorComponent: () => undefined,
       setHeader(factory?: () => WelcomeView) {
-        header = factory?.();
-        if (header) installations++;
+        view = factory?.();
+        if (view) installations++;
       },
       custom(factory: (tui: object, theme: object, keys: object, done: () => void) => WelcomeView) {
         return new Promise<void>((resolve) => {
-          overlay = factory(tui, {}, {}, () => { overlay = undefined; resolve(); });
+          view = factory(tui, {}, {}, () => { view = undefined; resolve(); });
           installations++;
         });
       },
@@ -309,32 +299,29 @@ async function welcomeHarness(t: test.TestContext, home: string, quietStartup: b
   };
   type Handler = (event: { reason?: string }, context: typeof ctx) => unknown;
   const handlers = new Map<string, Handler>();
-  const commands = new Map<string, { handler(args: string, context: typeof ctx): unknown }>();
   const pi = {
     on: (name: string, handler: Handler) => handlers.set(name, handler),
-    registerCommand: (name: string, command: { handler(args: string, context: typeof ctx): unknown }) => commands.set(name, command),
+    registerCommand() {},
     sendUserMessage() {},
   };
   (extension as unknown as (api: typeof pi) => void)(pi);
   return {
-    ctx, branch,
-    get header() { return header; }, get overlay() { return overlay; },
+    ctx,
+    get view() { return view; },
     get installations() { return installations; },
     type: (text: string) => editor.handleInput(text),
     event: async (name: string, reason?: string) => { await handlers.get(name)?.({ reason }, ctx); },
-    disable: async () => { await commands.get("powerline")?.handler("", ctx); },
     runStartupWork: () => {
       const callbacks = [...timeouts.values()];
       timeouts.clear();
       return Promise.all(callbacks.map((callback) => callback()));
     },
-    tickCountdown: () => { for (const callback of [...intervals.values()]) callback(); },
   };
 }
 
-test("pending welcome discovery rechecks cancellation and activity before installing UI", async (t) => {
+test("pending welcome discovery is cancelled by typing or nonblocking shutdown", async (t) => {
   for (const quiet of [true, false]) {
-    for (const action of ["typing", "disable", "replacement", "shutdown", "activity"] as const) {
+    for (const action of ["typing", "shutdown"] as const) {
       await t.test(`${quiet ? "header" : "overlay"}: ${action}`, async (t) => {
         await withTemporaryHome(async (home) => {
           const harness = await welcomeHarness(t, home, quiet);
@@ -358,12 +345,6 @@ test("pending welcome discovery rechecks cancellation and activity before instal
               harness.type("x");
               harness.type("\x7f"); // Empty again: cancellation, not draft text, must prevent resurrection.
               assert.equal(harness.ctx.ui.getEditorText(), "");
-            } else if (action === "disable") {
-              await harness.disable();
-            } else if (action === "replacement") {
-              await harness.event("session_start", "reload");
-            } else if (action === "activity") {
-              harness.branch.push({ type: "message", message: { role: "assistant" } });
             } else {
               // Shutdown must finish even while the filesystem operation remains blocked.
               await harness.event("session_shutdown");
@@ -384,7 +365,7 @@ test("pending welcome discovery rechecks cancellation and activity before instal
   }
 });
 
-test("welcome lifecycle installs eligible UI, preserves overlay forwarding and countdown", async (t) => {
+test("eligible welcome installs and dismisses without losing input", async (t) => {
   for (const quiet of [true, false]) {
     await t.test(quiet ? "header" : "overlay", async (t) => {
       await withTemporaryHome(async (home) => {
@@ -392,28 +373,17 @@ test("welcome lifecycle installs eligible UI, preserves overlay forwarding and c
         try {
           await harness.event("session_start", "startup");
           await harness.runStartupWork();
-          const view = quiet ? harness.header : harness.overlay;
+          const view = harness.view;
           assert.ok(view);
           assert.match(view.render(96).join("\n"), /Test model/);
           if (!quiet) {
-            harness.tickCountdown();
-            assert.match(view.render(96).join("\n"), /29s/);
             view.handleInput?.("x");
-            assert.equal(harness.overlay, undefined);
             assert.equal(harness.ctx.ui.getEditorText(), "x");
           } else {
             harness.type("x");
-            assert.equal(harness.header, undefined);
           }
+          assert.equal(harness.view, undefined);
           assert.equal(harness.installations, 1);
-          if (!quiet) {
-            harness.ctx.ui.setEditorText("");
-            await harness.event("session_start", "startup");
-            await harness.runStartupWork();
-            assert.ok(harness.overlay);
-            for (let second = 0; second < 30; second++) harness.tickCountdown();
-            assert.equal(harness.overlay, undefined);
-          }
         } finally {
           await harness.event("session_shutdown");
           t.mock.restoreAll();

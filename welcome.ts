@@ -562,9 +562,6 @@ export function discoverLoadedCounts(): LoadedCounts {
   return { contextFiles, extensions, skills, promptTemplates };
 }
 
-/**
- * Get recent sessions from the sessions directory.
- */
 async function readSessionHeaderProjectName(filePath: string, signal?: AbortSignal): Promise<string | null> {
   let file: Awaited<ReturnType<typeof open>> | undefined;
   try {
@@ -651,15 +648,14 @@ export async function getRecentSessions(maxCount: number = 3, signal?: AbortSign
 
   const seen = new Set<string>();
   const uniqueSessions: { name: string; mtime: number }[] = [];
-  for (const s of sessions) {
+  for (const session of sessions) {
     signal?.throwIfAborted();
-    const name = await readSessionHeaderProjectName(s.filePath, signal) ?? sessionProjectNameFromDirectory(s.dir);
+    const name = await readSessionHeaderProjectName(session.filePath, signal) ?? sessionProjectNameFromDirectory(session.dir);
     signal?.throwIfAborted();
-    if (!seen.has(name)) {
-      seen.add(name);
-      uniqueSessions.push({ name, mtime: s.mtime });
-      if (maxCount > 0 && uniqueSessions.length >= maxCount) break;
-    }
+    if (seen.has(name)) continue;
+    seen.add(name);
+    uniqueSessions.push({ name, mtime: session.mtime });
+    if (maxCount > 0 && uniqueSessions.length >= maxCount) break;
   }
 
   const now = Date.now();
