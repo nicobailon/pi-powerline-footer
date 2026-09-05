@@ -1693,7 +1693,7 @@ test("bash editor runs copied Pi app action handlers for alt-enter", async () =>
     const { KeybindingsManager } = await import(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js", import.meta.url).href);
     const { setKittyProtocolActive } = await import(resolvePiTuiModuleUrl("dist/keys.js"));
     // Avoid loading user-level keybindings.json in this test.
-    const keybindings = new KeybindingsManager();
+    const keybindings = new KeybindingsManager({ "app.message.followUp": "alt+enter" });
     const editor = new BashModeEditor(
       { requestRender() {}, terminal: { columns: 80, rows: 24 } },
       {},
