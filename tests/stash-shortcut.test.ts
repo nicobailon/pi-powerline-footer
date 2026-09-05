@@ -7,6 +7,10 @@ import { matchesStashShortcutInput } from "../shortcuts.ts";
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { PowerlineQueueStore } from "../queue/store.ts";
+import childProcess from "node:child_process";
+import type { ReadonlyFooterDataProvider } from "@earendil-works/pi-coding-agent";
+import { waitForGitUpdates } from "../git-status.ts";
+import { NERD_ICONS } from "../icons.ts";
 
 const source = readFileSync(new URL("../index.ts", import.meta.url), "utf-8");
 
@@ -48,6 +52,7 @@ type CustomFactory = (
 ) => FakeComponent;
 interface FakeCtx {
   cwd: string;
+  sessionManager?: { getCwd(): string };
   hasUI: boolean;
   model: { name: string; provider: string };
   modelRegistry: Record<string, never>;
@@ -61,7 +66,7 @@ interface FakeCtx {
     custom(factory: CustomFactory): Promise<unknown>;
     select(): Promise<string>;
     setWidget(name: string, factory: ((tui: { requestRender(): void }, theme: FakeTheme) => { render(width: number): string[] }) | undefined): void;
-    setFooter(): void;
+    setFooter(factory?: (tui: { requestRender(): void }, theme: FakeTheme, provider: ReadonlyFooterDataProvider) => { dispose(): void }): void;
     setHeader(): void;
     setEditorComponent(): void;
     getEditorComponent(): undefined;
@@ -114,7 +119,7 @@ function createFakePi() {
   };
 }
 
-function createCtx(options: { cwd: string; text?: string; customInputs?: string[][] } = { cwd: process.cwd() }) {
+function createCtx(options: { cwd: string; text?: string; customInputs?: string[][]; footerData?: ReadonlyFooterDataProvider; theme?: FakeTheme } = { cwd: process.cwd() }) {
   let text = options.text ?? "";
   let terminalInput: ((data: string) => unknown) | null = null;
   const setEditorTextCalls: string[] = [];
@@ -123,9 +128,11 @@ function createCtx(options: { cwd: string; text?: string; customInputs?: string[
   const customTitles: string[] = [];
   const customInputs = [...(options.customInputs ?? [])];
   const widgets = new Map<string, { render(width: number): string[] }>();
+  let footer: { dispose(): void } | undefined;
 
   const ctx: FakeCtx = {
     cwd: options.cwd,
+    sessionManager: { getCwd: () => options.cwd },
     hasUI: true,
     model: { name: "test", provider: "test" },
     modelRegistry: {},
@@ -160,10 +167,13 @@ function createCtx(options: { cwd: string; text?: string; customInputs?: string[
       }),
       select: async () => "Insert",
       setWidget(name, factory) {
-        if (factory) widgets.set(name, factory({ requestRender() {} }, fakeTheme()));
+        if (factory) widgets.set(name, factory({ requestRender() {} }, options.theme ?? fakeTheme()));
         else widgets.delete(name);
       },
-      setFooter() {},
+      setFooter(factory) {
+        footer?.dispose();
+        footer = factory && options.footerData ? factory({ requestRender() {} }, fakeTheme(), options.footerData) : undefined;
+      },
       setHeader() {},
       setEditorComponent() {},
       getEditorComponent: () => undefined,
@@ -173,6 +183,7 @@ function createCtx(options: { cwd: string; text?: string; customInputs?: string[
   return {
     ctx,
     widgets,
+    disposeFooter: () => ctx.ui.setFooter(undefined),
     get text() { return text; },
     setEditorTextCalls,
     notifications,
@@ -184,6 +195,114 @@ function createCtx(options: { cwd: string; text?: string; customInputs?: string[
     },
   };
 }
+
+test("Git rendering reuses the cwd-owned provider only on demand and refreshes across sessions", async (t) => {
+  const root = mkdtempSync(join(tmpdir(), "powerline-git-display-"));
+  const repoA = join(root, "repo-a");
+  const repoB = join(root, "repo-b");
+  for (const [cwd, branch, host] of [[repoA, "branch-a", "github.com"], [repoB, "branch-b", "gitlab.com"]]) {
+    mkdirSync(cwd);
+    childProcess.execFileSync("git", ["init", "-q", "-b", branch], { cwd });
+    childProcess.execFileSync("git", ["remote", "add", "origin", `https://${host}/owner/repo`], { cwd });
+  }
+  writeFileSync(join(repoA, "dirty"), "untracked");
+  const oldFonts = process.env.POWERLINE_NERD_FONTS;
+  process.env.POWERLINE_NERD_FONTS = "1";
+  const { extension, restoreEnv } = await loadPowerline(root);
+  const fake = createFakePi();
+  let providerCwd = repoA;
+  let allowBranchRead = false;
+  const listeners = new Set<() => void>();
+  const footerData: ReadonlyFooterDataProvider = {
+    getGitBranch() {
+      assert.ok(allowBranchRead, "unused Git must not read Pi's branch getter");
+      return readFileSync(join(providerCwd, ".git", "HEAD"), "utf8").trim().replace("ref: refs/heads/", "");
+    },
+    getExtensionStatuses: () => new Map(),
+    getAvailableProviderCount: () => 0,
+    onBranchChange(callback) { listeners.add(callback); return () => { listeners.delete(callback); }; },
+  };
+  const spawn = childProcess.spawn;
+  const calls: Parameters<typeof spawn>[] = [];
+  t.mock.method(childProcess, "spawn", (...args: Parameters<typeof spawn>) => {
+    calls.push(args);
+    return spawn(...args);
+  });
+  syncBuiltinESMExports();
+  let runtime: ReturnType<typeof createCtx> | undefined;
+  const layout = { left: ["git"], right: [], secondary: [] };
+  const hiddenCounts = { showStaged: false, showUnstaged: false, showUntracked: false };
+  const start = async (powerline: Record<string, unknown>, cwd = repoA) => {
+    runtime?.disposeFooter();
+    // Mirror Pi's applyRuntimeSettings -> bindExtensions -> session_start ordering.
+    providerCwd = cwd;
+    writeFileSync(join(root, "settings.json"), JSON.stringify({ powerline: { welcome: false, layout, ...powerline } }));
+    runtime = createCtx({ cwd, footerData, theme: { ...fakeTheme(), fg: (color, text) => `<${color}>${text}</${color}>` } });
+    await fake.handlers.get("session_start")?.({ reason: "resume" }, runtime.ctx);
+    calls.length = 0;
+  };
+  const render = () => runtime!.widgets.get("powerline-top")!.render(240).join("\n");
+  try {
+    extension(fake.pi);
+    for (const settings of [
+      { preset: "full", layout: undefined, disabledSegments: ["git"] },
+      { layout: { left: ["model"], right: [], secondary: [] } },
+      { git: { ...hiddenCounts, showBranch: false, hostIcon: true } },
+    ]) {
+      await start(settings);
+      render();
+      await waitForGitUpdates();
+      assert.deepEqual(calls, [], "no Git process for absent, disabled, or wholly hidden Git");
+    }
+    t.diagnostic("Unused Git: provider getter forbidden; no Git subprocesses in disabled/omitted/hidden layouts");
+    allowBranchRead = true;
+    for (const polling of ["off", "branch", "full"]) {
+      await start({ git: { ...hiddenCounts, polling } });
+      assert.match(render(), /branch-a/);
+      await waitForGitUpdates();
+      assert.deepEqual(calls.map(([, args]) => args), polling === "full" ? [["status", "--porcelain"]] : []);
+      t.diagnostic(`Attached ${polling}: ${calls.map(([, args]) => args?.join(" ")).join(", ") || "no subprocesses"}`);
+    }
+    assert.match(render(), /<warning>[^<]*branch-a<\/warning>/, "full mode keeps dirty coloring with hidden counts");
+    fs.unlinkSync(join(repoA, "dirty"));
+    for (const notify of listeners) notify();
+    assert.match(render(), /<warning>[^<]*branch-a<\/warning>/, "same-cwd refresh serves stale counts");
+    await waitForGitUpdates();
+    assert.match(render(), /<success>[^<]*branch-a<\/success>/);
+    childProcess.execFileSync("git", ["symbolic-ref", "HEAD", "refs/heads/renamed-a"], { cwd: repoA });
+    for (const notify of listeners) notify();
+    assert.match(render(), /renamed-a/);
+    await waitForGitUpdates();
+    assert.match(render(), /<success>[^<]*renamed-a<\/success>/);
+
+    writeFileSync(join(repoA, "dirty"), "untracked again");
+    await start({ git: { hostIcon: true } });
+    render();
+    await waitForGitUpdates();
+    assert.ok(render().includes(NERD_ICONS.github));
+    assert.match(render(), /<warning>/);
+    await start({ git: { hostIcon: true } }, repoB);
+    const immediate = render();
+    assert.match(immediate, /branch-b/);
+    assert.doesNotMatch(immediate, /renamed-a|branch-a|<warning>/);
+    assert.ok(!immediate.includes(NERD_ICONS.github));
+    await waitForGitUpdates();
+    assert.ok(render().includes(NERD_ICONS.gitlab));
+    assert.ok(calls.every(([, , options]) => options?.cwd === repoB), "status and host reads use ctx.cwd, not ambient cwd");
+    runtime!.disposeFooter();
+    assert.equal(listeners.size, 0, "footer disposal unsubscribes branch notifications");
+  } finally {
+    await waitForGitUpdates();
+    runtime?.disposeFooter();
+    if (runtime) await fake.handlers.get("session_shutdown")?.({}, runtime.ctx);
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+    if (oldFonts === undefined) delete process.env.POWERLINE_NERD_FONTS;
+    else process.env.POWERLINE_NERD_FONTS = oldFonts;
+    restoreEnv();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("footer queue demand follows resolved layout while preview and picker stay independent", async () => {
   for (const powerline of [

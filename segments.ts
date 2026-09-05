@@ -136,9 +136,9 @@ const pathSegment: StatusLineSegment = {
  * enabled and a remote is known, otherwise the plain branch icon. An
  * unrecognized remote falls back to the generic git logo.
  */
-function resolveBranchIcon(icons: IconSet, hostIcon: boolean): string {
+function resolveBranchIcon(icons: IconSet, hostIcon: boolean, cwd: string | undefined): string {
   if (!hostIcon) return icons.branch;
-  const host = getGitRemoteHost();
+  const host = getGitRemoteHost(cwd);
   const byHost: Record<GitHost, string> = {
     github: icons.github,
     gitlab: icons.gitlab,
@@ -168,7 +168,7 @@ const gitSegment: StatusLineSegment = {
     let content = "";
     if (showBranch && branch) {
       // Color just the branch name (icon + branch text)
-      const branchIcon = resolveBranchIcon(icons, opts.hostIcon === true);
+      const branchIcon = resolveBranchIcon(icons, opts.hostIcon === true, ctx.cwd);
       content = color(ctx, branchColor, withIcon(branchIcon, branch));
     }
 

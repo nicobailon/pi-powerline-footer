@@ -1171,6 +1171,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   let sessionGeneration = 0;
   let currentCtx: any = null;
   let footerDataRef: ReadonlyFooterDataProvider | null = null;
+  let footerDataCwd: string | null = null;
   let getThinkingLevelFn: (() => string) | null = null;
   let currentThinkingLevel: string | null = null;
   let liveAssistantUsage: SessionAssistantUsage | null = null;
@@ -1714,6 +1715,11 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     sessionGeneration++;
     sessionStartTime = Date.now();
     currentCtx = ctx;
+    footerDataRef = null;
+    footerDataCwd = null;
+    invalidateGitStatus();
+    invalidateGitBranch();
+    resetLayoutCache();
     customCompactionEnabled = detectCustomCompactionEnabled(ctx.cwd);
     lastUserPrompt = "";
     isStreaming = false;
@@ -2648,7 +2654,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     },
   });
 
-  function buildSegmentContext(ctx: any, theme: Theme, showQueue: boolean): SegmentContext {
+  function buildSegmentContext(ctx: any, theme: Theme, allSegmentIds: StatusLineSegmentId[]): SegmentContext {
     setVibeWorkingMessageTheme(theme);
     const presetDef = getPreset(config.preset);
     const colors: ColorScheme = presetDef.colors ?? getDefaultColors();
@@ -2680,9 +2686,14 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
     const segmentOptions = mergeSegmentOptions(presetDef.segmentOptions, config.segmentOptions);
 
-    // Get git status (cached)
-    const gitBranch = footerDataRef?.getGitBranch() ?? null;
-    const gitStatus = getGitStatus(gitBranch, segmentOptions.git?.polling);
+    const gitOptions = segmentOptions.git;
+    const showGit = allSegmentIds.includes("git") && [
+      gitOptions?.showBranch, gitOptions?.showStaged, gitOptions?.showUnstaged, gitOptions?.showUntracked,
+    ].some((visible) => visible !== false);
+    // Full mode retains counts for dirty branch coloring, even with hidden indicators.
+    const gitStatus = showGit
+      ? getGitStatus(footerDataCwd === ctx.cwd ? footerDataRef?.getGitBranch() ?? null : null, gitOptions?.polling, ctx.cwd)
+      : { branch: null, staged: 0, unstaged: 0, untracked: 0 };
     const extensionStatuses = footerDataRef?.getExtensionStatuses() ?? new Map();
     const customItemsById = new Map(config.customItems.map((item) => [item.id, item]));
     const hiddenExtensionStatusKeys = collectHiddenExtensionStatusKeys(config.customItems);
@@ -2693,7 +2704,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       : false;
 
     const thinkingLevel = currentThinkingLevel ?? thinkingLevelFromSession ?? getThinkingLevelFn?.() ?? "off";
-    const queueSummary: QueueSummary = showQueue ? getQueueSummary(ctx) : {
+    const queueSummary: QueueSummary = allSegmentIds.includes("queue") ? getQueueSummary(ctx) : {
       queueCount: 0,
       blockedCount: 0,
       compacting: powerlineCompacting,
@@ -2762,12 +2773,11 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       ...mergedSegments.rightSegments,
       ...mergedSegments.secondarySegments,
     ];
-    const showQueue = allSegmentIds.includes("queue");
     let segmentCtx: SegmentContext;
     try {
       segmentCtx = editorPerf.options.enabled
-        ? editorPerf.measure("layout.segment-context", () => buildSegmentContext(currentCtx, theme, showQueue))
-        : buildSegmentContext(currentCtx, theme, showQueue);
+        ? editorPerf.measure("layout.segment-context", () => buildSegmentContext(currentCtx, theme, allSegmentIds))
+        : buildSegmentContext(currentCtx, theme, allSegmentIds);
     } catch (error) {
       if (!isStaleExtensionContextError(error)) throw error;
       currentCtx = null;
@@ -3247,15 +3257,24 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
     ctx.ui.setFooter((tui: any, _theme: Theme, footerData: ReadonlyFooterDataProvider) => {
       footerDataRef = footerData;
+      // Pi sets the provider cwd from sessionManager before binding session_start.
+      // Do not treat its branch as authoritative if the extension cwd differs.
+      footerDataCwd = ctx.sessionManager?.getCwd?.() ?? null;
       tuiRef = tui;
       installFooterStatusRepaintHook(footerData);
-      const unsub = footerData.onBranchChange(() => requestStatusRender());
+      const unsub = footerData.onBranchChange(() => {
+        invalidateGitStatus();
+        invalidateGitBranch();
+        requestStatusRender();
+      });
       const unsubGitUpdates = subscribeGitUpdates(() => requestStatusRender());
 
       return {
         dispose() {
           unsub();
           unsubGitUpdates();
+          footerDataRef = null;
+          footerDataCwd = null;
           restoreFooterStatusRepaintHook?.();
           restoreFooterStatusRepaintHook = null;
         },

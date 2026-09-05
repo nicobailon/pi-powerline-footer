@@ -6,11 +6,13 @@
 - **Compact prompt mode** — Added `powerline.queue.compactPromptMode: "native"` so `/compact <text>` can pass `<text>` through to Pi as custom compaction instructions instead of using Powerline's post-compaction queue shorthand. Thanks to [@joshuajbrunner](https://github.com/joshuajbrunner) for #191.
 
 ### Changed
+- **Git collection** — Reuse Pi's attached branch and collect status only for configured Git consumers, preserving explicit polling modes and dirty branch coloring (#201).
 - **Welcome startup** — Discover recent sessions asynchronously with bounded header reads, cancelling pending discovery when welcome is dismissed or the session changes. Fixes #199.
 - **Queue display reads** — Reuse unchanged inbox snapshots and skip footer queue summaries when the resolved layout omits or disables the queue segment (#200). Queue previews and explicit queue actions remain independent.
 - **Powerline placement** — Clarified that the primary Powerline row can be shown above or below the editor. Thanks to [@smileBeda](https://github.com/smileBeda) for #188.
 
 ### Fixed
+- **Git session freshness** — Keep branch, status, and remote-host icons scoped to the current session cwd, refreshing on session and branch changes (#194). Thanks to [@lengxf](https://github.com/lengxf) for the report.
 - **Terminal-name heuristic** — Fall back to `TERM` only when `TERM_PROGRAM` is unset when inferring Nerd Font support. Thanks to [@a5ehren](https://github.com/a5ehren) for #192/#195.
 - **Live thinking-level display** — Prefer the authoritative thinking-level selection event over a stale session-start context so the footer updates from `think:off` to the selected level. Thanks to [@csp256](https://github.com/csp256) for #196.
 
