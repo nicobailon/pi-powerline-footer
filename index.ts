@@ -1072,20 +1072,12 @@ function buildContentFromParts(
 function computeResponsiveLayout(
   ctx: SegmentContext,
   presetDef: ReturnType<typeof getPreset>,
+  allSegmentIds: StatusLineSegmentId[],
   availableWidth: number
 ): { topContent: string; secondaryContent: string } {
   const separatorStyle = config.separator ?? presetDef.separator;
   const separatorDef = getSeparator(separatorStyle);
   const sepWidth = visibleWidth(separatorDef.left) + 2; // separator + spaces around it
-
-  // Get all segments: primary first, then secondary
-  const mergedSegments = mergeSegmentsWithCustomItems(presetDef, config.customItems, {
-    layout: config.layout,
-    disabledSegments: config.disabledSegments,
-  });
-  const primaryIds = [...mergedSegments.leftSegments, ...mergedSegments.rightSegments];
-  const secondaryIds = mergedSegments.secondarySegments;
-  const allSegmentIds = [...primaryIds, ...secondaryIds];
 
   // Render all segments and get their widths
   const renderedSegments: { content: string; width: number }[] = [];
@@ -2656,7 +2648,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     },
   });
 
-  function buildSegmentContext(ctx: any, theme: Theme): SegmentContext {
+  function buildSegmentContext(ctx: any, theme: Theme, showQueue: boolean): SegmentContext {
     setVibeWorkingMessageTheme(theme);
     const presetDef = getPreset(config.preset);
     const colors: ColorScheme = presetDef.colors ?? getDefaultColors();
@@ -2701,7 +2693,14 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       : false;
 
     const thinkingLevel = currentThinkingLevel ?? thinkingLevelFromSession ?? getThinkingLevelFn?.() ?? "off";
-    const queueSummary = getQueueSummary(ctx);
+    const queueSummary: QueueSummary = showQueue ? getQueueSummary(ctx) : {
+      queueCount: 0,
+      blockedCount: 0,
+      compacting: powerlineCompacting,
+      leadingText: null,
+      leadingIntent: null,
+      leadingStatus: null,
+    };
 
     return {
       model: ctx.model,
@@ -2754,11 +2753,21 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     }
 
     const presetDef = getPreset(config.preset);
+    const mergedSegments = mergeSegmentsWithCustomItems(presetDef, config.customItems, {
+      layout: config.layout,
+      disabledSegments: config.disabledSegments,
+    });
+    const allSegmentIds = [
+      ...mergedSegments.leftSegments,
+      ...mergedSegments.rightSegments,
+      ...mergedSegments.secondarySegments,
+    ];
+    const showQueue = allSegmentIds.includes("queue");
     let segmentCtx: SegmentContext;
     try {
       segmentCtx = editorPerf.options.enabled
-        ? editorPerf.measure("layout.segment-context", () => buildSegmentContext(currentCtx, theme))
-        : buildSegmentContext(currentCtx, theme);
+        ? editorPerf.measure("layout.segment-context", () => buildSegmentContext(currentCtx, theme, showQueue))
+        : buildSegmentContext(currentCtx, theme, showQueue);
     } catch (error) {
       if (!isStaleExtensionContextError(error)) throw error;
       currentCtx = null;
@@ -2771,7 +2780,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     }
 
     lastLayoutWidth = width;
-    lastLayoutResult = computeResponsiveLayout(segmentCtx, presetDef, width);
+    lastLayoutResult = computeResponsiveLayout(segmentCtx, presetDef, allSegmentIds, width);
     lastLayoutTimestamp = now;
     layoutDirty = false;
     forceNextLayoutRecompute = false;

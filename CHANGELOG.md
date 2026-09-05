@@ -7,6 +7,7 @@
 
 ### Changed
 - **Welcome startup** — Discover recent sessions asynchronously with bounded header reads, cancelling pending discovery when welcome is dismissed or the session changes. Fixes #199.
+- **Queue display reads** — Reuse unchanged inbox snapshots and skip footer queue summaries when the resolved layout omits or disables the queue segment (#200). Queue previews and explicit queue actions remain independent.
 - **Powerline placement** — Clarified that the primary Powerline row can be shown above or below the editor. Thanks to [@smileBeda](https://github.com/smileBeda) for #188.
 
 ### Fixed
