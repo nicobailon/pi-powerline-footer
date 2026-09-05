@@ -9,6 +9,7 @@
 - **Powerline placement** — Clarified that the primary Powerline row can be shown above or below the editor. Thanks to [@smileBeda](https://github.com/smileBeda) for #188.
 
 ### Fixed
+- **Terminal-name heuristic** — Fall back to `TERM` only when `TERM_PROGRAM` is unset when inferring Nerd Font support. Thanks to [@a5ehren](https://github.com/a5ehren) for #192/#195.
 - **Live thinking-level display** — Prefer the authoritative thinking-level selection event over a stale session-start context so the footer updates from `think:off` to the selected level. Thanks to [@csp256](https://github.com/csp256) for #196.
 
 ## [0.16.0] - 2026-08-25
