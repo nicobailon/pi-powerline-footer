@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- **Working vibes** — Use `openai-codex/gpt-5.6-luna:low` as the default generation model.
+
 ## [0.17.0] - 2026-09-04
 
 ### Highlights

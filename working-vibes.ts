@@ -37,7 +37,7 @@ async function completeVibe(
 // Constants
 // ═══════════════════════════════════════════════════════════════════════════
 
-const DEFAULT_MODEL = "openai-codex/gpt-5.4-mini";
+const DEFAULT_MODEL = "openai-codex/gpt-5.6-luna:low";
 
 const DEFAULT_PROMPT = `Generate a 2-4 word "{theme}" themed loading message ending in "...".
 
@@ -62,7 +62,7 @@ const VIBE_SYSTEM_PROMPT = "You generate short themed loading messages and reply
 interface VibeConfig {
   theme: string | null;        // null = disabled
   mode: VibeMode;              // "generate" (on-demand) or "file" (pre-generated)
-  modelSpec: string;           // default: "openai-codex/gpt-5.4-mini"
+  modelSpec: string;           // default: "openai-codex/gpt-5.6-luna:low"
   fallback: string;            // default: "Working"
   timeout: number;             // default: 3000ms
   refreshInterval: number;     // default: 30000ms (30s)

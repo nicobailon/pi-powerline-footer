@@ -387,7 +387,7 @@ In the agent settings file:
   "workingVibe": "star trek",                              // Theme phrase
   "powerline": { "workingVibes": { "color": "rainbow" } }, // Optional: Pi theme color, hex, or "rainbow"
   "workingVibeMode": "generate",                           // "generate" (on-demand) or "file" (pre-generated)
-  "workingVibeModel": "openai-codex/gpt-5.4-mini",         // Optional: model to use (default)
+  "workingVibeModel": "openai-codex/gpt-5.6-luna:low",     // Optional: model to use (default)
   "workingVibeFallback": "Working",                        // Optional: fallback message
   "workingVibeRefreshInterval": 30,                        // Optional: seconds between refreshes (default 30)
   "workingVibePrompt": "Generate a {theme} loading message for: {task}",  // Optional: custom prompt template
