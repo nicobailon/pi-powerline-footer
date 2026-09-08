@@ -236,6 +236,83 @@ test("generateVibesBatch forwards resolved provider env and credential base URL"
   }
 });
 
+test("generateVibesBatch parses thinking suffix separately from model id", async () => {
+  const links = ensurePiModuleLinks();
+  const home = mkdtempSync(join(tmpdir(), "powerline-vibes-home-"));
+  const previousHome = process.env.HOME;
+  process.env.HOME = home;
+
+  try {
+    const { fauxAssistantMessage, fauxProvider } = await importFauxProviderTools();
+    const { generateVibesBatch, initVibeManager, setVibeModel } = await import("../working-vibes.ts");
+
+    const registration = fauxProvider({
+      provider: "test-provider",
+      models: [{ id: "test-model" }, { id: "literal-model:low" }],
+    });
+
+    const model = registration.getModel("test-model");
+    const literalModel = registration.getModel("literal-model:low");
+    assert.ok(model);
+    assert.ok(literalModel);
+
+    registration.setResponses([
+      (_context, options) => {
+        assert.equal(options?.reasoning, "low");
+        return fauxAssistantMessage("Quietly calculating...");
+      },
+      (_context, options) => {
+        assert.equal(options?.reasoning, undefined);
+        return fauxAssistantMessage("Literal model selected...");
+      },
+    ]);
+
+    initVibeManager({
+      modelRegistry: {
+        find(provider: string, modelId: string) {
+          if (provider !== "test-provider") return undefined;
+          if (modelId === "test-model") return model;
+          if (modelId === "literal-model:low") return literalModel;
+          return undefined;
+        },
+        async getApiKeyAndHeaders() {
+          return { ok: true, apiKey: "test-key", headers: {} };
+        },
+        getProvider(provider: string) {
+          return provider === "test-provider" ? registration.provider : undefined;
+        },
+        async getProviderAuth() {
+          return undefined;
+        },
+      },
+    });
+
+    assert.equal(setVibeModel("test-provider/test-model:low"), true);
+
+    const result = await generateVibesBatch("math", 1);
+
+    assert.equal(result.success, true);
+    assert.deepEqual(readFileSync(result.filePath, "utf8").trim().split("\n"), [
+      "Quietly calculating...",
+    ]);
+
+    assert.equal(setVibeModel("test-provider/literal-model:low"), true);
+    const literalResult = await generateVibesBatch("math", 1);
+    assert.equal(literalResult.success, true);
+    assert.deepEqual(readFileSync(literalResult.filePath, "utf8").trim().split("\n"), [
+      "Literal model selected...",
+    ]);
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousHome;
+    }
+    rmSync(home, { recursive: true, force: true });
+    links.cleanup();
+  }
+});
+
 test("on-demand vibe generation includes a system prompt for providers that require instructions", async () => {
   const links = ensurePiModuleLinks();
   const home = mkdtempSync(join(tmpdir(), "powerline-vibes-home-"));

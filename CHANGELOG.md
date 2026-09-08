@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Working vibes** — Resolve `:low` and other thinking-level suffixes before looking up the configured generation model.
+
 ### Changed
 - **Working vibes** — Use `openai-codex/gpt-5.6-luna:low` as the default generation model.
 
