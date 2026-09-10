@@ -43,19 +43,66 @@ test("status refresh preserves dirty coloring data until new counts arrive", asy
   assert.deepEqual(getGitStatus("main", "branch", cwd), { branch: "main", staged: 0, unstaged: 0, untracked: 0 });
 });
 
+test("unchanged git refreshes settle without requesting another render", async (t) => {
+  const { repo } = fixture(t);
+  const cwd = repo("main", "github.com");
+  writeFileSync(join(cwd, "dirty"), "dirty");
+  getGitStatus("main", "full", cwd);
+  await waitForGitUpdates();
+
+  let renders = 0;
+  const rendered: ReturnType<typeof getGitStatus>[] = [];
+  t.after(subscribeGitUpdates(() => {
+    renders += 1;
+    rendered.push(getGitStatus("main", "full", cwd));
+  }));
+
+  invalidateGitStatus();
+  getGitStatus("main", "full", cwd);
+  await waitForGitUpdates();
+  assert.equal(renders, 0);
+  assert.deepEqual(rendered, []);
+
+  writeFileSync(join(cwd, "another"), "dirty");
+  invalidateGitStatus();
+  getGitStatus("main", "full", cwd);
+  await waitForGitUpdates();
+  assert.equal(renders, 1);
+  assert.deepEqual(rendered, [{ branch: "main", staged: 0, unstaged: 0, untracked: 2 }]);
+});
+
 test("fallback branch refresh serves stale only within the same cwd", async (t) => {
   const { repo, git } = fixture(t);
   const cwd = repo("main", "github.com");
   getCurrentBranch(null, cwd);
   await waitForGitUpdates();
   assert.equal(getCurrentBranch(null, cwd), "main");
+  let updates = 0;
+  t.after(subscribeGitUpdates(() => { updates += 1; }));
+  invalidateGitBranch();
+  assert.equal(getCurrentBranch(null, cwd), "main");
+  await waitForGitUpdates();
+  assert.equal(updates, 0);
   git(cwd, "symbolic-ref", "HEAD", "refs/heads/feature");
   invalidateGitBranch();
   assert.equal(getCurrentBranch(null, cwd), "main");
   await waitForGitUpdates();
+  assert.equal(updates, 1);
   assert.equal(getCurrentBranch(null, cwd), "feature");
   assert.equal(getCurrentBranch("external", cwd), "external");
   assert.equal(getCurrentBranch("main", cwd), "main");
+});
+
+test("detached branch fallback repaints when lookup resolves to no branch", async (t) => {
+  const { root } = fixture(t);
+  let updates = 0;
+  t.after(subscribeGitUpdates(() => { updates += 1; }));
+
+  assert.equal(getCurrentBranch("detached", root), "detached");
+  await waitForGitUpdates();
+
+  assert.equal(updates, 1);
+  assert.equal(getCurrentBranch("detached", root), null);
 });
 
 test("branch lookup works when git lacks branch --show-current", { skip: process.platform === "win32" ? "POSIX shim" : false }, async (t) => {
@@ -168,4 +215,32 @@ test("detectGitHost returns null when there is no remote", () => {
   assert.equal(detectGitHost(null), null);
   assert.equal(detectGitHost(""), null);
   assert.equal(detectGitHost("   "), null);
+});
+
+test("remote refreshes notify only when the displayed host changes", async (t) => {
+  const { repo, git } = fixture(t);
+  const cwd = repo("main", "github.com");
+  let now = 1_000;
+  t.mock.method(Date, "now", () => now);
+  getGitRemoteHost(cwd);
+  await waitForGitUpdates();
+
+  let updates = 0;
+  const hosts: ReturnType<typeof getGitRemoteHost>[] = [];
+  t.after(subscribeGitUpdates(() => {
+    updates += 1;
+    hosts.push(getGitRemoteHost(cwd));
+  }));
+
+  now += 60_000;
+  assert.equal(getGitRemoteHost(cwd), "github");
+  await waitForGitUpdates();
+  assert.equal(updates, 0);
+
+  git(cwd, "remote", "set-url", "origin", "https://gitlab.com/owner/repo");
+  now += 60_000;
+  assert.equal(getGitRemoteHost(cwd), "github");
+  await waitForGitUpdates();
+  assert.equal(updates, 1);
+  assert.deepEqual(hosts, ["gitlab"]);
 });

@@ -59,6 +59,8 @@ export async function waitForGitUpdates(): Promise<void> {
   await Promise.all([pendingFetch, pendingBranchFetch, pendingRemoteFetch]);
 }
 
+// Refreshes always renew cache timestamps, but only visible changes may publish:
+// subscribers schedule a full TUI render, which can otherwise start another refresh.
 function notifyGitUpdate(): void {
   for (const listener of updateListeners) listener();
 }
@@ -217,13 +219,15 @@ export function getGitRemoteHost(cwd = process.cwd()): GitHost | null {
     pendingRemoteFetch = runGit(["remote", "get-url", "origin"], cwd).then(detectGitHost)
       .then((host) => {
         if (fetchId !== branchInvalidationCounter) return;
+        const changed = (cachedRemoteHost?.host ?? null) !== host;
         cachedRemoteHost = { host, timestamp: Date.now() };
-        notifyGitUpdate();
+        if (changed) notifyGitUpdate();
       })
       .catch(() => {
         if (fetchId !== branchInvalidationCounter) return;
+        const changed = (cachedRemoteHost?.host ?? null) !== null;
         cachedRemoteHost = { host: null, timestamp: Date.now() };
-        notifyGitUpdate();
+        if (changed) notifyGitUpdate();
       })
       .finally(() => {
         if (fetchId === branchInvalidationCounter) pendingRemoteFetch = null;
@@ -269,11 +273,12 @@ export function getCurrentBranch(providerBranch: string | null, cwd = process.cw
     pendingBranchFetch = fetchGitBranch(cwd).then((result) => {
       // Cache result if no invalidation happened (including null for non-git dirs)
       if (fetchId === branchInvalidationCounter) {
+        const changed = (cachedBranch ? cachedBranch.branch : providerBranch) !== result;
         cachedBranch = {
           branch: result,
           timestamp: Date.now(),
         };
-        notifyGitUpdate();
+        if (changed) notifyGitUpdate();
       }
       if (fetchId === branchInvalidationCounter) pendingBranchFetch = null;
     });
@@ -304,10 +309,16 @@ export function getGitStatus(providerBranch: string | null, pollingMode: GitPoll
     pendingFetch = fetchGitStatus(cwd).then((result) => {
       // Cache result if no invalidation happened (including null for non-git dirs)
       if (fetchId === invalidationCounter) {
-        cachedStatus = result
+        const nextStatus = result
           ? { staged: result.staged, unstaged: result.unstaged, untracked: result.untracked, timestamp: Date.now() }
           : { staged: 0, unstaged: 0, untracked: 0, timestamp: Date.now() };
-        notifyGitUpdate();
+        const changed = !cachedStatus
+          ? nextStatus.staged !== 0 || nextStatus.unstaged !== 0 || nextStatus.untracked !== 0
+          : cachedStatus.staged !== nextStatus.staged
+            || cachedStatus.unstaged !== nextStatus.unstaged
+            || cachedStatus.untracked !== nextStatus.untracked;
+        cachedStatus = nextStatus;
+        if (changed) notifyGitUpdate();
       }
       if (fetchId === invalidationCounter) pendingFetch = null;
     });
