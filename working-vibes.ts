@@ -7,6 +7,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { getAgentPath } from "./paths.ts";
+import { isStaleExtensionContextError } from "./lifecycle.ts";
 import { applyColor, rainbow } from "./theme.ts";
 import type { ColorValue, ThemeLike } from "./types.ts";
 
@@ -531,6 +532,8 @@ async function generateAndUpdate(
     // AbortError is expected on timeout/cancel - don't log as error
     if (error instanceof Error && error.name === "AbortError") {
       console.debug("[working-vibes] Generation aborted");
+    } else if (isStaleExtensionContextError(error)) {
+      // Expected when an in-flight decorative update outlives its extension context.
     } else {
       console.debug("[working-vibes] Generation failed:", error);
     }

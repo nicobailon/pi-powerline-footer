@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync }
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { initVibeManager, onVibeAgentEnd, onVibeAgentStart, onVibeBeforeAgentStart, parseVibeGenerateArgs, setVibeMode, setVibeTheme, setVibeWorkingMessageColor, setVibeWorkingMessageTheme } from "../working-vibes.ts";
+import { initVibeManager, onVibeAgentEnd, onVibeAgentStart, onVibeBeforeAgentStart, parseVibeGenerateArgs, setVibeMode, setVibeModel, setVibeTheme, setVibeWorkingMessageColor, setVibeWorkingMessageTheme } from "../working-vibes.ts";
 import { rainbow } from "../theme.ts";
 
 const FAUX_PROVIDER_PATH = new URL("../node_modules/@earendil-works/pi-ai/dist/providers/faux.js", import.meta.url).href;
@@ -379,6 +379,54 @@ test("on-demand vibe generation includes a system prompt for providers that requ
     }
     rmSync(home, { recursive: true, force: true });
     links.cleanup();
+  }
+});
+
+test("on-demand vibe generation silently ignores stale contexts but logs unrelated failures", async () => {
+  const home = mkdtempSync(join(tmpdir(), "powerline-vibes-home-"));
+  const previousHome = process.env.HOME;
+  const originalDebug = console.debug;
+  process.env.HOME = home;
+
+  try {
+    assert.equal(setVibeTheme("star trek"), true);
+    assert.equal(setVibeMode("generate"), true);
+    assert.equal(setVibeModel("test-provider/test-model"), true);
+
+    const runFailure = async (failure: Error) => {
+      const logs: unknown[][] = [];
+      const updates: Array<string | undefined> = [];
+      console.debug = (...args: unknown[]) => logs.push(args);
+      initVibeManager({
+        modelRegistry: {
+          find() {
+            throw failure;
+          },
+        },
+      } as any);
+      onVibeAgentStart();
+      onVibeBeforeAgentStart("fix a bug", (message) => updates.push(message));
+      await new Promise((resolve) => setImmediate(resolve));
+      onVibeAgentEnd(() => {});
+      return { logs, updates };
+    };
+
+    const stale = await runFailure(new Error("This extension ctx is stale after session replacement or reload."));
+    assert.deepEqual(stale.updates, ["Channeling star trek..."]);
+    assert.deepEqual(stale.logs, []);
+
+    const unrelatedError = new Error("registry unavailable");
+    const unrelated = await runFailure(unrelatedError);
+    assert.deepEqual(unrelated.updates, ["Channeling star trek..."]);
+    assert.deepEqual(unrelated.logs, [["[working-vibes] Generation failed:", unrelatedError]]);
+  } finally {
+    console.debug = originalDebug;
+    if (previousHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousHome;
+    }
+    rmSync(home, { recursive: true, force: true });
   }
 });
 

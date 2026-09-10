@@ -6,6 +6,7 @@
 - **Legacy Git branch display** — Show the current branch on Git versions before 2.22. Thanks to chengxiang ([@chengxiang1997](https://github.com/chengxiang1997)) for #206.
 - **Working vibes** — Resolve `:low` and other thinking-level suffixes before looking up the configured generation model.
 - **Kaku terminal detection** — Detect Kaku as supporting Nerd Fonts through its `TERM_PROGRAM` value. Thanks to [@DeH40](https://github.com/DeH40) for #207.
+- **Working vibes** — Silently retain the fallback message when on-demand generation outlives its extension context. Thanks to [@efuentesp](https://github.com/efuentesp) for #210.
 
 ### Changed
 - **Working vibes** — Use `openai-codex/gpt-5.6-luna:low` as the default generation model.
