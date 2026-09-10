@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Fixed
+- **Legacy Git branch display** — Show the current branch on Git versions before 2.22. Thanks to chengxiang ([@chengxiang1997](https://github.com/chengxiang1997)) for #206.
 - **Working vibes** — Resolve `:low` and other thinking-level suffixes before looking up the configured generation model.
 
 ### Changed

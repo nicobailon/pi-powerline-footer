@@ -163,12 +163,11 @@ function runGit(args: string[], cwd: string, timeoutMs = 200): Promise<string | 
  * For detached HEAD, returns the short commit SHA (matches provider's "detached" behavior).
  */
 async function fetchGitBranch(cwd: string): Promise<string | null> {
-  const branch = await runGit(["branch", "--show-current"], cwd);
-  if (branch === null) return null;
+  const branch = await runGit(["symbolic-ref", "--short", "HEAD"], cwd);
   if (branch) return branch;
 
   const sha = await runGit(["rev-parse", "--short", "HEAD"], cwd);
-  return sha ? `${sha} (detached)` : "detached";
+  return sha ? `${sha} (detached)` : null;
 }
 
 /**

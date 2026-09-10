@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { detectGitHost, getCurrentBranch, getGitRemoteHost, getGitStatus, invalidateGitBranch, invalidateGitStatus, subscribeGitUpdates, waitForGitUpdates } from "../git-status.ts";
@@ -56,6 +56,35 @@ test("fallback branch refresh serves stale only within the same cwd", async (t) 
   assert.equal(getCurrentBranch(null, cwd), "feature");
   assert.equal(getCurrentBranch("external", cwd), "external");
   assert.equal(getCurrentBranch("main", cwd), "main");
+});
+
+test("branch lookup works when git lacks branch --show-current", { skip: process.platform === "win32" ? "POSIX shim" : false }, async (t) => {
+  const { repo } = fixture(t);
+  const cwd = repo("legacy", "github.com");
+  const bin = join(cwd, "bin");
+  const log = join(cwd, "git-calls.log");
+  mkdirSync(bin);
+  writeFileSync(
+    join(bin, "git"),
+    `#!/bin/sh\necho "$*" >> ${JSON.stringify(log)}\nif [ "$1 $2" = "branch --show-current" ]; then exit 129; fi\nif [ "$1 $2 $3" = "symbolic-ref --short HEAD" ]; then echo legacy; exit 0; fi\nexit 1\n`,
+    { mode: 0o755 },
+  );
+
+  const originalPath = process.env.PATH;
+  process.env.PATH = `${bin}:${originalPath ?? ""}`;
+  try {
+    invalidateGitBranch();
+    assert.equal(getCurrentBranch(null, cwd), null);
+    await waitForGitUpdates();
+    assert.equal(getCurrentBranch(null, cwd), "legacy");
+  } finally {
+    process.env.PATH = originalPath;
+    invalidateGitBranch();
+  }
+
+  const calls = readFileSync(log, "utf8");
+  assert.match(calls, /^symbolic-ref --short HEAD$/m);
+  assert.doesNotMatch(calls, /^branch --show-current$/m);
 });
 
 test("cwd changes clear displayed status, branch and host, including in-flight reads", async (t) => {
