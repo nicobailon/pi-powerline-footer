@@ -4,6 +4,7 @@
 
 ### Fixed
 - **Working vibes** — Resolve `:low` and other thinking-level suffixes before looking up the configured generation model.
+- **Kaku terminal detection** — Detect Kaku as supporting Nerd Fonts through its `TERM_PROGRAM` value. Thanks to [@DeH40](https://github.com/DeH40) for #207.
 
 ### Changed
 - **Working vibes** — Use `openai-codex/gpt-5.6-luna:low` as the default generation model.

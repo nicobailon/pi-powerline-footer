@@ -174,7 +174,7 @@ export function hasNerdFonts(): boolean {
   // Use TERM only when TERM_PROGRAM is unset (e.g. kitty uses TERM=xterm-kitty).
   // Terminal names are a heuristic, not detection of the configured font.
   const term = (process.env.TERM_PROGRAM ?? process.env.TERM ?? "").toLowerCase();
-  const nerdTerms = ["iterm", "wezterm", "kitty", "ghostty", "alacritty"];
+  const nerdTerms = ["iterm", "wezterm", "kitty", "ghostty", "alacritty", "kaku"];
   return nerdTerms.some(t => term.includes(t));
 }
 
