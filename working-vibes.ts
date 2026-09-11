@@ -298,6 +298,15 @@ function getVibeFilePath(theme: string): string {
   return join(getVibesDir(), filename);
 }
 
+// Normalize the trailing ellipsis to the script-appropriate form: CJK text
+// keeps "\u2026\u2026" (standard six-dot Chinese/Japanese ellipsis), Latin text
+// gets "...". Collapses any trailing run of ASCII dots and Unicode "\u2026"
+// first, so mixed endings like "\u2026\u2026..." never double up.
+function normalizeEllipsis(text: string): string {
+  const cjk = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/.test(text);
+  return text.replace(/[.\u2026]+$/g, "") + (cjk ? "\u2026\u2026" : "...");
+}
+
 function loadVibesFromFile(theme: string): string[] {
   const filePath = getVibeFilePath(theme);
   if (!existsSync(filePath)) return [];
@@ -307,7 +316,8 @@ function loadVibesFromFile(theme: string): string[] {
     return content
       .split("\n")
       .map(line => line.trim())
-      .filter(line => line.length > 0 && line.endsWith("..."));
+      .filter(line => line.length > 0)
+      .map(normalizeEllipsis);
   } catch (error) {
     console.debug(`[working-vibes] Failed to load vibe file ${filePath}:`, error);
     return [];
@@ -338,7 +348,7 @@ function mulberry32(seed: number): () => number {
 
 // Get vibe at index using seeded shuffle (no-repeat until all used)
 function getVibeAtIndex(vibes: string[], index: number, seed: number): string {
-  if (vibes.length === 0) return `${config.fallback}...`;
+  if (vibes.length === 0) return normalizeEllipsis(config.fallback);
   
   // For small lists or when we've cycled through, just use modulo
   const effectiveIndex = index % vibes.length;
@@ -357,7 +367,7 @@ function getVibeAtIndex(vibes: string[], index: number, seed: number): string {
 }
 
 function getNextVibeFromFile(): string {
-  if (!config.theme) return `${config.fallback}...`;
+  if (!config.theme) return normalizeEllipsis(config.fallback);
   
   // Load/reload cache if theme changed
   if (vibeCacheTheme !== config.theme) {
@@ -368,7 +378,7 @@ function getNextVibeFromFile(): string {
   }
   
   if (vibeCache.length === 0) {
-    return `${config.fallback}...`;
+    return normalizeEllipsis(config.fallback);
   }
   
   const vibe = getVibeAtIndex(vibeCache, vibeIndex, vibeSeed);
@@ -397,7 +407,7 @@ function buildVibePrompt(ctx: VibeGenContext): string {
 }
 
 function parseVibeResponse(response: string, fallback: string): string {
-  if (!response) return `${fallback}...`;
+  if (!response) return normalizeEllipsis(fallback);
   
   // Take only the first line (AI sometimes adds explanations)
   let vibe = response.trim().split('\n')[0].trim();
@@ -405,19 +415,17 @@ function parseVibeResponse(response: string, fallback: string): string {
   // Remove quotes if model wrapped the response
   vibe = vibe.replace(/^["']|["']$/g, "");
   
-  // Ensure ellipsis
-  if (!vibe.endsWith("...")) {
-    vibe = vibe.replace(/\.+$/, "") + "...";
-  }
+  // Normalize trailing ellipsis to the script-appropriate form
+  vibe = normalizeEllipsis(vibe);
   
   // Enforce length limit (configurable, default 65 chars)
   if (vibe.length > config.maxLength) {
-    vibe = vibe.slice(0, config.maxLength - 3) + "...";
+    vibe = normalizeEllipsis(vibe.slice(0, config.maxLength - 3));
   }
   
   // Final validation
-  if (!vibe || vibe === "...") {
-    return `${fallback}...`;
+  if (!vibe || vibe === "..." || vibe === "\u2026\u2026") {
+    return normalizeEllipsis(fallback);
   }
   
   return vibe;
@@ -443,13 +451,13 @@ async function generateVibe(
   signal: AbortSignal,
 ): Promise<string> {
   if (!extensionCtx) {
-    return `${config.fallback}...`;
+    return normalizeEllipsis(config.fallback);
   }
   
   const resolvedModel = resolveModelSpec(config.modelSpec);
   if (!resolvedModel) {
     console.debug(`[working-vibes] Model not found: ${config.modelSpec}`);
-    return `${config.fallback}...`;
+    return normalizeEllipsis(config.fallback);
   }
   const { provider, model, thinkingLevel } = resolvedModel;
   
@@ -457,7 +465,7 @@ async function generateVibe(
   const auth = await extensionCtx.modelRegistry.getApiKeyAndHeaders(model);
   if (!auth.ok) {
     console.debug(`[working-vibes] Auth failed for ${provider}: ${auth.error}`);
-    return `${config.fallback}...`;
+    return normalizeEllipsis(config.fallback);
   }
   
   const aiContext = buildAiContext(buildVibePrompt(ctx));
@@ -472,7 +480,7 @@ async function generateVibe(
 
 function trackRecentVibe(vibe: string): void {
   // Don't track fallback messages
-  if (vibe === `${config.fallback}...`) return;
+  if (vibe === normalizeEllipsis(config.fallback)) return;
   
   // Add to front, remove duplicates
   recentVibes = [vibe, ...recentVibes.filter(v => v !== vibe)].slice(0, MAX_RECENT_VIBES);
@@ -586,7 +594,7 @@ export function onVibeBeforeAgentStart(
   
   // Queue themed placeholder BEFORE agent_start creates the loader
   // This sets pendingWorkingMessage which is applied when loader is created
-  setStyledWorkingMessage(setWorkingMessage, `Channeling ${config.theme}...`);
+  setStyledWorkingMessage(setWorkingMessage, normalizeEllipsis(`Channeling ${config.theme}`));
   
   // Mark vibe generation time for rate limiting
   lastVibeTime = Date.now();
@@ -753,9 +761,7 @@ export async function generateVibesBatch(
         // Clean up each line
         let vibe = line.replace(/^["'\d.\-)\s]+/, "").trim();  // Remove leading quotes, numbers, bullets
         vibe = vibe.replace(/["']$/g, "");  // Remove trailing quotes
-        if (!vibe.endsWith("...")) {
-          vibe = vibe.replace(/\.+$/, "") + "...";
-        }
+        vibe = normalizeEllipsis(vibe);  // Script-appropriate ellipsis
         return vibe;
       })
       .filter(vibe => vibe.length > 3 && vibe !== "...");  // Filter invalid
