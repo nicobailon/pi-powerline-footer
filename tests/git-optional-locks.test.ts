@@ -42,6 +42,24 @@ test("footer git polling hides Windows child consoles while preserving read-only
   }
 });
 
+test("footer git polling handles a synchronous spawn failure", async (t) => {
+  t.mock.method(childProcess, "spawn", () => {
+    throw new Error("spawn EINVAL");
+  });
+  syncBuiltinESMExports();
+  try {
+    invalidateGitStatus();
+    const cwd = mkdtempSync(join(tmpdir(), "powerline-git-spawn-"));
+    const fallback = { branch: "main", staged: 0, unstaged: 0, untracked: 0 };
+    assert.deepEqual(getGitStatus("main", "full", cwd), fallback);
+    await assert.doesNotReject(waitForGitUpdates());
+    assert.deepEqual(getGitStatus("main", "full", cwd), fallback);
+  } finally {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  }
+});
+
 test("bash git completions hide Windows child consoles", () => {
   assert.match(
     completionSource,

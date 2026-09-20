@@ -124,12 +124,18 @@ export function readOnlyGitEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.Pro
 
 function runGit(args: string[], cwd: string, timeoutMs = 200): Promise<string | null> {
   return new Promise((resolve) => {
-    const proc = spawn("git", args, {
-      stdio: ["ignore", "pipe", "pipe"],
-      env: readOnlyGitEnv(),
-      windowsHide: true,
-      cwd,
-    });
+    let proc;
+    try {
+      proc = spawn("git", args, {
+        stdio: ["ignore", "pipe", "pipe"],
+        env: readOnlyGitEnv(),
+        windowsHide: true,
+        cwd,
+      });
+    } catch {
+      resolve(null);
+      return;
+    }
 
     let stdout = "";
     let resolved = false;
