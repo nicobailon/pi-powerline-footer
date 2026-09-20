@@ -3344,7 +3344,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         if (!canShowWelcome(ctx, request, generation)) return;
         const modelName = ctx.model?.name || ctx.model?.id || "No model";
         const providerName = ctx.model?.provider || "Unknown";
-        const loadedCounts = discoverLoadedCounts();
+        const loadedCounts = discoverLoadedCounts(pi.getCommands());
         const initialContextTokens = estimateInitialContextTokens(ctx);
 
         const header = new WelcomeHeader(modelName, providerName, recentSessions, loadedCounts, initialContextTokens);
@@ -3372,7 +3372,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         if (!canShowWelcome(ctx, request, overlaySessionGeneration)) return;
         const recentSessions = await getRecentSessions(3, request.signal);
         if (!canShowWelcome(ctx, request, overlaySessionGeneration)) return;
-        const loadedCounts = discoverLoadedCounts();
+        const loadedCounts = discoverLoadedCounts(pi.getCommands());
         const initialContextTokens = estimateInitialContextTokens(ctx);
 
         void ctx.ui.custom(

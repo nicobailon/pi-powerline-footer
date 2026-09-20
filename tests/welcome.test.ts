@@ -6,50 +6,33 @@ import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setImmediate } from "node:timers/promises";
-import { discoverLoadedCounts, getRecentSessions, WelcomeHeader } from "../welcome.ts";
+import type { SlashCommandInfo } from "@earendil-works/pi-coding-agent";
+import { countLoadedCommands, discoverLoadedCounts, getRecentSessions, WelcomeHeader } from "../welcome.ts";
 
-test("discoverLoadedCounts ignores dangling skill symlinks", () => {
-  const root = mkdtempSync(join(tmpdir(), "powerline-welcome-"));
-  const home = join(root, "home");
-  const project = join(root, "project");
-  const skillsDir = join(home, ".pi", "agent", "skills");
-  const originalHome = process.env.HOME;
-  const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
-  const originalCwd = process.cwd();
-  const originalDebug = console.debug;
-  const debugCalls: unknown[][] = [];
+const loadedCommands: SlashCommandInfo[] = [
+  { name: "user-prompt", source: "prompt", sourceInfo: { path: "/agent/prompts/user.md", source: "user", scope: "user", origin: "top-level" } },
+  { name: "project-prompt", source: "prompt", sourceInfo: { path: "/repo/.pi/prompts/project.md", source: "project", scope: "project", origin: "top-level" } },
+  { name: "package-prompt", source: "prompt", sourceInfo: { path: "/cache/pkg/prompts/pkg.md", source: "pkg", scope: "user", origin: "package" } },
+  { name: "user-skill", source: "skill", sourceInfo: { path: "/agent/skills/user/SKILL.md", source: "user", scope: "user", origin: "top-level" } },
+  { name: "project-skill", source: "skill", sourceInfo: { path: "/repo/.pi/skills/project/SKILL.md", source: "project", scope: "project", origin: "top-level" } },
+  { name: "package-skill", source: "skill", sourceInfo: { path: "/cache/pkg/skills/pkg/SKILL.md", source: "pkg", scope: "project", origin: "package" } },
+];
 
-  mkdirSync(join(skillsDir, "valid-skill"), { recursive: true });
-  mkdirSync(project, { recursive: true });
-  writeFileSync(join(skillsDir, "valid-skill", "SKILL.md"), "# Valid skill\n");
-  symlinkSync(join(root, "missing-skill"), join(skillsDir, "pi-intercom"), "dir");
+test("countLoadedCommands counts effective prompts and skills from every origin", () => {
+  assert.deepEqual(countLoadedCommands(loadedCommands), { skills: 3, promptTemplates: 3 });
+});
 
-  console.debug = (...args: unknown[]) => {
-    debugCalls.push(args);
-  };
-
-  try {
-    process.env.HOME = home;
-    delete process.env.PI_CODING_AGENT_DIR;
-    process.chdir(project);
-
-    assert.equal(discoverLoadedCounts().skills, 1);
-    assert.deepEqual(debugCalls, []);
-  } finally {
-    console.debug = originalDebug;
-    process.chdir(originalCwd);
-    if (originalHome === undefined) {
-      delete process.env.HOME;
-    } else {
-      process.env.HOME = originalHome;
-    }
-    if (originalAgentDir === undefined) {
-      delete process.env.PI_CODING_AGENT_DIR;
-    } else {
-      process.env.PI_CODING_AGENT_DIR = originalAgentDir;
-    }
-    rmSync(root, { recursive: true, force: true });
-  }
+test("extension commands are not presented as loaded extensions", () => {
+  const extensionCommands: SlashCommandInfo[] = [
+    { name: "one", source: "extension", sourceInfo: { path: "/ext/a.ts", source: "a", scope: "user", origin: "top-level" } },
+    { name: "two", source: "extension", sourceInfo: { path: "/ext/a.ts", source: "a", scope: "user", origin: "top-level" } },
+    { name: "three", source: "extension", sourceInfo: { path: "/ext/b.ts", source: "b", scope: "project", origin: "package" } },
+  ];
+  assert.deepEqual(countLoadedCommands([...loadedCommands, ...extensionCommands]), { skills: 3, promptTemplates: 3 });
+  const rendered = new WelcomeHeader("Model", "Provider", [], {
+    contextFiles: 0, ...countLoadedCommands(extensionCommands),
+  }).render(96).join("\n").replace(/\x1b\[[0-9;]*m/g, "");
+  assert.doesNotMatch(rendered, /extension/i);
 });
 
 async function withTemporaryHome(run: (home: string) => void | Promise<void>): Promise<void> {
@@ -77,7 +60,7 @@ async function withTemporaryHome(run: (home: string) => void | Promise<void>): P
 }
 
 test("welcome renders the initial system prompt token estimate", () => {
-  const counts = { contextFiles: 1, extensions: 1, skills: 1, promptTemplates: 1 };
+  const counts = { contextFiles: 1, skills: 1, promptTemplates: 1 };
   const rendered = new WelcomeHeader("Model", "Provider", [], counts, 1900)
     .render(96)
     .join("\n")
@@ -127,7 +110,7 @@ test("getRecentSessions falls back to encoded directory when header cwd is unusa
   });
 });
 
-test("welcome discovery respects PI_CODING_AGENT_DIR for agent-global files", async () => {
+test("welcome context discovery respects PI_CODING_AGENT_DIR", async () => {
   await withTemporaryHome((home) => {
     const root = mkdtempSync(join(tmpdir(), "powerline-welcome-agent-dir-"));
     const project = join(root, "project");
@@ -137,23 +120,16 @@ test("welcome discovery respects PI_CODING_AGENT_DIR for agent-global files", as
     try {
       process.env.PI_CODING_AGENT_DIR = agentDir;
       mkdirSync(project, { recursive: true });
-      mkdirSync(join(agentDir, "extensions", "local-ext"), { recursive: true });
-      mkdirSync(join(agentDir, "skills", "skill-a"), { recursive: true });
-      mkdirSync(join(agentDir, "commands"), { recursive: true });
+      mkdirSync(agentDir, { recursive: true });
       mkdirSync(join(home, ".pi", "agent"), { recursive: true });
       writeFileSync(join(agentDir, "AGENTS.md"), "# Agent instructions\n");
-      writeFileSync(join(agentDir, "extensions", "local-ext", "index.ts"), "export default {};\n");
-      writeFileSync(join(agentDir, "skills", "skill-a", "SKILL.md"), "# Skill\n");
-      writeFileSync(join(agentDir, "commands", "hello.md"), "hello\n");
-      writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:pkg-one@1.0.0"] }));
       writeFileSync(join(home, ".pi", "agent", "AGENTS.md"), "# Should not count\n");
       process.chdir(project);
 
-      assert.deepEqual(discoverLoadedCounts(), {
+      assert.deepEqual(discoverLoadedCounts(loadedCommands), {
         contextFiles: 1,
-        extensions: 2,
-        skills: 1,
-        promptTemplates: 1,
+        skills: 3,
+        promptTemplates: 3,
       });
     } finally {
       process.chdir(originalCwd);
@@ -299,16 +275,22 @@ async function welcomeHarness(t: test.TestContext, home: string, quietStartup: b
   };
   type Handler = (event: { reason?: string }, context: typeof ctx) => unknown;
   const handlers = new Map<string, Handler>();
+  let getCommandsCalls = 0;
   const pi = {
     on: (name: string, handler: Handler) => handlers.set(name, handler),
     registerCommand() {},
     sendUserMessage() {},
+    getCommands: () => {
+      getCommandsCalls++;
+      return loadedCommands;
+    },
   };
   (extension as unknown as (api: typeof pi) => void)(pi);
   return {
     ctx,
     get view() { return view; },
     get installations() { return installations; },
+    get getCommandsCalls() { return getCommandsCalls; },
     type: (text: string) => editor.handleInput(text),
     event: async (name: string, reason?: string) => { await handlers.get(name)?.({ reason }, ctx); },
     runStartupWork: () => {
@@ -375,7 +357,11 @@ test("eligible welcome installs and dismisses without losing input", async (t) =
           await harness.runStartupWork();
           const view = harness.view;
           assert.ok(view);
-          assert.match(view.render(96).join("\n"), /Test model/);
+          const rendered = view.render(96).join("\n");
+          assert.match(rendered, /Test model/);
+          assert.match(rendered, /3.*skill/);
+          assert.match(rendered, /3.*prompt template/);
+          assert.equal(harness.getCommandsCalls, 1);
           if (!quiet) {
             view.handleInput?.("x");
             assert.equal(harness.ctx.ui.getEditorText(), "x");
