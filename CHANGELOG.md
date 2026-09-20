@@ -5,6 +5,7 @@
 ### Fixed
 - **Working Vibes punctuation** — Use script-appropriate ellipses for Latin and CJK loading messages, including non-BMP Han and Japanese/Korean scripts. Thanks to [@kyrie2to11](https://github.com/kyrie2to11) for #215.
 - **Git polling failures** — Keep cached or fallback Git details available when starting the Git process fails synchronously. Thanks to [@hhhhddh](https://github.com/hhhhddh) for #219.
+- **Live editor border colors** — Keep Powerline editor borders in sync with Pi's active editor mode. Thanks to [@drewmala](https://github.com/drewmala) for #221.
 
 ## [0.17.1] - 2026-09-10
 

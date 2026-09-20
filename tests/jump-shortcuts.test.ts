@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { CURSOR_MARKER } from "@earendil-works/pi-tui";
+import { ansi, getFgAnsiCode } from "../colors.ts";
 import { isSupportedSuperShortcut, matchesConfiguredShortcut, shortcutConflictKey } from "../shortcuts.ts";
 import { parseBashModeSettings, renderFastPowerlineEditor, resolveShortcutConfig } from "../index.ts";
 
@@ -70,10 +71,14 @@ test("bash completions are opt-in", () => {
 });
 
 test("fast editor render keeps Powerline chrome for large drafts", () => {
-  const editor = {
+  const editor: Record<string, any> = {
     focused: true,
     isShowingAutocomplete: () => false,
     tui: { terminal: { rows: 24 } },
+  };
+  editor.borderColor = function (text: string) {
+    assert.equal(this, editor);
+    return `\x1b[31m${text}\x1b[0m`;
   };
   Reflect.set(editor, "state", {
     lines: ["intro", "x".repeat(5000)],
@@ -88,8 +93,26 @@ test("fast editor render keeps Powerline chrome for large drafts", () => {
 
   assert.ok(rendered);
   assert.ok(rendered[0]?.includes("↑"));
+  assert.ok(rendered[0]?.startsWith(" \x1b[31m"));
+  assert.ok(rendered.at(-1)?.startsWith(" \x1b[31m"));
   assert.ok(rendered.some((line) => line.includes(CURSOR_MARKER)));
   assert.ok(rendered.some((line) => line.includes(">")));
+
+  editor.borderColor = (text: string) => `\x1b[34m${text}\x1b[0m`;
+  const recolored = renderFastPowerlineEditor(editor, 80, {
+    bashModeActive: false,
+    completionsEnabled: false,
+  });
+  assert.ok(recolored?.[0]?.startsWith(" \x1b[34m"));
+  assert.ok(recolored?.at(-1)?.startsWith(" \x1b[34m"));
+
+  delete editor.borderColor;
+  const fallback = renderFastPowerlineEditor(editor, 80, {
+    bashModeActive: false,
+    completionsEnabled: false,
+  });
+  assert.ok(fallback?.[0]?.startsWith(` ${getFgAnsiCode("sep")}`));
+  assert.ok(fallback?.[0]?.endsWith(ansi.reset));
 });
 
 test("fast editor render falls back for short drafts and enabled completions", () => {

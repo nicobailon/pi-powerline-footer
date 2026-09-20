@@ -985,6 +985,15 @@ function padToWidth(line: string, width: number): string {
   return `${line}${" ".repeat(Math.max(0, width - visibleWidth(line)))}`;
 }
 
+export function colorEditorBorder(editor: unknown, text: string): string {
+  const borderColor = editor && typeof editor === "object"
+    ? Reflect.get(editor, "borderColor")
+    : undefined;
+  return typeof borderColor === "function"
+    ? borderColor.call(editor, text)
+    : `${getFgAnsiCode("sep")}${text}${ansi.reset}`;
+}
+
 export function renderFastPowerlineEditor(
   editor: unknown,
   width: number,
@@ -1014,10 +1023,9 @@ export function renderFastPowerlineEditor(
 
   Reflect.set(editor as object, "lastWidth", layoutWidth);
 
-  const borderColor = getFgAnsiCode("sep");
   const border = (marker: "↑" | "↓" | "─") => {
     const text = marker === "─" ? "─".repeat(width - 2) : `${marker}${"─".repeat(Math.max(0, width - 3))}`;
-    return ` ${borderColor}${text}${ansi.reset}`;
+    return ` ${colorEditorBorder(editor, text)}`;
   };
   const promptGlyph = options.bashModeActive ? "$" : ">";
   const prompt = `${ansi.getFgAnsi(200, 200, 200)}${promptGlyph}${ansi.reset}`;
@@ -3229,7 +3237,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
               : originalRender(width);
           }
 
-          const bc = (s: string) => `${getFgAnsiCode("sep")}${s}${ansi.reset}`;
           const promptGlyph = bashModeActive ? "$" : ">";
           const promptColor = ansi.getFgAnsi(200, 200, 200);
           const prompt = `${promptColor}${promptGlyph}${ansi.reset}`;
@@ -3252,7 +3259,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           }
 
           const result: string[] = [];
-          result.push(" " + bc("─".repeat(width - 2)));
+          result.push(" " + colorEditorBorder(editor, "─".repeat(width - 2)));
 
           for (let i = 1; i < bottomBorderIndex; i++) {
             const prefix = i === 1 ? promptPrefix : contPrefix;
@@ -3263,7 +3270,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
             result.push(`${promptPrefix}${" ".repeat(contentWidth)}`);
           }
 
-          result.push(" " + bc("─".repeat(width - 2)));
+          result.push(" " + colorEditorBorder(editor, "─".repeat(width - 2)));
 
           for (let i = bottomBorderIndex + 1; i < lines.length; i++) {
             result.push(lines[i] || "");
