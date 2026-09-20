@@ -8,6 +8,7 @@
 - **Live editor border colors** — Keep Powerline editor borders in sync with Pi's active editor mode. Thanks to [@drewmala](https://github.com/drewmala) for #221.
 - **Fullscreen footer space** — Render responsive secondary Powerline content in Pi's reserved footer row instead of duplicating it in a below-editor widget. Thanks to [@JBP-1994](https://github.com/JBP-1994) for #217.
 - **Accurate welcome counts** — Count effective loaded skills and prompt templates through Pi's public command API, including package resources, and omit the unsupported extension count. Thanks to [@MORAY-charlie](https://github.com/MORAY-charlie) for #218.
+- **Editor stash reload safety** — Preserve the active editor stash across `/reload` of the same session without carrying it into other sessions. Thanks to [@Avg8888](https://github.com/Avg8888) for #220.
 
 ## [0.17.1] - 2026-09-10
 

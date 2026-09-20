@@ -56,7 +56,7 @@ type CustomFactory = (
 ) => FakeComponent;
 interface FakeCtx {
   cwd: string;
-  sessionManager?: { getCwd(): string };
+  sessionManager?: { getCwd(): string; getSessionId(): string };
   hasUI: boolean;
   model: { name: string; provider: string };
   modelRegistry: Record<string, never>;
@@ -123,8 +123,11 @@ function createFakePi() {
   };
 }
 
-function createCtx(options: { cwd: string; text?: string; customInputs?: string[][]; footerData?: ReadonlyFooterDataProvider; theme?: FakeTheme } = { cwd: process.cwd() }) {
+let fakeSessionSequence = 0;
+
+function createCtx(options: { cwd: string; sessionId?: string; text?: string; customInputs?: string[][]; footerData?: ReadonlyFooterDataProvider; theme?: FakeTheme } = { cwd: process.cwd() }) {
   let text = options.text ?? "";
+  const sessionId = options.sessionId ?? `fake-session-${++fakeSessionSequence}`;
   let terminalInput: ((data: string) => unknown) | null = null;
   const setEditorTextCalls: string[] = [];
   const notifications: { message: string; level?: string }[] = [];
@@ -137,7 +140,10 @@ function createCtx(options: { cwd: string; text?: string; customInputs?: string[
 
   const ctx: FakeCtx = {
     cwd: options.cwd,
-    sessionManager: { getCwd: () => options.cwd },
+    sessionManager: {
+      getCwd: () => options.cwd,
+      getSessionId: () => sessionId,
+    },
     hasUI: true,
     model: { name: "test", provider: "test" },
     modelRegistry: {},
@@ -473,6 +479,159 @@ test("agent_end leaves an active stash untouched until explicit restore", async 
     assert.equal(runtime.notifications.some((entry) => entry.message === "Stash restored"), true);
   } finally {
     restoreEnv();
+  }
+});
+
+test("reload transfers an active stash to the next extension generation", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "powerline-stash-reload-"));
+  const cwd = mkdtempSync(join(tmpdir(), "powerline-stash-reload-cwd-"));
+  const sessionId = `reload-${Date.now()}-${Math.random()}`;
+  writeAgentSettings(agentDir);
+  const firstModule = await loadPowerline(agentDir);
+  const first = createFakePi();
+  firstModule.extension(first.pi);
+  const oldGeneration = createCtx({ cwd, sessionId, text: "draft across reload" });
+
+  try {
+    await first.handlers.get("session_start")?.({ reason: "startup" }, oldGeneration.ctx);
+    oldGeneration.sendTerminalInput("\x1bs");
+    await first.handlers.get("session_shutdown")?.({ reason: "reload" }, oldGeneration.ctx);
+
+    const secondModule = await loadPowerline(agentDir);
+    const second = createFakePi();
+    secondModule.extension(second.pi);
+    const newGeneration = createCtx({ cwd, sessionId });
+    try {
+      await second.handlers.get("session_start")?.({ reason: "reload" }, newGeneration.ctx);
+      assert.deepEqual(newGeneration.statuses.at(-1), ["stash", "stash"]);
+
+      newGeneration.sendTerminalInput("\x1bs");
+      assert.equal(newGeneration.text, "draft across reload");
+      assert.deepEqual(newGeneration.statuses.at(-1), ["stash", undefined]);
+    } finally {
+      await second.handlers.get("session_shutdown")?.({ reason: "quit" }, newGeneration.ctx);
+      secondModule.restoreEnv();
+    }
+  } finally {
+    firstModule.restoreEnv();
+    fs.rmSync(agentDir, { recursive: true, force: true });
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test("reload stash handoff does not leak to a different session", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "powerline-stash-isolation-"));
+  const cwd = mkdtempSync(join(tmpdir(), "powerline-stash-isolation-cwd-"));
+  writeAgentSettings(agentDir);
+  const firstModule = await loadPowerline(agentDir);
+  const first = createFakePi();
+  firstModule.extension(first.pi);
+  const oldGeneration = createCtx({ cwd, sessionId: `source-${Date.now()}-${Math.random()}`, text: "private draft" });
+
+  try {
+    await first.handlers.get("session_start")?.({ reason: "startup" }, oldGeneration.ctx);
+    oldGeneration.sendTerminalInput("\x1bs");
+    await first.handlers.get("session_shutdown")?.({ reason: "reload" }, oldGeneration.ctx);
+
+    const secondModule = await loadPowerline(agentDir);
+    const second = createFakePi();
+    secondModule.extension(second.pi);
+    const otherSession = createCtx({ cwd, sessionId: `other-${Date.now()}-${Math.random()}` });
+    try {
+      await second.handlers.get("session_start")?.({ reason: "reload" }, otherSession.ctx);
+      assert.deepEqual(otherSession.statuses.at(-1), ["stash", undefined]);
+      otherSession.sendTerminalInput("\x1bs");
+      assert.equal(otherSession.text, "");
+      assert.equal(otherSession.notifications.at(-1)?.message, "Nothing to stash");
+    } finally {
+      await second.handlers.get("session_shutdown")?.({ reason: "quit" }, otherSession.ctx);
+      secondModule.restoreEnv();
+    }
+  } finally {
+    await first.handlers.get("session_shutdown")?.({ reason: "quit" }, oldGeneration.ctx);
+    firstModule.restoreEnv();
+    fs.rmSync(agentDir, { recursive: true, force: true });
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test("quit clears an active stash before a same-session generation starts", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "powerline-stash-quit-"));
+  const cwd = mkdtempSync(join(tmpdir(), "powerline-stash-quit-cwd-"));
+  const sessionId = `quit-${Date.now()}-${Math.random()}`;
+  writeAgentSettings(agentDir);
+  const firstModule = await loadPowerline(agentDir);
+  const first = createFakePi();
+  firstModule.extension(first.pi);
+  const oldGeneration = createCtx({ cwd, sessionId, text: "discard on quit" });
+
+  try {
+    await first.handlers.get("session_start")?.({ reason: "startup" }, oldGeneration.ctx);
+    oldGeneration.sendTerminalInput("\x1bs");
+    await first.handlers.get("session_shutdown")?.({ reason: "quit" }, oldGeneration.ctx);
+
+    const secondModule = await loadPowerline(agentDir);
+    const second = createFakePi();
+    secondModule.extension(second.pi);
+    const newGeneration = createCtx({ cwd, sessionId });
+    try {
+      await second.handlers.get("session_start")?.({ reason: "reload" }, newGeneration.ctx);
+      newGeneration.sendTerminalInput("\x1bs");
+      assert.equal(newGeneration.text, "");
+      assert.equal(newGeneration.notifications.at(-1)?.message, "Nothing to stash");
+    } finally {
+      await second.handlers.get("session_shutdown")?.({ reason: "quit" }, newGeneration.ctx);
+      secondModule.restoreEnv();
+    }
+  } finally {
+    firstModule.restoreEnv();
+    fs.rmSync(agentDir, { recursive: true, force: true });
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test("reload stash handoff is consumed only once", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "powerline-stash-one-shot-"));
+  const cwd = mkdtempSync(join(tmpdir(), "powerline-stash-one-shot-cwd-"));
+  const sessionId = `one-shot-${Date.now()}-${Math.random()}`;
+  writeAgentSettings(agentDir);
+  const firstModule = await loadPowerline(agentDir);
+  const first = createFakePi();
+  firstModule.extension(first.pi);
+  const oldGeneration = createCtx({ cwd, sessionId, text: "consume once" });
+
+  try {
+    await first.handlers.get("session_start")?.({ reason: "startup" }, oldGeneration.ctx);
+    oldGeneration.sendTerminalInput("\x1bs");
+    await first.handlers.get("session_shutdown")?.({ reason: "reload" }, oldGeneration.ctx);
+
+    const secondModule = await loadPowerline(agentDir);
+    const second = createFakePi();
+    secondModule.extension(second.pi);
+    const receivingGeneration = createCtx({ cwd, sessionId });
+    await second.handlers.get("session_start")?.({ reason: "reload" }, receivingGeneration.ctx);
+
+    const thirdModule = await loadPowerline(agentDir);
+    const third = createFakePi();
+    thirdModule.extension(third.pi);
+    const extraGeneration = createCtx({ cwd, sessionId });
+    try {
+      await third.handlers.get("session_start")?.({ reason: "reload" }, extraGeneration.ctx);
+      extraGeneration.sendTerminalInput("\x1bs");
+      assert.equal(extraGeneration.notifications.at(-1)?.message, "Nothing to stash");
+
+      receivingGeneration.sendTerminalInput("\x1bs");
+      assert.equal(receivingGeneration.text, "consume once");
+    } finally {
+      await third.handlers.get("session_shutdown")?.({ reason: "quit" }, extraGeneration.ctx);
+      await second.handlers.get("session_shutdown")?.({ reason: "quit" }, receivingGeneration.ctx);
+      thirdModule.restoreEnv();
+      secondModule.restoreEnv();
+    }
+  } finally {
+    firstModule.restoreEnv();
+    fs.rmSync(agentDir, { recursive: true, force: true });
+    fs.rmSync(cwd, { recursive: true, force: true });
   }
 });
 

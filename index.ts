@@ -183,13 +183,58 @@ const EDITOR_STATUS_DEFER_MS = 150;
 const QUEUE_SUMMARY_CACHE_TTL_MS = 250;
 const PROMPT_HISTORY_TRACKED = Symbol.for("powerlinePromptHistoryTracked");
 const PROMPT_HISTORY_STATE_KEY = Symbol.for("powerlinePromptHistoryState");
+const ACTIVE_STASH_RELOAD_STATE_KEY = Symbol.for("pi-powerline-footer.active-stash-reload.v1");
 
 interface PromptHistoryEditor {
   addToHistory?: (text: string) => void;
 }
 
 type PromptHistoryState = { savedPromptHistory: string[] };
+type ActiveStashReloadState = { version: 1; bySessionId: Map<string, string> };
 type SessionAssistantUsage = AssistantMessage["usage"];
+
+function getActiveStashReloadState(): ActiveStashReloadState {
+  const existing = Reflect.get(globalThis, ACTIVE_STASH_RELOAD_STATE_KEY);
+  if (
+    isRecord(existing)
+    && existing.version === 1
+    && existing.bySessionId instanceof Map
+    && [...existing.bySessionId].every(([sessionId, text]) => typeof sessionId === "string" && typeof text === "string")
+  ) {
+    return existing as ActiveStashReloadState;
+  }
+
+  const state: ActiveStashReloadState = { version: 1, bySessionId: new Map() };
+  Reflect.set(globalThis, ACTIVE_STASH_RELOAD_STATE_KEY, state);
+  return state;
+}
+
+function getStableSessionId(ctx: any): string | null {
+  const sessionId = ctx?.sessionManager?.getSessionId?.();
+  return typeof sessionId === "string" && sessionId.length > 0 ? sessionId : null;
+}
+
+function clearActiveStashReload(ctx: any): void {
+  const sessionId = getStableSessionId(ctx);
+  if (sessionId !== null) getActiveStashReloadState().bySessionId.delete(sessionId);
+}
+
+function takeActiveStashReload(ctx: any): string | null {
+  const sessionId = getStableSessionId(ctx);
+  if (sessionId === null) return null;
+  const transfers = getActiveStashReloadState().bySessionId;
+  const text = transfers.get(sessionId) ?? null;
+  transfers.delete(sessionId);
+  return text;
+}
+
+function transferActiveStashReload(ctx: any, text: string | null): void {
+  const sessionId = getStableSessionId(ctx);
+  if (sessionId === null) return;
+  const transfers = getActiveStashReloadState().bySessionId;
+  if (text === null) transfers.delete(sessionId);
+  else transfers.set(sessionId, text);
+}
 
 function getUsageTokenTotal(usage: SessionAssistantUsage): number {
   const totalTokens = "totalTokens" in usage && typeof usage.totalTokens === "number" ? usage.totalTokens : 0;
@@ -1757,7 +1802,12 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     approximateContextUsage = event.reason === "reload" ? estimateUnknownContextUsage(ctx) : null;
     powerlineCompacting = false;
     cancelPostCompactionDelivery();
-    stashedEditorText = null;
+    if (event.reason === "reload") {
+      stashedEditorText = takeActiveStashReload(ctx);
+    } else {
+      stashedEditorText = null;
+      clearActiveStashReload(ctx);
+    }
 
     const settings = readSettings(ctx.cwd);
     resolvedShortcuts = resolveShortcutConfig(settings);
@@ -1774,7 +1824,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     currentThinkingLevel = getThinkingLevelFn();
 
     if (ctx.hasUI) {
-      ctx.ui.setStatus("stash", undefined);
+      ctx.ui.setStatus("stash", stashedEditorText === null ? undefined : "stash");
     }
 
     // Initialize vibe manager (needs modelRegistry from ctx)
@@ -1796,7 +1846,13 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   });
 
-  pi.on("session_shutdown", async (_event, ctx) => {
+  pi.on("session_shutdown", async (event, ctx) => {
+    if (event.reason === "reload") {
+      transferActiveStashReload(ctx, stashedEditorText);
+    } else {
+      stashedEditorText = null;
+      clearActiveStashReload(ctx);
+    }
     sessionGeneration++;
     dismissWelcome(ctx);
     statusRenderScheduler.cancel();
@@ -2430,7 +2486,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           dismissWelcome(ctx);
           getPromptHistoryState().savedPromptHistory = [];
           stashedEditorText = null;
-                ctx.ui.setStatus("stash", undefined);
+          clearActiveStashReload(ctx);
+          ctx.ui.setStatus("stash", undefined);
           restoreFooterStatusRepaintHook?.();
           restoreFooterStatusRepaintHook = null;
           stashShortcutInputUnsubscribe?.();
