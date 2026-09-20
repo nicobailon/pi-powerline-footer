@@ -44,6 +44,10 @@ interface FakeComponent {
   render(width: number): string[];
   handleInput(data: string): void;
 }
+interface FakeRenderable {
+  dispose(): void;
+  render(width: number): string[];
+}
 type CustomFactory = (
   tui: { requestRender(): void },
   theme: FakeTheme,
@@ -65,8 +69,8 @@ interface FakeCtx {
     onTerminalInput(handler: (data: string) => unknown): () => void;
     custom(factory: CustomFactory): Promise<unknown>;
     select(): Promise<string>;
-    setWidget(name: string, factory: ((tui: { requestRender(): void }, theme: FakeTheme) => { render(width: number): string[] }) | undefined): void;
-    setFooter(factory?: (tui: { requestRender(): void }, theme: FakeTheme, provider: ReadonlyFooterDataProvider) => { dispose(): void }): void;
+    setWidget(name: string, factory: ((tui: { requestRender(): void }, theme: FakeTheme) => { render(width: number): string[] }) | undefined, options?: { placement?: string }): void;
+    setFooter(factory?: (tui: { requestRender(): void }, theme: FakeTheme, provider: ReadonlyFooterDataProvider) => FakeRenderable): void;
     setHeader(): void;
     setEditorComponent(): void;
     getEditorComponent(): undefined;
@@ -128,7 +132,8 @@ function createCtx(options: { cwd: string; text?: string; customInputs?: string[
   const customTitles: string[] = [];
   const customInputs = [...(options.customInputs ?? [])];
   const widgets = new Map<string, { render(width: number): string[] }>();
-  let footer: { dispose(): void } | undefined;
+  const widgetPlacements = new Map<string, string | undefined>();
+  let footer: FakeRenderable | undefined;
 
   const ctx: FakeCtx = {
     cwd: options.cwd,
@@ -166,13 +171,18 @@ function createCtx(options: { cwd: string; text?: string; customInputs?: string[
         }
       }),
       select: async () => "Insert",
-      setWidget(name, factory) {
-        if (factory) widgets.set(name, factory({ requestRender() {} }, options.theme ?? fakeTheme()));
-        else widgets.delete(name);
+      setWidget(name, factory, widgetOptions) {
+        if (factory) {
+          widgets.set(name, factory({ requestRender() {} }, options.theme ?? fakeTheme()));
+          widgetPlacements.set(name, widgetOptions?.placement);
+        } else {
+          widgets.delete(name);
+          widgetPlacements.delete(name);
+        }
       },
       setFooter(factory) {
         footer?.dispose();
-        footer = factory && options.footerData ? factory({ requestRender() {} }, fakeTheme(), options.footerData) : undefined;
+        footer = factory && options.footerData ? factory({ requestRender() {} }, options.theme ?? fakeTheme(), options.footerData) : undefined;
       },
       setHeader() {},
       setEditorComponent() {},
@@ -183,6 +193,8 @@ function createCtx(options: { cwd: string; text?: string; customInputs?: string[
   return {
     ctx,
     widgets,
+    widgetPlacements,
+    get footer() { return footer; },
     disposeFooter: () => ctx.ui.setFooter(undefined),
     get text() { return text; },
     setEditorTextCalls,
@@ -195,6 +207,64 @@ function createCtx(options: { cwd: string; text?: string; customInputs?: string[
     },
   };
 }
+
+test("responsive secondary content is owned exclusively by the footer", async () => {
+  const root = mkdtempSync(join(tmpdir(), "powerline-secondary-footer-"));
+  writeFileSync(join(root, "settings.json"), JSON.stringify({
+    powerline: {
+      welcome: false,
+      placement: "below",
+      layout: { left: ["model"], right: [], secondary: ["custom:review"] },
+      customItems: [{ id: "review", statusKey: "review", position: "secondary", prefix: "review" }],
+    },
+  }));
+  const footerData: ReadonlyFooterDataProvider = {
+    getGitBranch: () => null,
+    getExtensionStatuses: () => new Map([["review", "ready"]]),
+    getAvailableProviderCount: () => 0,
+    onBranchChange: () => () => {},
+  };
+  const { extension, restoreEnv } = await loadPowerline(root);
+  const fake = createFakePi();
+  const runtime = createCtx({ cwd: root, footerData });
+
+  try {
+    extension(fake.pi);
+    await fake.handlers.get("session_start")?.({ reason: "resume" }, runtime.ctx);
+
+    assert.equal(runtime.widgets.has("powerline-secondary"), false);
+    assert.equal(runtime.widgetPlacements.get("powerline-top"), "belowEditor");
+    assert.ok(runtime.footer, "custom footer is installed");
+
+    const narrowPrimary = runtime.widgets.get("powerline-top")!.render(16).join("\n");
+    const narrowFooter = runtime.footer!.render(16).join("\n");
+    assert.match(narrowPrimary, /test/);
+    assert.doesNotMatch(narrowPrimary, /ready/);
+    assert.match(narrowFooter, /review.*ready/);
+    assert.doesNotMatch(narrowFooter, /test/);
+
+    const widePrimary = runtime.widgets.get("powerline-top")!.render(200).join("\n");
+    assert.equal(runtime.footer!.render(200).length, 0, "footer returns no fabricated blank line without overflow");
+    assert.equal(widePrimary.match(/review.*ready/g)?.length, 1);
+
+    await fake.commands.get("powerline")!.handler("placement above", runtime.ctx);
+    assert.equal(runtime.widgetPlacements.get("powerline-top"), "aboveEditor");
+    assert.equal(runtime.widgets.has("powerline-secondary"), false);
+    assert.match(runtime.footer!.render(16).join("\n"), /review.*ready/);
+
+    await fake.commands.get("powerline")!.handler("", runtime.ctx);
+    assert.equal(runtime.footer, undefined, "disable restores Pi's footer");
+    assert.equal(runtime.widgets.size, 0);
+    await fake.commands.get("powerline")!.handler("", runtime.ctx);
+    assert.ok(runtime.footer, "re-enable reinstalls the custom footer");
+    assert.equal(runtime.widgets.has("powerline-secondary"), false);
+    assert.match(runtime.footer!.render(16).join("\n"), /review.*ready/);
+  } finally {
+    await fake.handlers.get("session_shutdown")?.({}, runtime.ctx);
+    restoreEnv();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("Git rendering reuses the cwd-owned provider only on demand and refreshes across sessions", async (t) => {
   const root = mkdtempSync(join(tmpdir(), "powerline-git-display-"));

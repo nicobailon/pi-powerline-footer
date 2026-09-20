@@ -2960,16 +2960,6 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       },
     }), { placement: config.placement === "below" ? "belowEditor" : "aboveEditor" });
 
-    ctx.ui.setWidget("powerline-secondary", (_tui: any, theme: Theme) => ({
-      dispose() {},
-      invalidate() {
-        resetLayoutCache();
-      },
-      render(width: number): string[] {
-        return measureWidget("secondary", () => renderPowerlineSecondaryLines(width, theme));
-      },
-    }), { placement: "belowEditor" });
-
     if (editorPerf.options.bashWidgets) {
       ctx.ui.setWidget("powerline-bash-transcript", (_tui: any, theme: Theme) => ({
         dispose() {},
@@ -3289,7 +3279,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
     ctx.ui.setEditorComponent(editorFactory);
 
-    ctx.ui.setFooter((tui: any, _theme: Theme, footerData: ReadonlyFooterDataProvider) => {
+    ctx.ui.setFooter((tui: any, theme: Theme, footerData: ReadonlyFooterDataProvider) => {
       footerDataRef = footerData;
       // Pi sets the provider cwd from sessionManager before binding session_start.
       // Do not treat its branch as authoritative if the extension cwd differs.
@@ -3315,8 +3305,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         invalidate() {
           requestStatusRender();
         },
-        render(): string[] {
-          return [""];
+        render(width: number): string[] {
+          return renderPowerlineSecondaryLines(width, theme);
         },
       };
     });
