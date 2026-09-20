@@ -193,45 +193,29 @@ type PromptHistoryState = { savedPromptHistory: string[] };
 type ActiveStashReloadState = { version: 1; bySessionId: Map<string, string> };
 type SessionAssistantUsage = AssistantMessage["usage"];
 
-function getActiveStashReloadState(): ActiveStashReloadState {
-  const existing = Reflect.get(globalThis, ACTIVE_STASH_RELOAD_STATE_KEY);
-  if (
-    isRecord(existing)
-    && existing.version === 1
-    && existing.bySessionId instanceof Map
-    && [...existing.bySessionId].every(([sessionId, text]) => typeof sessionId === "string" && typeof text === "string")
-  ) {
-    return existing as ActiveStashReloadState;
-  }
+const activeStashReloadState = (Reflect.get(globalThis, ACTIVE_STASH_RELOAD_STATE_KEY) as ActiveStashReloadState | undefined)
+  ?? { version: 1, bySessionId: new Map<string, string>() };
+Reflect.set(globalThis, ACTIVE_STASH_RELOAD_STATE_KEY, activeStashReloadState);
 
-  const state: ActiveStashReloadState = { version: 1, bySessionId: new Map() };
-  Reflect.set(globalThis, ACTIVE_STASH_RELOAD_STATE_KEY, state);
-  return state;
-}
-
-function getStableSessionId(ctx: any): string | null {
-  const sessionId = ctx?.sessionManager?.getSessionId?.();
-  return typeof sessionId === "string" && sessionId.length > 0 ? sessionId : null;
+function getSessionId(ctx: any): string {
+  return ctx.sessionManager.getSessionId();
 }
 
 function clearActiveStashReload(ctx: any): void {
-  const sessionId = getStableSessionId(ctx);
-  if (sessionId !== null) getActiveStashReloadState().bySessionId.delete(sessionId);
+  activeStashReloadState.bySessionId.delete(getSessionId(ctx));
 }
 
 function takeActiveStashReload(ctx: any): string | null {
-  const sessionId = getStableSessionId(ctx);
-  if (sessionId === null) return null;
-  const transfers = getActiveStashReloadState().bySessionId;
+  const sessionId = getSessionId(ctx);
+  const transfers = activeStashReloadState.bySessionId;
   const text = transfers.get(sessionId) ?? null;
   transfers.delete(sessionId);
   return text;
 }
 
 function transferActiveStashReload(ctx: any, text: string | null): void {
-  const sessionId = getStableSessionId(ctx);
-  if (sessionId === null) return;
-  const transfers = getActiveStashReloadState().bySessionId;
+  const transfers = activeStashReloadState.bySessionId;
+  const sessionId = getSessionId(ctx);
   if (text === null) transfers.delete(sessionId);
   else transfers.set(sessionId, text);
 }
@@ -1850,9 +1834,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     if (event.reason === "reload") {
       transferActiveStashReload(ctx, stashedEditorText);
     } else {
-      stashedEditorText = null;
       clearActiveStashReload(ctx);
     }
+    stashedEditorText = null;
     sessionGeneration++;
     dismissWelcome(ctx);
     statusRenderScheduler.cancel();
