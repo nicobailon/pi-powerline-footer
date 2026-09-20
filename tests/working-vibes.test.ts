@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { initVibeManager, onVibeAgentEnd, onVibeAgentStart, onVibeBeforeAgentStart, parseVibeGenerateArgs, setVibeMode, setVibeModel, setVibeTheme, setVibeWorkingMessageColor, setVibeWorkingMessageTheme } from "../working-vibes.ts";
+import { getVibeFileCount, initVibeManager, onVibeAgentEnd, onVibeAgentStart, onVibeBeforeAgentStart, parseVibeGenerateArgs, setVibeMode, setVibeModel, setVibeTheme, setVibeWorkingMessageColor, setVibeWorkingMessageTheme } from "../working-vibes.ts";
 import { rainbow } from "../theme.ts";
 
 const FAUX_PROVIDER_PATH = new URL("../node_modules/@earendil-works/pi-ai/dist/providers/faux.js", import.meta.url).href;
@@ -106,6 +106,54 @@ test("working-vibe color styles semantic, hex, and rainbow messages", () => {
     } else {
       process.env.HOME = previousHome;
     }
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("file vibes accept ellipsis suffixes, reject malformed entries, and use script-appropriate ellipses", () => {
+  const home = mkdtempSync(join(tmpdir(), "powerline-vibes-home-"));
+  const previousHome = process.env.HOME;
+  process.env.HOME = home;
+
+  try {
+    const vibesDir = join(home, ".pi", "agent", "vibes");
+    mkdirSync(vibesDir, { recursive: true });
+    writeFileSync(join(vibesDir, "scripts.txt"), [
+      "Still working...",
+      "扩展汉字𠀀...",
+      "ひらがな...",
+      "ｶﾀｶﾅ...",
+      "한글...",
+      "注音ㄅ...",
+      "Missing suffix",
+      "...",
+      "……",
+    ].join("\n"));
+
+    initVibeManager({ modelRegistry: { find() { return undefined; } } } as any);
+    setVibeTheme("scripts");
+    setVibeMode("file");
+    assert.equal(getVibeFileCount("scripts"), 6);
+
+    const messages: string[] = [];
+    for (let index = 0; index < 6; index++) {
+      onVibeBeforeAgentStart("test scripts", message => {
+        if (message) messages.push(message);
+      });
+    }
+    assert.deepEqual(new Set(messages), new Set([
+      "Channeling scripts...",
+      "Still working...",
+      "扩展汉字𠀀……",
+      "ひらがな……",
+      "ｶﾀｶﾅ……",
+      "한글……",
+      "注音ㄅ……",
+    ]));
+  } finally {
+    onVibeAgentEnd(() => {});
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
     rmSync(home, { recursive: true, force: true });
   }
 });

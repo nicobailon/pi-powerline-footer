@@ -303,7 +303,7 @@ function getVibeFilePath(theme: string): string {
 // gets "...". Collapses any trailing run of ASCII dots and Unicode "\u2026"
 // first, so mixed endings like "\u2026\u2026..." never double up.
 function normalizeEllipsis(text: string): string {
-  const cjk = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/.test(text);
+  const cjk = /[\p{Script_Extensions=Han}\p{Script_Extensions=Hiragana}\p{Script_Extensions=Katakana}\p{Script_Extensions=Hangul}\p{Script_Extensions=Bopomofo}]/u.test(text);
   return text.replace(/[.\u2026]+$/g, "") + (cjk ? "\u2026\u2026" : "...");
 }
 
@@ -316,8 +316,9 @@ function loadVibesFromFile(theme: string): string[] {
     return content
       .split("\n")
       .map(line => line.trim())
-      .filter(line => line.length > 0)
-      .map(normalizeEllipsis);
+      .filter(line => /(?:\.\.\.|\u2026+)$/.test(line))
+      .map(normalizeEllipsis)
+      .filter(line => line !== "..." && line !== "\u2026\u2026");
   } catch (error) {
     console.debug(`[working-vibes] Failed to load vibe file ${filePath}:`, error);
     return [];

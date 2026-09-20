@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Working Vibes punctuation** — Use script-appropriate ellipses for Latin and CJK loading messages, including non-BMP Han and Japanese/Korean scripts. Thanks to [@kyrie2to11](https://github.com/kyrie2to11) for #215.
+
 ## [0.17.1] - 2026-09-10
 
 ### Highlights
