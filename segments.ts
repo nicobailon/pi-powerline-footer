@@ -53,7 +53,7 @@ const modelSegment: StatusLineSegment = {
     let modelName = ctx.model?.name || ctx.model?.id || "no-model";
     if (opts.display === "qualified" && ctx.model?.id) {
       const provider = ctx.model.provider || ctx.model.providerId || ctx.model.providerName;
-      modelName = provider && !ctx.model.id.includes("/") ? `${provider}/${ctx.model.id}` : ctx.model.id;
+      modelName = provider && !ctx.model.id.startsWith(`${provider}/`) ? `${provider}/${ctx.model.id}` : ctx.model.id;
     } else if (modelName.startsWith("Claude ")) {
       modelName = modelName.slice(7);
     }

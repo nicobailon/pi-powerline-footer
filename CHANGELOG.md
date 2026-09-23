@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Qualified model display** — Include the provider for model IDs with nested paths without duplicating an existing provider prefix. Thanks to [@acidnik](https://github.com/acidnik) for #227.
+
 ## [0.17.2] - 2026-09-20
 
 ### Highlights
