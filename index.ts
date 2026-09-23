@@ -3259,7 +3259,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           return;
         }
 
-        if (pendingSend && keybindings.matches(data, "app.interrupt") && !editor.isShowingAutocomplete()) {
+        if (pendingSend && !bashModeActive && keybindings.matches(data, "app.interrupt") && !editor.isShowingAutocomplete()) {
           restorePendingSend();
           return;
         }
@@ -3296,7 +3296,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
         if (powerlineCompacting && !bashModeActive && (isSubmit || isFollowUpSubmit)) {
           const text = editor.getExpandedText().trim();
-          if (!text) return;
+          if (!text) {
+            sendPendingNow();
+            return;
+          }
           if (text.startsWith("/")) {
             originalHandleInput(data);
             return;
