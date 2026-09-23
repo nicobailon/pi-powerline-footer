@@ -101,6 +101,14 @@ test("self-colored custom items preserve ANSI resets and skip configured color",
   assert.equal(rendered.visible, true);
 });
 
+test("extension statuses use one padded dot separator", () => {
+  const rendered = renderSegment("extension_statuses", createSegmentContext({
+    extensionStatuses: new Map([["first", "ready"], ["second", "waiting"]]),
+  }));
+
+  assert.deepEqual(rendered, { content: "ready · waiting", visible: true });
+});
+
 test("cost segment supports subscription display modes and converted currencies", () => {
   __setCurrencyRatesForTest({ CNY: 7.2 });
 
