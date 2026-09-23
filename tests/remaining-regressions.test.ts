@@ -67,10 +67,15 @@ test("model segment can show provider-qualified ids", () => {
     model: { id: "openai/gpt-4.1", name: "GPT 4.1", provider: "openai" },
     options: { model: { display: "qualified" } },
   }));
+  const nestedId = renderSegment("model", createSegmentContext({
+    model: { id: "deepseek/deepseek-v4-flash", name: "DeepSeek V4 Flash", provider: "commandcode" },
+    options: { model: { display: "qualified" } },
+  }));
 
   assert.equal(stripAnsi(normal.content), "Sonnet 4");
   assert.equal(stripAnsi(qualified.content), "anthropic/claude-sonnet-4");
   assert.equal(stripAnsi(alreadyQualified.content), "openai/gpt-4.1");
+  assert.equal(stripAnsi(nestedId.content), "commandcode/deepseek/deepseek-v4-flash");
 });
 
 test("self-colored custom items preserve ANSI resets and skip configured color", () => {
