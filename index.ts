@@ -87,6 +87,7 @@ let config: PowerlineConfig = {
   welcome: true,
   stashSharpSShortcut: false,
   queue: { compactPromptMode: "queue" },
+  sendDelayMs: 0,
   workingVibes: {},
 };
 
@@ -1247,6 +1248,13 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   } | null = null;
   let powerlineCompacting = false;
   let compactionGeneration = 0;
+  let pendingSend: {
+    text: string;
+    submit: (text: string) => unknown;
+    deadline: number;
+    timer: ReturnType<typeof setTimeout>;
+    ticker: ReturnType<typeof setInterval>;
+  } | null = null;
   let postCompactionDelivery: { generation: number; context: QueueContext } | null = null;
   let queueDeliveryTimer: ReturnType<typeof setTimeout> | null = null;
   const pendingQueueDeliveries = new Map<string, { text: string; timer: ReturnType<typeof setTimeout> }>();
@@ -1538,6 +1546,57 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     const item = captureQueueItem(ctx, trimmed, "post-compact", { kind: "current-session" });
     ctx.ui.notify(`Queued for after compaction (${item.id})`, "info");
     return item;
+  }
+
+  function takePendingSend(): NonNullable<typeof pendingSend> | null {
+    const pending = pendingSend;
+    if (!pending) return null;
+    pendingSend = null;
+    clearTimeout(pending.timer);
+    clearInterval(pending.ticker);
+    tuiRef?.requestRender();
+    return pending;
+  }
+
+  function sendPendingNow(): void {
+    const pending = takePendingSend();
+    if (!pending) return;
+    // Mirror the editor's compaction capture so a delayed prompt never lands in Pi's native compaction queue.
+    if (powerlineCompacting && currentCtx) {
+      currentEditor?.addToHistory?.(pending.text);
+      capturePostCompactPrompt(currentCtx, pending.text);
+      return;
+    }
+    void pending.submit(pending.text);
+  }
+
+  function restorePendingSend(): void {
+    const pending = takePendingSend();
+    if (!pending) return;
+    // setText drops paste markers, so a draft typed during the countdown is kept in expanded form.
+    const draft = currentEditor.getExpandedText();
+    currentEditor.setText(draft.trim() ? `${pending.text}\n\n${draft}` : pending.text);
+  }
+
+  function submitWithDelay(text: string, submit: (text: string) => unknown): void {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      sendPendingNow();
+      return;
+    }
+    if (config.sendDelayMs <= 0 || trimmed.startsWith("/") || trimmed.startsWith("!")) {
+      void submit(text);
+      return;
+    }
+    sendPendingNow();
+    pendingSend = {
+      text: trimmed,
+      submit,
+      deadline: Date.now() + config.sendDelayMs,
+      timer: setTimeout(sendPendingNow, config.sendDelayMs),
+      ticker: setInterval(() => tuiRef?.requestRender(), 1000),
+    };
+    tuiRef?.requestRender();
   }
 
   function deliveryModeForItem(ctx: any, item: PowerlineQueueItem): "steer" | "followUp" | undefined {
@@ -1839,6 +1898,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     stashedEditorText = null;
     sessionGeneration++;
     dismissWelcome(ctx);
+    restorePendingSend();
     statusRenderScheduler.cancel();
     restoreFooterStatusRepaintHook?.();
     restoreFooterStatusRepaintHook = null;
@@ -2481,6 +2541,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           restoreFooterStatusRepaintHook = null;
           stashShortcutInputUnsubscribe?.();
           stashShortcutInputUnsubscribe = null;
+          restorePendingSend();
           // Clear all custom UI components
           ctx.ui.setEditorComponent(undefined);
           ctx.ui.setFooter(undefined);
@@ -2489,6 +2550,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           ctx.ui.setWidget("powerline-secondary", undefined);
           ctx.ui.setWidget("powerline-bash-transcript", undefined);
           ctx.ui.setWidget("powerline-status", undefined);
+          ctx.ui.setWidget("powerline-pending-send", undefined);
           ctx.ui.setWidget("powerline-queue-preview", undefined);
           ctx.ui.setWidget("powerline-last-prompt", undefined);
           footerDataRef = null;
@@ -2923,6 +2985,14 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     return [` ${theme.fg(color, truncateToWidth(text, Math.max(1, width - 1), "…"))}`];
   }
 
+  function renderPendingSendLines(width: number, theme: Theme): string[] {
+    if (!pendingSend) return [];
+    const seconds = Math.max(1, Math.ceil((pendingSend.deadline - Date.now()) / 1000));
+    const hint = theme.fg("accent", `sending in ${seconds}s · esc to edit · enter to send now`);
+    const preview = theme.fg("dim", pendingSend.text.replace(/\s+/g, " "));
+    return [truncateToWidth(` ${hint}  ${preview}`, width, "…")];
+  }
+
   function renderBashTranscriptLines(width: number, theme: Theme): string[] {
     if (!bashModeActive) return [];
 
@@ -3017,6 +3087,14 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       }), { placement: "belowEditor" });
     }
 
+    ctx.ui.setWidget("powerline-pending-send", (_tui: any, theme: Theme) => ({
+      dispose() {},
+      invalidate() {},
+      render(width: number): string[] {
+        return renderPendingSendLines(width, theme);
+      },
+    }), { placement: "belowEditor" });
+
     ctx.ui.setWidget("powerline-queue-preview", (_tui: any, theme: Theme) => ({
       dispose() {},
       invalidate() {},
@@ -3071,6 +3149,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     ctx.ui.setWidget("powerline-secondary", undefined);
     ctx.ui.setWidget("powerline-bash-transcript", undefined);
     ctx.ui.setWidget("powerline-status", undefined);
+    ctx.ui.setWidget("powerline-pending-send", undefined);
     ctx.ui.setWidget("powerline-queue-preview", undefined);
     ctx.ui.setWidget("powerline-last-prompt", undefined);
 
@@ -3115,6 +3194,19 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       });
 
       let installingPowerlineAutocompleteProvider = false;
+      // Pi assigns onSubmit after this factory returns and calls it from every submit path, so the delay wraps it here.
+      let piSubmit: ((text: string) => unknown) | undefined;
+      Object.defineProperty(editor, "onSubmit", {
+        configurable: true,
+        get: () => {
+          const submit = piSubmit;
+          return submit && ((text: string) => submitWithDelay(text, submit));
+        },
+        set: (handler: ((text: string) => unknown) | undefined) => {
+          piSubmit = handler;
+        },
+      });
+
       const originalSetAutocompleteProvider = editor.setAutocompleteProvider.bind(editor);
       editor.setAutocompleteProvider = (provider: AutocompleteProvider) => {
         if (installingPowerlineAutocompleteProvider) {
@@ -3167,6 +3259,11 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           return;
         }
 
+        if (pendingSend && !bashModeActive && keybindings.matches(data, "app.interrupt") && !editor.isShowingAutocomplete()) {
+          restorePendingSend();
+          return;
+        }
+
         const isSubmit = keybindings.matches(data, "tui.input.submit") && !keybindings.matches(data, "tui.input.newLine");
         const isFollowUpSubmit = keybindings.matches(data, "app.message.followUp");
         if (!powerlineCompacting && !bashModeActive && isSubmit && typeof ctx.compact === "function") {
@@ -3199,7 +3296,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
         if (powerlineCompacting && !bashModeActive && (isSubmit || isFollowUpSubmit)) {
           const text = editor.getExpandedText().trim();
-          if (!text) return;
+          if (!text) {
+            sendPendingNow();
+            return;
+          }
           if (text.startsWith("/")) {
             originalHandleInput(data);
             return;

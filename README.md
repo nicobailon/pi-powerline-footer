@@ -13,6 +13,8 @@ Customizes the default [pi](https://github.com/badlogic/pi-mono) editor with a p
 
 **Editor stash** — Press `Alt+S` to save your editor content and clear the editor, type a quick prompt, then press `Alt+S` again with an empty editor to restore the stash. Toggles between stash, pop, and update-existing-stash. A `stash` indicator appears in the powerline bar while text is stashed.
 
+**Delayed send** — Optionally hold each prompt for a few seconds before it is sent, so you can press `Esc` to pull it back into the editor without spending tokens. Off by default; see [Delayed send](#delayed-send).
+
 **Powerline Queue** — Messages typed during compaction are held by Powerline and delivered after successful compaction instead of disappearing into Pi's native queue. `/queue` provides a file-backed queue for aliases, retries, clears, and manual delivery. Active queued and blocked counts appear in the `queue` segment only when there is something to show.
 
 **Working Vibes** — AI-generated themed loading messages. Set `/vibe star trek` and your "Working..." becomes "Running diagnostics..." or "Engaging warp drive...". Supports any theme: pirate, zen, noir, cowboy, etc.
@@ -277,6 +279,20 @@ In `~/.pi/agent/settings.json` (or under `PI_CODING_AGENT_DIR` when that environ
   }
 }
 ```
+
+## Delayed send
+
+Set `sendDelayMs` under `powerline` to hold prompts and steering messages for that many milliseconds before Pi receives them:
+
+```json
+{
+  "powerline": {
+    "sendDelayMs": 4000
+  }
+}
+```
+
+While a prompt is waiting, a countdown line appears under the editor. Press `Esc` to put the prompt back in the editor, or press `Enter` on an empty editor to send it right away. If you started typing a new draft during the countdown, `Esc` puts the held prompt above it. Slash commands, `!` shell commands, bash mode, and `Alt+Enter` follow-ups while the agent is working are not delayed. The default is `0`, which sends immediately.
 
 ## Editor Stash
 

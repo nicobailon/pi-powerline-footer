@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- **Delayed send** — Set `powerline.sendDelayMs` to hold prompts and steering messages briefly before sending, with `Esc` to return the prompt to the editor.
+
 ### Fixed
 - **Qualified model display** — Include the provider for model IDs with nested paths without duplicating an existing provider prefix. Thanks to [@acidnik](https://github.com/acidnik) for #227.
 - **Extension status spacing** — Use a single padded separator between statuses. Thanks to [@tutu359](https://github.com/tutu359) for #229.
