@@ -4,6 +4,7 @@
 
 ### Added
 - **Delayed send** — Set `powerline.sendDelayMs` to hold prompts and steering messages briefly before sending, with `Esc` to return the prompt to the editor.
+- **Auto follow-up** — Set `powerline.autoFollowUp` with `TYPESAFE_API_KEY` to let Jev queue messages that can wait as follow-ups instead of steering the current task.
 
 ### Fixed
 - **Qualified model display** — Include the provider for model IDs with nested paths without duplicating an existing provider prefix. Thanks to [@acidnik](https://github.com/acidnik) for #227.

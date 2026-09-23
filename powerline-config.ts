@@ -20,6 +20,7 @@ export interface PowerlineConfig {
   stashSharpSShortcut: boolean;
   queue: { compactPromptMode: CompactPromptMode };
   sendDelayMs: number;
+  autoFollowUp: boolean;
   workingVibes: { color?: ColorValue | "rainbow" };
 }
 
@@ -320,6 +321,7 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     stashSharpSShortcut: false,
     queue: { compactPromptMode: "queue" },
     sendDelayMs: 0,
+    autoFollowUp: false,
     workingVibes: {},
   };
 
@@ -350,6 +352,7 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     sendDelayMs: typeof value.sendDelayMs === "number" && Number.isFinite(value.sendDelayMs) && value.sendDelayMs > 0
       ? value.sendDelayMs
       : 0,
+    autoFollowUp: value.autoFollowUp === true,
     workingVibes: isRecord(value.workingVibes) && typeof value.workingVibes.color === "string" && value.workingVibes.color.trim()
       ? { color: value.workingVibes.color.trim() as ColorValue | "rainbow" }
       : {},
