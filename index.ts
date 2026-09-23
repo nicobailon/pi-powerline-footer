@@ -67,6 +67,7 @@ import {
   setVibeWorkingMessageColor,
 } from "./working-vibes.ts";
 import { PowerlineQueueStore, currentQueueContext, formatQueueDeliveryText, parseCompactQueuedPrompt } from "./queue/store.ts";
+import { canWaitAsFollowUp } from "./auto-follow-up.ts";
 import type { PowerlineQueueItem, QueueContext, QueueIntent, QueueSummary, QueueTarget } from "./queue/types.ts";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -88,6 +89,7 @@ let config: PowerlineConfig = {
   stashSharpSShortcut: false,
   queue: { compactPromptMode: "queue" },
   sendDelayMs: 0,
+  autoFollowUp: false,
   workingVibes: {},
 };
 
@@ -1993,6 +1995,38 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     if (ctx.hasUI) {
       onVibeBeforeAgentStart(event.prompt, ctx.ui.setWorkingMessage);
     }
+  });
+
+  // Serializes Jev routing so a quick second message cannot be queued before the first.
+  let autoFollowUpChain: Promise<unknown> = Promise.resolve();
+
+  // Plain Enter while the agent works arrives as steering; move it to the follow-up queue when Jev is confident it can wait.
+  pi.on("input", async (event, ctx) => {
+    if (!config.autoFollowUp || event.source !== "interactive" || event.streamingBehavior !== "steer") return;
+    if (event.text.trimStart().startsWith("/")) return;
+    const apiKey = process.env.TYPESAFE_API_KEY?.trim();
+    if (!apiKey) {
+      ctx.ui.notify("Auto follow-up needs TYPESAFE_API_KEY; sent as steering", "warning");
+      return;
+    }
+
+    const state = { currentTask: lastUserPrompt, agentLatestText: getRecentAgentContext(ctx) ?? "", newMessage: event.text };
+    const generation = sessionGeneration;
+    const decision = autoFollowUpChain.then(() => canWaitAsFollowUp(state, apiKey));
+    autoFollowUpChain = decision.catch(() => {});
+    let followUp: boolean;
+    try {
+      followUp = await decision;
+    } catch (error) {
+      if (generation !== sessionGeneration) return;
+      ctx.ui.notify(`Auto follow-up unavailable (${error instanceof Error ? error.message : String(error)}); sent as steering`, "warning");
+      return;
+    }
+    // A session switch during the Jev call must not route this message into the new session.
+    if (!followUp || generation !== sessionGeneration) return;
+
+    pi.sendUserMessage(event.images?.length ? [{ type: "text", text: event.text }, ...event.images] : event.text, { deliverAs: "followUp" });
+    return { action: "handled" };
   });
 
   // Track streaming state (footer only shows status during streaming)

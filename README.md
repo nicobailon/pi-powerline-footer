@@ -294,6 +294,22 @@ Set `sendDelayMs` under `powerline` to hold prompts and steering messages for th
 
 While a prompt is waiting, a countdown line appears under the editor. Press `Esc` to put the prompt back in the editor, or press `Enter` on an empty editor to send it right away. If you started typing a new draft during the countdown, `Esc` puts the held prompt above it. Slash commands, `!` shell commands, bash mode, and `Alt+Enter` follow-ups while the agent is working are not delayed. The default is `0`, which sends immediately.
 
+## Auto follow-up
+
+When the agent is working, `Enter` sends your message as steering and `Alt+Enter` queues it as a follow-up. Set `autoFollowUp` under `powerline` to let [TypeSafe's Jev](https://docs.typesafe.ai/introduction) make that call for plain `Enter`:
+
+```json
+{
+  "powerline": {
+    "autoFollowUp": true
+  }
+}
+```
+
+Pi also needs `TYPESAFE_API_KEY` in its environment. Each message you send while the agent is busy goes to Jev with the request the agent is working on and a snippet of its latest reply. Jev answers in about 100–400ms. Corrections and extra details for the current task ("Actually, preserve the public API") still steer. Separate requests ("What is the weather in Lisbon?") move to the follow-up queue and appear under `Follow-up:` in Pi's pending list.
+
+A message leaves the steer path only when Jev is confident it can wait. Unsure answers, timeouts, and API errors keep it as steering and show a warning. `Alt+Enter`, slash commands, and prompts sent while the agent is idle never call Jev. The default is `false`.
+
 ## Editor Stash
 
 Use `Alt+S` / `Option+S` as a quick stash toggle while drafting. It keeps one active stash and clears the editor when stashing. Powerline listens for unambiguous Alt/Meta-S escape encodings by default. If your old terminal setup only emits the printable German sharp-S character for Option+S and you still want that to trigger stash, set `"stashSharpSShortcut": true` under `powerline`.
