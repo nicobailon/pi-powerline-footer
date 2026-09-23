@@ -5,6 +5,7 @@
 ### Fixed
 - **Qualified model display** — Include the provider for model IDs with nested paths without duplicating an existing provider prefix. Thanks to [@acidnik](https://github.com/acidnik) for #227.
 - **Extension status spacing** — Use a single padded separator between statuses. Thanks to [@tutu359](https://github.com/tutu359) for #229.
+- **Session label** — Show the current session display name when available instead of its short ID. Thanks to [@tutu359](https://github.com/tutu359) for #230.
 
 ## [0.17.2] - 2026-09-20
 
