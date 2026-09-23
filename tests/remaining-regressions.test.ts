@@ -57,6 +57,29 @@ function createSegmentContext(overrides: Partial<SegmentContext> = {}): SegmentC
   };
 }
 
+test("session segment shows the current display name when available", () => {
+  const rendered = renderSegment("session", createSegmentContext({
+    sessionId: "12345678-abcdef",
+    sessionName: "My working session",
+  }));
+
+  assert.equal(stripAnsi(rendered.content).endsWith("My working session"), true);
+  assert.equal(rendered.content.includes("12345678"), false);
+  assert.equal(rendered.visible, true);
+});
+
+test("session segment falls back to the short ID or new when unnamed", () => {
+  const unnamed = renderSegment("session", createSegmentContext({ sessionId: "12345678-abcdef" }));
+  const emptyName = renderSegment("session", createSegmentContext({ sessionId: "12345678-abcdef", sessionName: "" }));
+  const newSession = renderSegment("session", createSegmentContext());
+
+  assert.equal(stripAnsi(unnamed.content).endsWith("12345678"), true);
+  assert.equal(emptyName.content, unnamed.content);
+  assert.equal(stripAnsi(newSession.content).endsWith("new"), true);
+  assert.equal(unnamed.visible, true);
+  assert.equal(newSession.visible, true);
+});
+
 test("model segment can show provider-qualified ids", () => {
   const normal = renderSegment("model", createSegmentContext());
   const qualified = renderSegment("model", createSegmentContext({

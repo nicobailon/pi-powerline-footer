@@ -1921,6 +1921,11 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     requestImmediateStatusRender({ deferDuringTyping: false });
   });
 
+  pi.on("session_info_changed", async (_event, ctx) => {
+    currentCtx = ctx;
+    requestImmediateStatusRender({ deferDuringTyping: false });
+  });
+
   // Generate themed working message before agent starts (has access to user's prompt)
   pi.on("before_agent_start", async (event, ctx) => {
     finishPendingQueueDelivery(event.prompt, ctx);
@@ -2789,6 +2794,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       model: ctx.model,
       thinkingLevel,
       sessionId: ctx.sessionManager?.getSessionId?.(),
+      sessionName: ctx.sessionManager?.getSessionName?.(),
       cwd: ctx.cwd,
       usageStats: { input, output, cacheRead, cacheWrite, cost, subagentCost },
       contextTokens,
