@@ -129,7 +129,23 @@ test("extension statuses use one padded dot separator", () => {
     extensionStatuses: new Map([["first", "ready"], ["second", "waiting"]]),
   }));
 
-  assert.deepEqual(rendered, { content: "ready · waiting", visible: true });
+  assert.equal(stripAnsi(rendered.content), "ready · waiting");
+  assert.equal(rendered.visible, true);
+});
+
+test("extension statuses isolate colors from separators and subsequent statuses", () => {
+  for (const ending of ["\x1b[0m", "\x1b[39m", ""]) {
+    const rendered = renderSegment("extension_statuses", createSegmentContext({
+      extensionStatuses: new Map([
+        ["mcp", `\x1b[36mMCP${ending}`],
+        ["tempo", "Time"],
+        ["sync", "\x1b[32mSync\x1b[0m"],
+      ]),
+    }));
+    assert.equal(rendered.content,
+      "\x1b[0m\x1b[36mMCP\x1b[0m · \x1b[0mTime\x1b[0m · \x1b[0m\x1b[32mSync\x1b[0m");
+    assert.equal(stripAnsi(rendered.content), "MCP · Time · Sync");
+  }
 });
 
 test("cost segment supports subscription display modes and converted currencies", () => {
