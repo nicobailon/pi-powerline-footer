@@ -8,6 +8,7 @@
 
 ### Fixed
 - **Extension status colors** — Isolate each status's ANSI styling so colors do not leak into separators or neighboring statuses. Thanks to [@fank](https://github.com/fank).
+- **Pipe and slash spacing** — Avoid double padding around pipe and slash separators; the footer renderer already supplies the surrounding spaces. Thanks to [@fank](https://github.com/fank).
 - **Qualified model display** — Include the provider for model IDs with nested paths without duplicating an existing provider prefix. Thanks to [@acidnik](https://github.com/acidnik) for #227.
 - **Extension status spacing** — Use a single padded separator between statuses. Thanks to [@tutu359](https://github.com/tutu359) for #229.
 - **Session label** — Show the current session display name when available instead of its short ID. Thanks to [@tutu359](https://github.com/tutu359) for #230.
