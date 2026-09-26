@@ -2,13 +2,21 @@
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-09-26
+
+### Highlights
+- Delay outgoing messages briefly and press `Esc` to return them to the editor before they are sent.
+- Let Jev queue non-urgent messages as follow-ups while Pi is busy.
+- Extension statuses now keep their colors contained and use cleaner, consistent spacing.
+- Session and model labels show more accurate names in the footer.
+
 ### Added
-- **Delayed send** — Set `powerline.sendDelayMs` to hold prompts and steering messages briefly before sending, with `Esc` to return the prompt to the editor.
-- **Auto follow-up** — Set `powerline.autoFollowUp` with `TYPESAFE_API_KEY` to let Jev queue messages that can wait as follow-ups instead of steering the current task.
+- **Delayed send** — Set `powerline.sendDelayMs` to hold prompts and steering messages briefly before sending. Press `Esc` to return the message to the editor.
+- **Auto follow-up** — Set `powerline.autoFollowUp` with `TYPESAFE_API_KEY` to let Jev queue messages that can wait instead of interrupting the current task.
 
 ### Fixed
 - **Extension status colors** — Isolate each status's ANSI styling so colors do not leak into separators or neighboring statuses. Thanks to [@fank](https://github.com/fank).
-- **Pipe and slash spacing** — Avoid double padding around pipe and slash separators; the footer renderer already supplies the surrounding spaces. Thanks to [@fank](https://github.com/fank).
+- **Pipe and slash spacing** — Avoid double padding around pipe and slash separators. Thanks to [@fank](https://github.com/fank).
 - **Qualified model display** — Include the provider for model IDs with nested paths without duplicating an existing provider prefix. Thanks to [@acidnik](https://github.com/acidnik) for #227.
 - **Extension status spacing** — Use a single padded separator between statuses. Thanks to [@tutu359](https://github.com/tutu359) for #229.
 - **Session label** — Show the current session display name when available instead of its short ID. Thanks to [@tutu359](https://github.com/tutu359) for #230.
