@@ -28,10 +28,10 @@ export function getSeparator(style: StatusLineSeparatorStyle): SeparatorDef {
       };
 
     case "slash":
-      return { left: ` ${chars.slash} `, right: ` ${chars.slash} ` };
+      return { left: chars.slash, right: chars.slash };
 
     case "pipe":
-      return { left: ` ${chars.pipe} `, right: ` ${chars.pipe} ` };
+      return { left: chars.pipe, right: chars.pipe };
 
     case "block":
       return { left: chars.block, right: chars.block };

@@ -153,6 +153,18 @@ test("configured separators resolve independently of presets", () => {
   assert.equal(configuredSeparator, "›");
 });
 
+for (const [style, glyph] of [["pipe", "|"], ["slash", "/"]] as const) {
+  test(`${style} separator leaves padding to the footer renderer`, () => {
+    const separator = getSeparator(style);
+    assert.equal(separator.left, glyph);
+    assert.equal(separator.right, glyph);
+    // The renderer adds one space on each side; layout budgets the same two columns.
+    const rendered = ["model", "directory"].join(` ${separator.left} `);
+    assert.equal(rendered, `model ${glyph} directory`);
+    assert.equal(separator.left.length + 2, 3);
+  });
+}
+
 test("parsePowerlineConfig validates primary powerline placement", () => {
   const below = parsePowerlineConfig(
     { preset: "compact", placement: "below" },
