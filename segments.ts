@@ -498,8 +498,8 @@ const extensionStatusesSegment: StatusLineSegment = {
 
     if (parts.length === 0) return { content: "", visible: false };
 
-    // Statuses already have their own styling applied by the extensions
-    const content = parts.join(SEP_DOT);
+    // Normalization strips trailing SGR resets; isolate each status's styling.
+    const content = parts.map((part) => `\x1b[0m${part}\x1b[0m`).join(SEP_DOT);
     return { content, visible: true };
   },
 };
