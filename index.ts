@@ -3087,19 +3087,26 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   function installPowerlineWidgets(ctx: any) {
     if (!editorPerf.options.widgets) return;
 
+    // Web frontends such as pi-web bind extensions in "rpc" mode, render widget
+    // factories themselves, and show every widget as a panel even when it renders
+    // nothing. Outside the TUI only the primary bar has content to show.
+    const terminalWidgets = ctx.mode === "tui";
+
     const measureWidget = (name: string, render: () => string[]): string[] => {
       return editorPerf.options.enabled ? editorPerf.measure(`widget.${name}`, render) : render();
     };
 
-    ctx.ui.setWidget("powerline-status", () => ({
-      dispose() {},
-      invalidate() {
-        requestStatusRender();
-      },
-      render(width: number): string[] {
-        return measureWidget("status", () => renderPowerlineStatusLines(width));
-      },
-    }), { placement: "aboveEditor" });
+    if (terminalWidgets) {
+      ctx.ui.setWidget("powerline-status", () => ({
+        dispose() {},
+        invalidate() {
+          requestStatusRender();
+        },
+        render(width: number): string[] {
+          return measureWidget("status", () => renderPowerlineStatusLines(width));
+        },
+      }), { placement: "aboveEditor" });
+    }
 
     ctx.ui.setWidget("powerline-top", (_tui: any, theme: Theme) => ({
       dispose() {},
@@ -3110,6 +3117,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         return measureWidget("primary", () => renderPowerlinePrimaryLines(width, theme));
       },
     }), { placement: config.placement === "below" ? "belowEditor" : "aboveEditor" });
+
+    if (!terminalWidgets) return;
 
     if (editorPerf.options.bashWidgets) {
       ctx.ui.setWidget("powerline-bash-transcript", (_tui: any, theme: Theme) => ({

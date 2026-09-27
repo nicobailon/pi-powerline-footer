@@ -57,6 +57,7 @@ type CustomFactory = (
 interface FakeCtx {
   cwd: string;
   sessionManager?: { getCwd(): string; getSessionId(): string };
+  mode: "tui" | "rpc";
   hasUI: boolean;
   model: { name: string; provider: string };
   modelRegistry: Record<string, never>;
@@ -125,7 +126,7 @@ function createFakePi() {
 
 let fakeSessionSequence = 0;
 
-function createCtx(options: { cwd: string; sessionId?: string; text?: string; customInputs?: string[][]; footerData?: ReadonlyFooterDataProvider; theme?: FakeTheme } = { cwd: process.cwd() }) {
+function createCtx(options: { cwd: string; mode?: "tui" | "rpc"; sessionId?: string; text?: string; customInputs?: string[][]; footerData?: ReadonlyFooterDataProvider; theme?: FakeTheme } = { cwd: process.cwd() }) {
   let text = options.text ?? "";
   const sessionId = options.sessionId ?? `fake-session-${++fakeSessionSequence}`;
   let terminalInput: ((data: string) => unknown) | null = null;
@@ -144,6 +145,7 @@ function createCtx(options: { cwd: string; sessionId?: string; text?: string; cu
       getCwd: () => options.cwd,
       getSessionId: () => sessionId,
     },
+    mode: options.mode ?? "tui",
     hasUI: true,
     model: { name: "test", provider: "test" },
     modelRegistry: {},
@@ -265,6 +267,28 @@ test("responsive secondary content is owned exclusively by the footer", async ()
     assert.ok(runtime.footer, "re-enable reinstalls the custom footer");
     assert.equal(runtime.widgets.has("powerline-secondary"), false);
     assert.match(runtime.footer!.render(16).join("\n"), /review.*ready/);
+  } finally {
+    await fake.handlers.get("session_shutdown")?.({}, runtime.ctx);
+    restoreEnv();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("web frontends outside the TUI receive only the primary bar widget", async () => {
+  const root = mkdtempSync(join(tmpdir(), "powerline-rpc-widgets-"));
+  writeFileSync(join(root, "settings.json"), JSON.stringify({
+    powerline: { welcome: false, layout: { left: ["model"], right: [], secondary: [] } },
+  }));
+  const { extension, restoreEnv } = await loadPowerline(root);
+  const fake = createFakePi();
+  const runtime = createCtx({ cwd: root, mode: "rpc" });
+
+  try {
+    extension(fake.pi);
+    await fake.handlers.get("session_start")?.({ reason: "resume" }, runtime.ctx);
+
+    assert.deepEqual([...runtime.widgets.keys()], ["powerline-top"]);
+    assert.match(runtime.widgets.get("powerline-top")!.render(120).join("\n"), /test/);
   } finally {
     await fake.handlers.get("session_shutdown")?.({}, runtime.ctx);
     restoreEnv();

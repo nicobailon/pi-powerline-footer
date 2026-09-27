@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Web frontends** — Register only the primary bar widget outside the terminal UI, so web frontends such as pi-web no longer show a row of empty Powerline panels. Thanks to [@moxuun](https://github.com/moxuun) for #238.
+
 ## [0.18.0] - 2026-09-26
 
 ### Highlights
