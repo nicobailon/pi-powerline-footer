@@ -231,7 +231,7 @@ test("getRecentSessions follows nested directory links without looping", async (
 type WelcomeView = { render(width: number): string[]; handleInput?(data: string): void };
 type WelcomeEditor = { getText(): string; handleInput(data: string): void };
 
-async function welcomeHarness(t: test.TestContext, home: string, quietStartup: boolean) {
+async function welcomeHarness(t: test.TestContext, home: string, quietStartup: boolean, mode = "tui") {
   const agentDir = join(home, ".pi", "agent");
   mkdirSync(agentDir, { recursive: true });
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({
@@ -251,7 +251,7 @@ async function welcomeHarness(t: test.TestContext, home: string, quietStartup: b
   let view: WelcomeView | undefined;
   let installations = 0;
   const ctx = {
-    cwd: home, hasUI: true, model: { name: "Test model", provider: "test" }, modelRegistry: {},
+    cwd: home, mode, hasUI: true, model: { name: "Test model", provider: "test" }, modelRegistry: {},
     sessionManager: { getBranch: () => [], getSessionId: () => "welcome-test" },
     ui: {
       getEditorText: () => editor?.getText() ?? "",
@@ -370,6 +370,24 @@ test("eligible welcome installs and dismisses without losing input", async (t) =
           }
           assert.equal(harness.view, undefined);
           assert.equal(harness.installations, 1);
+        } finally {
+          await harness.event("session_shutdown");
+          t.mock.restoreAll();
+        }
+      });
+    });
+  }
+});
+
+test("RPC clients never receive the startup welcome", async (t) => {
+  for (const quiet of [true, false]) {
+    await t.test(quiet ? "header" : "overlay", async (t) => {
+      await withTemporaryHome(async (home) => {
+        const harness = await welcomeHarness(t, home, quiet, "rpc");
+        try {
+          await harness.event("session_start", "startup");
+          await harness.runStartupWork();
+          assert.equal(harness.installations, 0);
         } finally {
           await harness.event("session_shutdown");
           t.mock.restoreAll();

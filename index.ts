@@ -1878,7 +1878,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
     if (enabled && ctx.hasUI) {
       setupCustomEditor(ctx);
-      if (shouldShowStartupWelcome(event.reason, config.welcome)) {
+      if (shouldShowStartupWelcome(event.reason, config.welcome, ctx.mode)) {
         if (settings.quietStartup === true) {
           setupWelcomeHeader(ctx);
         } else {

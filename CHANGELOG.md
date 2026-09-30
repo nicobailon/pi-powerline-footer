@@ -4,6 +4,7 @@
 
 ### Fixed
 - **Web frontends** — Register only the primary bar widget outside the terminal UI, so web frontends such as pi-web no longer show a row of empty Powerline panels. Thanks to [@moxuun](https://github.com/moxuun) for #238.
+- **RPC clients** — Show the startup welcome only in the terminal UI, so RPC clients such as the VS Code extension and Pi Desktop no longer open it as a dialog. Thanks to [@xuyuansheng](https://github.com/xuyuansheng) for #240.
 
 ## [0.18.0] - 2026-09-26
 

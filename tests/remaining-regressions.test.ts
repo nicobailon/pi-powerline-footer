@@ -208,10 +208,10 @@ test("Nerd Font context icon uses stable database glyph", () => {
 });
 
 test("startup welcome predicate respects powerline.welcome false", () => {
-  assert.equal(shouldShowStartupWelcome("startup", true), true);
-  assert.equal(shouldShowStartupWelcome("startup", false), false);
-  assert.equal(shouldShowStartupWelcome("resume", true), false);
-  assert.match(source, /setupCustomEditor\(ctx\);\r?\n\s+if \(shouldShowStartupWelcome\(event\.reason, config\.welcome\)\)/);
+  assert.equal(shouldShowStartupWelcome("startup", true, "tui"), true);
+  assert.equal(shouldShowStartupWelcome("startup", false, "tui"), false);
+  assert.equal(shouldShowStartupWelcome("resume", true, "tui"), false);
+  assert.match(source, /setupCustomEditor\(ctx\);\r?\n\s+if \(shouldShowStartupWelcome\(event\.reason, config\.welcome, ctx\.mode\)\)/);
 });
 
 test("stale ctx guard handles old and new Pi messages on agent_end", () => {
