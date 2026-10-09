@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Working vibes on OpenCode Go** — Vibe generation with an OpenCode or OpenCode Go model no longer fails with `400 MissingSessionID`. Vibe requests now carry the current session ID, which Pi 0.86.0 and later turn into the `x-opencode-session` header OpenCode requires (#245).
+
 ## [0.19.1] - 2026-10-02
 
 ### Fixed

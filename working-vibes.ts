@@ -38,21 +38,23 @@ function parseModelSpec(modelSpec: string): ParsedModelSpec | null {
 // are absent from pi-ai's global api table, so streaming has to go through the provider.
 // Credential-derived base URLs are resolved per request, mirroring ModelRuntime.prepareRequest;
 // getApiKeyAndHeaders() covers the rest of the request auth but never reports a base URL.
+// The direct call also skips core's session ID, which OpenCode providers need to route requests.
 async function completeVibe(
   providerId: string,
   model: Model<string>,
   context: Context,
   options: ProviderStreamOptions,
 ): Promise<AssistantMessage> {
-  const registry = extensionCtx?.modelRegistry;
-  const provider = registry?.getProvider(providerId);
-  if (!registry || !provider) {
+  const ctx = extensionCtx;
+  const provider = ctx?.modelRegistry.getProvider(providerId);
+  if (!ctx || !provider) {
     throw new Error(`Provider not registered: ${providerId}`);
   }
 
-  const baseUrl = (await registry.getProviderAuth(providerId))?.auth.baseUrl;
+  const baseUrl = (await ctx.modelRegistry.getProviderAuth(providerId))?.auth.baseUrl;
   const requestModel = baseUrl ? { ...model, baseUrl } : model;
-  return provider.stream(requestModel, context, options).result();
+  const sessionId = ctx.sessionManager.getSessionId();
+  return provider.stream(requestModel, context, { ...options, sessionId }).result();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

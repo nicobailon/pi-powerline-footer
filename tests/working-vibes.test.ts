@@ -184,6 +184,7 @@ test("generateVibesBatch includes a system prompt so faux providers can return t
     ]);
 
     initVibeManager({
+      sessionManager: { getSessionId: () => "test-session" },
       modelRegistry: {
         find(provider: string, modelId: string) {
           return provider === "test-provider" && modelId === "test-model" ? model : undefined;
@@ -222,7 +223,7 @@ test("generateVibesBatch includes a system prompt so faux providers can return t
   }
 });
 
-test("generateVibesBatch forwards resolved provider env and credential base URL", async () => {
+test("generateVibesBatch forwards resolved provider env, credential base URL, and session ID", async () => {
   const links = ensurePiModuleLinks();
   const home = mkdtempSync(join(tmpdir(), "powerline-vibes-home-"));
   const previousHome = process.env.HOME;
@@ -243,12 +244,14 @@ test("generateVibesBatch forwards resolved provider env and credential base URL"
     registration.setResponses([
       (_context, options, _state, requestModel) => {
         assert.deepEqual(options?.env, { AWS_PROFILE: "vibes" });
+        assert.equal(options?.sessionId, "vibe-session");
         assert.equal(requestModel.baseUrl, "https://credential.example/v1");
         return fauxAssistantMessage("Signing the request...");
       },
     ]);
 
     initVibeManager({
+      sessionManager: { getSessionId: () => "vibe-session" },
       modelRegistry: {
         find(provider: string, modelId: string) {
           return provider === "test-provider" && modelId === "test-model" ? model : undefined;
@@ -316,6 +319,7 @@ test("generateVibesBatch parses thinking suffix separately from model id", async
     ]);
 
     initVibeManager({
+      sessionManager: { getSessionId: () => "test-session" },
       modelRegistry: {
         find(provider: string, modelId: string) {
           if (provider !== "test-provider") return undefined;
@@ -387,6 +391,7 @@ test("on-demand vibe generation includes a system prompt for providers that requ
     ]);
 
     initVibeManager({
+      sessionManager: { getSessionId: () => "test-session" },
       modelRegistry: {
         find(provider: string, modelId: string) {
           return provider === "test-provider" && modelId === "test-model" ? model : undefined;
@@ -504,6 +509,7 @@ test("generateVibesBatch preserves provider errors instead of reporting an empty
     ]);
 
     initVibeManager({
+      sessionManager: { getSessionId: () => "test-session" },
       modelRegistry: {
         find(provider: string, modelId: string) {
           return provider === "test-provider" && modelId === "test-model" ? model : undefined;
