@@ -181,6 +181,19 @@ test("parsePowerlineConfig validates primary powerline placement", () => {
   assert.equal(invalid.invalidPlacement, "sideways");
 });
 
+test("parsePowerlineConfig validates secondary overflow mode", () => {
+  const unset = parsePowerlineConfig({}, ["default"]);
+  const wrap = parsePowerlineConfig({ secondaryOverflow: " Wrap " }, ["default"]);
+  const invalid = parsePowerlineConfig({ secondaryOverflow: "scroll" }, ["default"]);
+
+  assert.equal(unset.secondaryOverflow, "drop");
+  assert.equal(unset.invalidSecondaryOverflow, null);
+  assert.equal(wrap.secondaryOverflow, "wrap");
+  assert.equal(wrap.invalidSecondaryOverflow, null);
+  assert.equal(invalid.secondaryOverflow, "drop");
+  assert.equal(invalid.invalidSecondaryOverflow, "scroll");
+});
+
 test("parsePowerlineConfig supports queue compact prompt mode", () => {
   const defaultConfig = parsePowerlineConfig({}, ["default", "compact"]);
   const native = parsePowerlineConfig(

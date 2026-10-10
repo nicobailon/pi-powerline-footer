@@ -201,6 +201,8 @@ A present `left`, `right`, or `secondary` array replaces that preset group exact
 
 Responsive behavior is unchanged: these groups control ordering and overflow priority, not permanently pinned terminal rows. `right` means “later primary segments,” not right-edge alignment. On wide terminals secondary entries can fit in the top bar; on narrow terminals primary overflow moves into the secondary line. Some segments are hidden when they have no value, so `thinking` appears only when the active session/model reports a non-`off` thinking level. Unknown entries are ignored with a startup warning. The old fixed `custom` preset has been removed; combine any preset with `layout` instead.
 
+By default, segments that don't fit on the secondary line are dropped. Set `"secondaryOverflow": "wrap"` in `powerline` to continue them on extra lines below instead. A single segment wider than the terminal is still hidden. The default is `"drop"`.
+
 ### Demo settings
 
 For a compact current footer setup:

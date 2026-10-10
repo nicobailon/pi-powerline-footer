@@ -274,6 +274,51 @@ test("responsive secondary content is owned exclusively by the footer", async ()
   }
 });
 
+async function renderSecondaryOverflowFooter(secondaryOverflow: string | undefined, width: number): Promise<string[]> {
+  const root = mkdtempSync(join(tmpdir(), "powerline-secondary-overflow-"));
+  const statuses = new Map([["alpha", "alpha-one"], ["wide", "this-status-is-far-too-wide"], ["bravo", "bravo-two"], ["charlie", "charlie-3"]]);
+  writeFileSync(join(root, "settings.json"), JSON.stringify({
+    powerline: {
+      welcome: false,
+      ...(secondaryOverflow === undefined ? {} : { secondaryOverflow }),
+      layout: { left: ["model"], right: [], secondary: [...statuses.keys()].map((id) => `custom:${id}`) },
+      customItems: [...statuses.keys()].map((id) => ({ id, position: "secondary" })),
+    },
+  }));
+  const footerData: ReadonlyFooterDataProvider = {
+    getGitBranch: () => null,
+    getExtensionStatuses: () => statuses,
+    getAvailableProviderCount: () => 0,
+    onBranchChange: () => () => {},
+  };
+  const { extension, restoreEnv } = await loadPowerline(root);
+  const fake = createFakePi();
+  const runtime = createCtx({ cwd: root, footerData });
+
+  try {
+    extension(fake.pi);
+    await fake.handlers.get("session_start")?.({ reason: "resume" }, runtime.ctx);
+    return runtime.footer!.render(width);
+  } finally {
+    await fake.handlers.get("session_shutdown")?.({}, runtime.ctx);
+    restoreEnv();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+test("secondary overflow drops the row tail by default and wraps it onto extra rows when opted in", async () => {
+  const visibleRows = (rows: string[]) => rows.map((row) => row.replace(/\x1b\[[0-9;]*m/g, "").trim());
+
+  assert.deepEqual(visibleRows(await renderSecondaryOverflowFooter(undefined, 16)), ["alpha-one"]);
+  assert.deepEqual(visibleRows(await renderSecondaryOverflowFooter("drop", 16)), ["alpha-one"]);
+  assert.deepEqual(
+    visibleRows(await renderSecondaryOverflowFooter("wrap", 16)),
+    ["alpha-one", "bravo-two", "charlie-3"],
+    "wrap keeps order, continues on new rows, and skips a segment too wide for any row",
+  );
+  assert.deepEqual(await renderSecondaryOverflowFooter("wrap", 200), [], "no overflow renders no footer rows");
+});
+
 test("web frontends outside the TUI receive only the primary bar widget", async () => {
   const root = mkdtempSync(join(tmpdir(), "powerline-rpc-widgets-"));
   writeFileSync(join(root, "settings.json"), JSON.stringify({
