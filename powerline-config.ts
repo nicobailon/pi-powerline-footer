@@ -4,6 +4,7 @@ import { BUILTIN_STATUS_LINE_SEGMENT_IDS } from "./types.ts";
 import type { ColorValue, CustomItemPosition, CustomStatusItem, PowerlinePlacement, PresetDef, StatusLineLayout, StatusLinePreset, StatusLineSegmentId, StatusLineSegmentOptions, StatusLineSeparatorStyle } from "./types.ts";
 
 export type CompactPromptMode = "queue" | "native";
+export type SecondaryOverflow = "drop" | "wrap";
 
 export interface PowerlineConfig {
   preset: StatusLinePreset;
@@ -16,6 +17,8 @@ export interface PowerlineConfig {
   segmentOptions: StatusLineSegmentOptions;
   placement: PowerlinePlacement;
   invalidPlacement: string | null;
+  secondaryOverflow: SecondaryOverflow;
+  invalidSecondaryOverflow: string | null;
   welcome: boolean;
   stashSharpSShortcut: boolean;
   queue: { compactPromptMode: CompactPromptMode };
@@ -45,6 +48,20 @@ function normalizePlacement(value: unknown): { placement: PowerlinePlacement; in
   return {
     placement: "above",
     invalidPlacement: typeof value === "string" ? value.trim() : String(value),
+  };
+}
+
+function normalizeSecondaryOverflow(value: unknown): { secondaryOverflow: SecondaryOverflow; invalidSecondaryOverflow: string | null } {
+  if (value === undefined) return { secondaryOverflow: "drop", invalidSecondaryOverflow: null };
+
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "drop" || normalized === "wrap") {
+    return { secondaryOverflow: normalized, invalidSecondaryOverflow: null };
+  }
+
+  return {
+    secondaryOverflow: "drop",
+    invalidSecondaryOverflow: typeof value === "string" ? value.trim() : String(value),
   };
 }
 
@@ -317,6 +334,8 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     segmentOptions: {},
     placement: "above",
     invalidPlacement: null,
+    secondaryOverflow: "drop",
+    invalidSecondaryOverflow: null,
     welcome: true,
     stashSharpSShortcut: false,
     queue: { compactPromptMode: "queue" },
@@ -334,6 +353,7 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
   const { disabledSegments, invalidDisabledSegments } = normalizeDisabledSegments(value.disabledSegments, customItems);
   const { layout, invalidLayoutSegments } = normalizeLayout(value.layout, customItems);
   const { placement, invalidPlacement } = normalizePlacement(value.placement);
+  const { secondaryOverflow, invalidSecondaryOverflow } = normalizeSecondaryOverflow(value.secondaryOverflow);
 
   return {
     preset: normalizePreset(value.preset, presets) ?? defaultConfig.preset,
@@ -346,6 +366,8 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     segmentOptions: normalizeSegmentOptions(value),
     placement,
     invalidPlacement,
+    secondaryOverflow,
+    invalidSecondaryOverflow,
     welcome: value.welcome !== false,
     stashSharpSShortcut: value.stashSharpSShortcut === true,
     queue: normalizeQueueOptions(value.queue),
