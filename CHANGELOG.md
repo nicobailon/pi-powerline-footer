@@ -2,11 +2,17 @@
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-10
+
+### Highlights
+- On narrow terminals, the secondary row can now continue onto extra rows instead of cutting off segments that don't fit.
+- Working vibes work again with OpenCode and OpenCode Go models.
+
 ### Added
-- **Wrap the secondary row** — Set `powerline.secondaryOverflow` to `"wrap"` to show segments that don't fit on the secondary row on extra rows below it, instead of dropping them on narrow terminals. The default, `"drop"`, keeps the current behavior. Thanks to [@raveensrk](https://github.com/raveensrk) for #244.
+- **Wrap the secondary row** — Set `powerline.secondaryOverflow` to `"wrap"` and segments that don't fit on the secondary row move to extra rows below it instead of disappearing on narrow terminals. The default, `"drop"`, keeps the current behavior. Thanks to [@raveensrk](https://github.com/raveensrk) for #244.
 
 ### Fixed
-- **Working vibes on OpenCode Go** — Vibe generation with an OpenCode or OpenCode Go model no longer fails with `400 MissingSessionID`. Vibe requests now carry the current session ID, which Pi 0.86.0 and later turn into the `x-opencode-session` header OpenCode requires (#245).
+- **Working vibes on OpenCode Go** — Working vibes with an OpenCode or OpenCode Go model no longer fail with `400 MissingSessionID`. This needs Pi 0.86.0 or later (#245).
 
 ## [0.19.1] - 2026-10-02
 
