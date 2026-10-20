@@ -12,6 +12,7 @@ interface EditorBoundaryShortcuts {
 
 interface BashModeEditorOptions {
   keybindings: KeybindingsManager;
+  embedWorkingStatus?: boolean;
   isBashModeActive: () => boolean;
   isShellRunning: () => boolean;
   onExitBashMode: () => void;
@@ -124,8 +125,8 @@ export class BashModeEditor extends CustomEditor {
   constructor(tui: any, theme: any, keybindings: KeybindingsManager, options: BashModeEditorOptions) {
     // Pi renders working, compaction, summarization, and retry status into the
     // editor's top border, and a custom editor only gets that by opting in.
-    // Older Pi releases ignore the option and fall back to the standalone row.
-    super(tui, theme, keybindings, { embedWorkingStatus: true });
+    // Opting out, and older Pi releases, use Pi's standalone row above the bar.
+    super(tui, theme, keybindings, { embedWorkingStatus: options.embedWorkingStatus ?? true });
     this.keybindingsRef = keybindings;
     this.optionsRef = options;
   }
@@ -137,7 +138,7 @@ export class BashModeEditor extends CustomEditor {
    * plain rule over it.
    */
   renderEmbeddedTopBorder(width: number): string | null {
-    if (Reflect.get(this, "workingStatusIndicator") == null) return null;
+    if (!this.embedWorkingStatus || Reflect.get(this, "workingStatusIndicator") == null) return null;
     const scrollOffset = Reflect.get(this, "scrollOffset");
     return this.renderTopBorder(width, typeof scrollOffset === "number" ? scrollOffset : 0);
   }

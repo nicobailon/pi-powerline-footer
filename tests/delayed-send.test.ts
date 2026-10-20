@@ -50,6 +50,7 @@ async function editorHarness(t: test.TestContext, powerline: Record<string, unkn
   return {
     sent,
     text: () => editor.getText(),
+    embedsWorkingStatus: () => Reflect.get(editor, "embedWorkingStatus"),
     type: (text: string) => { for (const char of text) editor.handleInput(char); },
     enter: () => editor.handleInput("\r"),
     escape: () => editor.handleInput("\x1b"),
@@ -105,5 +106,19 @@ for (const [compactPromptMode, sent, queued] of [
     h.enter();
     assert.deepEqual(h.sent, sent);
     assert.deepEqual(h.queued(), queued);
+  });
+}
+
+// Pi embeds working, compaction, summarization, and retry status in the editor
+// border only when the editor opts in; otherwise it draws its own row above the bar.
+for (const [workingIndicatorPlacement, embedded] of [
+  ["above-powerline", false],
+  // Each session_start re-reads settings, so the next editor flips back.
+  [undefined, true],
+  ["editor-border", true],
+] as const) {
+  test(`workingIndicatorPlacement ${workingIndicatorPlacement ?? "unset"} ${embedded ? "embeds" : "does not embed"} Pi's status in the editor border`, async (t) => {
+    const h = await editorHarness(t, { workingIndicatorPlacement });
+    assert.equal(h.embedsWorkingStatus(), embedded);
   });
 }

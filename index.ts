@@ -89,6 +89,8 @@ let config: PowerlineConfig = {
   padding: 1,
   secondaryOverflow: "drop",
   invalidSecondaryOverflow: null,
+  workingIndicatorPlacement: "editor-border",
+  invalidWorkingIndicatorPlacement: null,
   welcome: true,
   stashSharpSShortcut: false,
   queue: { compactPromptMode: "queue" },
@@ -1219,6 +1221,12 @@ function warnInvalidSegmentSettings(ctx: any): void {
 
   if (config.invalidSecondaryOverflow !== null) {
     const message = `Ignoring invalid powerline secondaryOverflow: ${JSON.stringify(config.invalidSecondaryOverflow)}`;
+    console.warn(`[powerline-footer] ${message}`);
+    if (ctx.hasUI) ctx.ui.notify(message, "warning");
+  }
+
+  if (config.invalidWorkingIndicatorPlacement !== null) {
+    const message = `Ignoring invalid powerline workingIndicatorPlacement: ${JSON.stringify(config.invalidWorkingIndicatorPlacement)}`;
     console.warn(`[powerline-footer] ${message}`);
     if (ctx.hasUI) ctx.ui.notify(message, "warning");
   }
@@ -3264,6 +3272,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       const previousEditor = previousEditorFactory?.(tui, editorTheme, keybindings);
       const editor = new BashModeEditor(tui, editorTheme, keybindings, {
         keybindings,
+        embedWorkingStatus: config.workingIndicatorPlacement === "editor-border",
         isBashModeActive: () => bashModeActive,
         isShellRunning: () => shellSession?.state.running ?? false,
         onExitBashMode: () => {

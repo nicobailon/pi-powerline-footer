@@ -206,6 +206,19 @@ test("parsePowerlineConfig validates secondary overflow mode", () => {
   assert.equal(invalid.invalidSecondaryOverflow, "scroll");
 });
 
+test("parsePowerlineConfig validates working indicator placement", () => {
+  const unset = parsePowerlineConfig({}, ["default"]);
+  const above = parsePowerlineConfig({ workingIndicatorPlacement: " Above-Powerline " }, ["default"]);
+  const invalid = parsePowerlineConfig({ workingIndicatorPlacement: "below" }, ["default"]);
+
+  assert.equal(unset.workingIndicatorPlacement, "editor-border");
+  assert.equal(unset.invalidWorkingIndicatorPlacement, null);
+  assert.equal(above.workingIndicatorPlacement, "above-powerline");
+  assert.equal(above.invalidWorkingIndicatorPlacement, null);
+  assert.equal(invalid.workingIndicatorPlacement, "editor-border");
+  assert.equal(invalid.invalidWorkingIndicatorPlacement, "below");
+});
+
 test("parsePowerlineConfig supports queue compact prompt mode", () => {
   const defaultConfig = parsePowerlineConfig({}, ["default", "compact"]);
   const native = parsePowerlineConfig(

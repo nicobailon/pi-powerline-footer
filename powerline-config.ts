@@ -5,6 +5,7 @@ import type { ColorValue, CustomItemPosition, CustomStatusItem, PowerlinePlaceme
 
 export type CompactPromptMode = "queue" | "native";
 export type SecondaryOverflow = "drop" | "wrap";
+export type WorkingIndicatorPlacement = "editor-border" | "above-powerline";
 
 export interface PowerlineConfig {
   preset: StatusLinePreset;
@@ -20,6 +21,8 @@ export interface PowerlineConfig {
   padding: number;
   secondaryOverflow: SecondaryOverflow;
   invalidSecondaryOverflow: string | null;
+  workingIndicatorPlacement: WorkingIndicatorPlacement;
+  invalidWorkingIndicatorPlacement: string | null;
   welcome: boolean;
   stashSharpSShortcut: boolean;
   queue: { compactPromptMode: CompactPromptMode };
@@ -63,6 +66,20 @@ function normalizeSecondaryOverflow(value: unknown): { secondaryOverflow: Second
   return {
     secondaryOverflow: "drop",
     invalidSecondaryOverflow: typeof value === "string" ? value.trim() : String(value),
+  };
+}
+
+function normalizeWorkingIndicatorPlacement(value: unknown): { workingIndicatorPlacement: WorkingIndicatorPlacement; invalidWorkingIndicatorPlacement: string | null } {
+  if (value === undefined) return { workingIndicatorPlacement: "editor-border", invalidWorkingIndicatorPlacement: null };
+
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "editor-border" || normalized === "above-powerline") {
+    return { workingIndicatorPlacement: normalized, invalidWorkingIndicatorPlacement: null };
+  }
+
+  return {
+    workingIndicatorPlacement: "editor-border",
+    invalidWorkingIndicatorPlacement: typeof value === "string" ? value.trim() : String(value),
   };
 }
 
@@ -338,6 +355,8 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     padding: 1,
     secondaryOverflow: "drop",
     invalidSecondaryOverflow: null,
+    workingIndicatorPlacement: "editor-border",
+    invalidWorkingIndicatorPlacement: null,
     welcome: true,
     stashSharpSShortcut: false,
     queue: { compactPromptMode: "queue" },
@@ -356,6 +375,7 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
   const { layout, invalidLayoutSegments } = normalizeLayout(value.layout, customItems);
   const { placement, invalidPlacement } = normalizePlacement(value.placement);
   const { secondaryOverflow, invalidSecondaryOverflow } = normalizeSecondaryOverflow(value.secondaryOverflow);
+  const { workingIndicatorPlacement, invalidWorkingIndicatorPlacement } = normalizeWorkingIndicatorPlacement(value.workingIndicatorPlacement);
 
   return {
     preset: normalizePreset(value.preset, presets) ?? defaultConfig.preset,
@@ -373,6 +393,8 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
       : defaultConfig.padding,
     secondaryOverflow,
     invalidSecondaryOverflow,
+    workingIndicatorPlacement,
+    invalidWorkingIndicatorPlacement,
     welcome: value.welcome !== false,
     stashSharpSShortcut: value.stashSharpSShortcut === true,
     queue: normalizeQueueOptions(value.queue),

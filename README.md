@@ -215,6 +215,16 @@ Padding does not change segment-internal spacing, separators, or editor, transcr
 
 By default, segments that don't fit on the secondary line are dropped. Set `"secondaryOverflow": "wrap"` in `powerline` to continue them on extra lines below instead. A single segment wider than the terminal is still hidden. The default is `"drop"`.
 
+Pi's working, compaction, summarization, and retry indicators appear in the editor's top border by default. Set `"workingIndicatorPlacement": "above-powerline"` to show them on Pi's separate status row above the Powerline bar and editor instead. Working Vibes messages follow the same placement. The default is `"editor-border"`.
+
+```json
+{
+  "powerline": {
+    "workingIndicatorPlacement": "above-powerline"
+  }
+}
+```
+
 ### Demo settings
 
 For a compact current footer setup:
