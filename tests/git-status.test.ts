@@ -10,7 +10,9 @@ function fixture(t: test.TestContext) {
   const root = mkdtempSync(join(tmpdir(), "powerline-git-status-"));
   t.after(async () => {
     await waitForGitUpdates();
-    rmSync(root, { recursive: true, force: true });
+    // A git lookup that hit runGit's timeout resolves before the killed git.exe
+    // exits; on Windows its handle on the directory fails rmSync with EPERM.
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   });
   const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
   const repo = (name: string, host: string) => {
