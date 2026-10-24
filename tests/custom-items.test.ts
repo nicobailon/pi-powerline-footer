@@ -423,6 +423,20 @@ test("collectHiddenExtensionStatusKeys includes default custom status keys", () 
   assert.equal(hidden.has("review"), false);
 });
 
+test("hiddenExtensionStatusKeys hides keys without declaring custom items", () => {
+  const config = parsePowerlineConfig({ hiddenExtensionStatusKeys: [" mcp ", "lsp", "mcp", 42, ""] }, ["default"]);
+  assert.deepEqual(config.hiddenExtensionStatusKeys, ["mcp", "lsp"]);
+
+  const hidden = collectHiddenExtensionStatusKeys([], config.hiddenExtensionStatusKeys);
+  assert.equal(hidden.has("mcp"), true);
+  assert.equal(hidden.has("lsp"), true);
+  assert.deepEqual(getNotificationExtensionStatuses(new Map([["mcp", "[mcp] 3 servers"]]), hidden), []);
+});
+
+test("hiddenExtensionStatusKeys defaults to empty for invalid values", () => {
+  assert.deepEqual(parsePowerlineConfig({ hiddenExtensionStatusKeys: "mcp" }, ["default"]).hiddenExtensionStatusKeys, []);
+});
+
 test("normalizeCompactExtensionStatus strips baked-in trailing separators", () => {
   assert.equal(normalizeCompactExtensionStatus("CI ok · "), "CI ok");
   assert.equal(normalizeCompactExtensionStatus("CI ok |   "), "CI ok");
