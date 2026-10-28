@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- **Per-request cache hit rate** — Set `cache_read.format` to `"request"` to show the hit rate of the latest request, `cacheRead / (input + cacheRead + cacheWrite)`, instead of a session average. It counts cache writes, so a miss after a compaction or model switch shows on the next request. The rate is colored by the new `cacheHit`, `cacheHitWarn` and `cacheHitError` semantic colors (below 30% error, below 70% warning, otherwise success), so themes and `colors` can override them, and shows `--` until a request completes after a compaction or model switch. Set it to `"session-request"` to show the whole-session rate next to it, e.g. `cache 24% · last 16%`. The existing `tokens`, `percent` and `both` formats are unchanged.
+
 ## [0.21.0] - 2026-10-23
 
 ### Highlights

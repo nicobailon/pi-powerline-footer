@@ -22,6 +22,9 @@ export type SemanticColor =
   | "context"
   | "contextWarn"
   | "contextError"
+  | "cacheHit"
+  | "cacheHitWarn"
+  | "cacheHitError"
   | "cost"
   | "tokens"
   | "queue"
@@ -107,7 +110,7 @@ export interface StatusLineSegmentOptions {
   time?: { format?: "12h" | "24h"; showSeconds?: boolean };
   cost?: { subscriptionDisplay?: "subscription" | "reported-cost" | "both"; currency?: CostCurrencyCode };
   context?: { format?: "full" | "percent" };
-  cache_read?: { format?: "tokens" | "percent" | "both" };
+  cache_read?: { format?: "tokens" | "percent" | "both" | "request" | "session-request" };
 }
 
 export type CustomItemPosition = "left" | "right" | "secondary";
@@ -180,6 +183,13 @@ export interface UsageStats {
   subagentCost: number;
 }
 
+// Prompt-side token counts of one assistant request, used for its cache hit rate.
+export interface RequestCacheUsage {
+  input: number;
+  cacheRead: number;
+  cacheWrite: number;
+}
+
 // Context passed to segment render functions
 export interface SegmentContext {
   // From pi-mono
@@ -199,6 +209,8 @@ export interface SegmentContext {
   
   // Computed
   usageStats: UsageStats;
+  // Latest request on the active branch since the last compaction or model switch; undefined until one completes.
+  lastRequestCache: RequestCacheUsage | undefined;
   contextTokens: number | null;
   contextPercent: number | null;
   contextWindow: number;

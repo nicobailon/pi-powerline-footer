@@ -1,4 +1,5 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
+import type { RequestCacheUsage } from "./types.ts";
 
 type SessionUsage = AssistantMessage["usage"];
 
@@ -10,6 +11,8 @@ export interface SessionTokenStats {
   cost: number;
   subagentCost: number;
   lastAssistant: AssistantMessage | undefined;
+  // Latest completed request on this branch; cleared by compaction and model switches.
+  lastRequestCache: RequestCacheUsage | undefined;
   thinkingLevelFromSession: string | null;
 }
 
@@ -133,6 +136,7 @@ function emptySessionTokenStats(): SessionTokenStats {
     cost: 0,
     subagentCost: 0,
     lastAssistant: undefined,
+    lastRequestCache: undefined,
     thinkingLevelFromSession: null,
   };
 }
@@ -146,6 +150,11 @@ function accumulateSessionEvent(stats: SessionTokenStats, event: unknown): void 
 
   if (event.type === "thinking_level_change" && typeof event.thinkingLevel === "string") {
     stats.thinkingLevelFromSession = event.thinkingLevel;
+  }
+
+  // The cache hit rate describes requests sent since the prompt last changed shape.
+  if (event.type === "compaction" || event.type === "model_change") {
+    stats.lastRequestCache = undefined;
   }
 
   stats.subagentCost += extractSubagentResultCost(event);
@@ -163,6 +172,11 @@ function accumulateSessionEvent(stats: SessionTokenStats, event: unknown): void 
   const message = event.message;
   if (message.stopReason !== "error" && message.stopReason !== "aborted" && getUsageTokenTotal(message.usage) > 0) {
     stats.lastAssistant = message;
+    stats.lastRequestCache = {
+      input: message.usage.input,
+      cacheRead: message.usage.cacheRead,
+      cacheWrite: message.usage.cacheWrite,
+    };
   }
 }
 
@@ -315,7 +329,12 @@ export class SessionUsageCache {
       this.entryCount = entryCount;
     }
     const totals = this.ledgerStats.get(this.entries);
-    return { ...totals, lastAssistant: active.lastAssistant, thinkingLevelFromSession: active.thinkingLevelFromSession };
+    return {
+      ...totals,
+      lastAssistant: active.lastAssistant,
+      lastRequestCache: active.lastRequestCache,
+      thinkingLevelFromSession: active.thinkingLevelFromSession,
+    };
   }
 
   reset(): void {
