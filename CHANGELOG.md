@@ -3,11 +3,12 @@
 ## [Unreleased]
 
 ### Added
+- **Per-request cache hit rate** — Set `cache_read.format` to `"request"` to show how much of your latest request was served from the prompt cache, instead of a whole-session average. A cache miss after a compaction or model switch shows up on the very next request rather than being averaged away. The rate uses the theme's success, warning or error color (70% and up, 30–69%, below 30%) through the new `cacheHit`, `cacheHitWarn` and `cacheHitError` colors, which themes and `colors` can override, and shows `--` until a request completes after a compaction or model switch. Set it to `"session-request"` to see the session rate next to it, e.g. `cache 24% · last 16%`. Thanks to [@zzacong](https://github.com/zzacong) for #262.
 - **Hide extension statuses by key** — List status keys in `hiddenExtensionStatusKeys` (for example `["mcp"]`) to drop those extensions' statuses from the footer and status notifications, without defining a custom item for each. Thanks to [@jimmy487](https://github.com/jimmy487) for #259.
 
 ### Fixed
 - **Session replacement cleanup** — Avoid stale extension context errors during session shutdown and welcome dismissal, and always reset session state when the outgoing context is stale. Thanks to [@wu546526](https://github.com/wu546526) for reporting #260, fixed in #261 by [@Nyarlathoteppppp](https://github.com/Nyarlathoteppppp).
-- **Cache hit rate counts cache writes** — The `cache_read` segment's `"percent"` and `"both"` formats now divide by all prompt tokens, `cacheRead / (input + cacheRead + cacheWrite)`. Previously, prompt content written to the cache counted as neither a hit nor a miss, so the rate read much higher than it was: one request with 90 uncached, 5,000 read, and 27,009 written tokens reported 98% instead of 16%.
+- **Cache hit rate counts cache writes** — The `cache_read` segment's `"percent"` and `"both"` formats now divide by all prompt tokens, `cacheRead / (input + cacheRead + cacheWrite)`. Previously, prompt content written to the cache counted as neither a hit nor a miss, so the rate read much higher than it was: one request with 90 uncached, 5,000 read, and 27,009 written tokens reported 98% instead of 16%. Thanks to [@zzacong](https://github.com/zzacong) for #263.
 
 ## [0.21.0] - 2026-10-23
 

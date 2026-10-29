@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { renderSegment } from "../segments.ts";
 import { mergeSegmentOptions, parsePowerlineConfig } from "../powerline-config.ts";
+import { SEP_DOT } from "../icons.ts";
 import type { SegmentContext, StatusLineSegmentOptions } from "../types.ts";
 
 const PRESET_NAMES = ["default", "compact"];
@@ -192,6 +193,123 @@ test("cache_read percent and both formats handle zero input without NaN", () => 
 
   const hidden = createSegmentContext({ cache_read: { format: "both" } });
   assert.deepEqual(renderSegment("cache_read", hidden), { content: "", visible: false });
+});
+
+test("parsePowerlineConfig accepts the request cache_read format", () => {
+  const request = parsePowerlineConfig({ cache_read: { format: "request" } }, PRESET_NAMES);
+  const sessionRequest = parsePowerlineConfig({ cache_read: { format: "session-request" } }, PRESET_NAMES);
+
+  assert.equal(request.segmentOptions.cache_read?.format, "request");
+  assert.equal(sessionRequest.segmentOptions.cache_read?.format, "session-request");
+});
+
+// ── cache_read request format ───────────────────────────────────────────────
+
+test("cache_read request format renders the latest request's hit rate, counting cache writes", () => {
+  // One request: 90 uncached, 5000 read, 27009 written. Session totals are deliberately different.
+  const ctx = createSegmentContext({ cache_read: { format: "request" } }, {
+    usageStats: { input: 1000, output: 0, cacheRead: 9000, cacheWrite: 27009, cost: 0, subagentCost: 0 },
+    lastRequestCache: { input: 90, cacheRead: 5000, cacheWrite: 27009 },
+  });
+
+  assert.equal(stripAnsi(renderSegment("cache_read", ctx).content), "cache 16%");
+});
+
+test("cache_read request format shows a placeholder until a request completes after a reset", () => {
+  const ctx = createSegmentContext({ cache_read: { format: "request" } }, {
+    usageStats: { input: 0, output: 0, cacheRead: 8000, cacheWrite: 0, cost: 0, subagentCost: 0 },
+  });
+
+  assert.equal(stripAnsi(renderSegment("cache_read", ctx).content), "cache --");
+});
+
+test("cache_read request format shows a request with no prompt tokens as a placeholder", () => {
+  const ctx = createSegmentContext({ cache_read: { format: "request" } }, {
+    usageStats: { input: 0, output: 0, cacheRead: 5, cacheWrite: 0, cost: 0, subagentCost: 0 },
+    lastRequestCache: { input: 0, cacheRead: 0, cacheWrite: 0 },
+  });
+
+  assert.equal(stripAnsi(renderSegment("cache_read", ctx).content), "cache --");
+});
+
+test("cache_read request format stays visible for a request that only wrote to the cache", () => {
+  const ctx = createSegmentContext({ cache_read: { format: "request" } }, {
+    usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 27009, cost: 0, subagentCost: 0 },
+    lastRequestCache: { input: 90, cacheRead: 0, cacheWrite: 27009 },
+  });
+
+  assert.equal(stripAnsi(renderSegment("cache_read", ctx).content), "cache 0%");
+  assert.deepEqual(
+    renderSegment("cache_read", createSegmentContext({ cache_read: { format: "request" } })),
+    { content: "", visible: false },
+  );
+});
+
+test("cache_read request format colors the hit rate by band", () => {
+  // Tag each theme color so the test can read which band was applied.
+  const taggedTheme = { fg: (color: string, text: string) => `<${color}>${text}</>`, bg: (_c: string, t: string) => t, bold: (t: string) => t };
+  const bandFor = (rate: number): string => {
+    const ctx = createSegmentContext({ cache_read: { format: "request" } }, {
+      theme: taggedTheme,
+      usageStats: { input: 0, output: 0, cacheRead: 1, cacheWrite: 0, cost: 0, subagentCost: 0 },
+      lastRequestCache: { input: 100 - rate, cacheRead: rate, cacheWrite: 0 },
+    });
+    return renderSegment("cache_read", ctx).content;
+  };
+
+  assert.equal(bandFor(29), "<error>cache 29%</>");
+  assert.equal(bandFor(30), "<warning>cache 30%</>");
+  assert.equal(bandFor(69), "<warning>cache 69%</>");
+  assert.equal(bandFor(70), "<success>cache 70%</>");
+});
+
+test("cache_read request format colors can be overridden through the colors config", () => {
+  const taggedTheme = { fg: (color: string, text: string) => `<${color}>${text}</>`, bg: (_c: string, t: string) => t, bold: (t: string) => t };
+  const ctx = createSegmentContext({ cache_read: { format: "request" } }, {
+    theme: taggedTheme,
+    colors: { cacheHitWarn: "accent" },
+    usageStats: { input: 50, output: 0, cacheRead: 50, cacheWrite: 0, cost: 0, subagentCost: 0 },
+    lastRequestCache: { input: 50, cacheRead: 50, cacheWrite: 0 },
+  });
+
+  assert.equal(renderSegment("cache_read", ctx).content, "<accent>cache 50%</>");
+});
+
+// ── cache_read session-request format ───────────────────────────────────────
+
+test("cache_read session-request format shows the session rate and the latest request's rate", () => {
+  // Session: 9000 read of 37009 prompt tokens (24%). Latest request: 5000 read of 32099 (16%).
+  const ctx = createSegmentContext({ cache_read: { format: "session-request" } }, {
+    usageStats: { input: 1000, output: 0, cacheRead: 9000, cacheWrite: 27009, cost: 0, subagentCost: 0 },
+    lastRequestCache: { input: 90, cacheRead: 5000, cacheWrite: 27009 },
+  });
+
+  assert.equal(stripAnsi(renderSegment("cache_read", ctx).content), `cache 24%${SEP_DOT}last 16%`);
+});
+
+test("cache_read session-request format shows a placeholder for the latest request until one completes", () => {
+  const ctx = createSegmentContext({ cache_read: { format: "session-request" } }, {
+    usageStats: { input: 0, output: 0, cacheRead: 8000, cacheWrite: 0, cost: 0, subagentCost: 0 },
+  });
+
+  assert.equal(stripAnsi(renderSegment("cache_read", ctx).content), `cache 100%${SEP_DOT}last --`);
+});
+
+test("cache_read session-request format colors each rate by its own band", () => {
+  const taggedTheme = { fg: (color: string, text: string) => `<${color}>${text}</>`, bg: (_c: string, t: string) => t, bold: (t: string) => t };
+  const ctx = createSegmentContext({ cache_read: { format: "session-request" } }, {
+    theme: taggedTheme,
+    usageStats: { input: 50, output: 0, cacheRead: 50, cacheWrite: 0, cost: 0, subagentCost: 0 },
+    lastRequestCache: { input: 90, cacheRead: 10, cacheWrite: 0 },
+  });
+
+  assert.equal(renderSegment("cache_read", ctx).content, `<warning>cache 50%</>${SEP_DOT}<error>last 10%</>`);
+});
+
+test("cache_read session-request format is hidden without cache activity", () => {
+  const ctx = createSegmentContext({ cache_read: { format: "session-request" } });
+
+  assert.deepEqual(renderSegment("cache_read", ctx), { content: "", visible: false });
 });
 
 // ── queue segment ──────────────────────────────────────────────────────────

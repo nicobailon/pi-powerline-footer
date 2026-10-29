@@ -263,7 +263,7 @@ Segment display formats (opt-in; defaults match the historical rendering):
 | Segment option | Values | Default | Effect |
 |---|---|---|---|
 | `"context": { "format" }` | `"full"` / `"percent"` | `"full"` | `"percent"` shows a bare rounded `83%` (threshold-colored, no icon) instead of `12k/200k (6.2%)` |
-| `"cache_read": { "format" }` | `"tokens"` / `"percent"` / `"both"` | `"tokens"` | `"percent"` shows the cache hit rate `cacheRead / (input + cacheRead + cacheWrite)` instead of the raw token count; `"both"` shows raw tokens plus the hit rate, e.g. `cache in: 12k (80%)` |
+| `"cache_read": { "format" }` | `"tokens"` / `"percent"` / `"both"` / `"request"` / `"session-request"` | `"tokens"` | Hit rates are `cacheRead / (input + cacheRead + cacheWrite)`. `"percent"` shows the whole-session hit rate instead of the raw token count; `"both"` shows raw tokens plus that rate, e.g. `cache in: 12k (80%)`; `"request"` shows the latest request's rate, colored by the `cacheHit*` semantic colors (below 30% error, below 70% warning, otherwise success), and shows `--` until a request completes after a compaction or model switch; `"session-request"` shows the session rate, then the latest request's after `·`, e.g. `cache 24% · last 16%`, each colored by its own band |
 
 ```json
 {
@@ -591,6 +591,9 @@ Colors are configurable via pi's theme system. Each preset defines its own color
 | `context` | `dim` | Context usage |
 | `contextWarn` | `warning` | Context usage >70% |
 | `contextError` | `error` | Context usage >90% |
+| `cacheHit` | `success` | Cache hit rate ≥70% (`request` and `session-request` formats) |
+| `cacheHitWarn` | `warning` | Cache hit rate 30–69% |
+| `cacheHitError` | `error` | Cache hit rate <30% |
 | `cost` | `text` | Cost display |
 | `tokens` | `muted` | Token counts |
 

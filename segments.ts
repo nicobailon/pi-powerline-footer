@@ -1,7 +1,7 @@
 import { hostname as osHostname } from "node:os";
 import { basename } from "node:path";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import type { BuiltinStatusLineSegmentId, RenderedSegment, SegmentContext, SemanticColor, StatusLineSegment, StatusLineSegmentId } from "./types.ts";
+import type { BuiltinStatusLineSegmentId, RenderedSegment, RequestCacheUsage, SegmentContext, SemanticColor, StatusLineSegment, StatusLineSegmentId } from "./types.ts";
 import { normalizeCompactExtensionStatus, normalizeExtensionStatusValue } from "./powerline-config.ts";
 import { fg, applyColor } from "./theme.ts";
 import { getIcons, SEP_DOT, getThinkingText } from "./icons.ts";
@@ -447,19 +447,63 @@ const hostnameSegment: StatusLineSegment = {
   },
 };
 
+// Whole-percent hit rate over prompt tokens: cache reads / (uncached input + reads + writes).
+// Undefined when there are no prompt tokens.
+function hitRatePercent(tokens: RequestCacheUsage): number | undefined {
+  const prompt = tokens.input + tokens.cacheRead + tokens.cacheWrite;
+  return prompt > 0 ? Math.round((tokens.cacheRead / prompt) * 100) : undefined;
+}
+
+// Rate text for the segment, with "--" standing in for an unknown rate.
+function percentText(rate: number | undefined): string {
+  return rate === undefined ? "--" : `${rate}%`;
+}
+
+// Colors a hit rate by band: below 30% cacheHitError, below 70% cacheHitWarn, otherwise cacheHit.
+// Unknown rates use the tokens color so the placeholder reads as neutral.
+function colorHitRate(ctx: SegmentContext, rate: number | undefined, text: string): string {
+  if (rate === undefined) return color(ctx, "tokens", text);
+  if (rate < 30) return color(ctx, "cacheHitError", text);
+  if (rate < 70) return color(ctx, "cacheHitWarn", text);
+  return color(ctx, "cacheHit", text);
+}
+
+// "request" format: hit rate of the latest request, colored by band. Visible once any cache activity is recorded.
+function renderRequestCacheRead(ctx: SegmentContext): RenderedSegment {
+  const { cacheRead, cacheWrite } = ctx.usageStats;
+  if (!cacheRead && !cacheWrite) return { content: "", visible: false };
+
+  const icons = getIcons();
+  const rate = ctx.lastRequestCache ? hitRatePercent(ctx.lastRequestCache) : undefined;
+  const text = [icons.cache, percentText(rate)].filter(Boolean).join(" ");
+  return { content: colorHitRate(ctx, rate, text), visible: true };
+}
+
+// "session-request" format: whole-session hit rate, then the latest request's, each colored by its own band.
+function renderSessionRequestCacheRead(ctx: SegmentContext): RenderedSegment {
+  const { cacheRead, cacheWrite } = ctx.usageStats;
+  if (!cacheRead && !cacheWrite) return { content: "", visible: false };
+
+  const icons = getIcons();
+  const sessionRate = hitRatePercent(ctx.usageStats);
+  const requestRate = ctx.lastRequestCache ? hitRatePercent(ctx.lastRequestCache) : undefined;
+  const sessionText = colorHitRate(ctx, sessionRate, [icons.cache, percentText(sessionRate)].filter(Boolean).join(" "));
+  const requestText = colorHitRate(ctx, requestRate, `last ${percentText(requestRate)}`);
+  return { content: `${sessionText}${SEP_DOT}${requestText}`, visible: true };
+}
+
 const cacheReadSegment: StatusLineSegment = {
   id: "cache_read",
   render(ctx) {
+    const format = ctx.options.cache_read?.format ?? "tokens";
+    if (format === "request") return renderRequestCacheRead(ctx);
+    if (format === "session-request") return renderSessionRequestCacheRead(ctx);
+
     const icons = getIcons();
-    const { cacheRead, cacheWrite, input } = ctx.usageStats;
+    const { cacheRead } = ctx.usageStats;
     if (!cacheRead) return { content: "", visible: false };
 
-    const format = ctx.options.cache_read?.format ?? "tokens";
-    // Every prompt token is either read from the cache, written to it, or sent uncached.
-    const promptTokens = input + cacheRead + cacheWrite;
-    const hitRate = promptTokens > 0
-      ? ((cacheRead / promptTokens) * 100).toFixed(0)
-      : "0";
+    const hitRate = hitRatePercent(ctx.usageStats) ?? 0;
 
     let content: string;
     if (format === "percent") {

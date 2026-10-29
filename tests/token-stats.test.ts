@@ -261,6 +261,56 @@ for (const stopReason of ["error", "aborted"]) {
   });
 }
 
+test("SessionUsageCache keeps the latest-request rate current through a model switch, streaming and compaction", async () => {
+  const { SessionUsageCache } = await import("../token-stats.ts");
+  const cache = new SessionUsageCache();
+  const first = assistantEvent(makeUsage(90, 5, 5000, 27009));
+  const modelSwitch = { type: "model_change", provider: "other", modelId: "other-model" };
+  const next = assistantEvent(makeUsage(30, 2, 100, 0));
+  const compaction = { type: "compaction", summary: "summary", usage: makeUsage(4, 1) };
+  let branch: unknown[] = [first];
+  let leaf = "first";
+  const provider = {
+    getLeafId: () => leaf,
+    getBranch: () => branch,
+    getEntries: () => branch.slice(),
+    getEntryCount: () => branch.length,
+  };
+
+  assert.deepEqual(cache.get(provider).lastRequestCache, { input: 90, cacheRead: 5000, cacheWrite: 27009 });
+
+  branch = [first, modelSwitch];
+  leaf = "switch";
+  assert.equal(cache.get(provider).lastRequestCache, undefined);
+
+  branch = [first, modelSwitch, next];
+  leaf = "next";
+  assert.deepEqual(cache.get(provider).lastRequestCache, { input: 30, cacheRead: 100, cacheWrite: 0 });
+
+  // Streaming updates the trailing assistant message in place, on an unchanged leaf.
+  next.message.usage = makeUsage(30, 2, 400, 0);
+  assert.deepEqual(cache.get(provider).lastRequestCache, { input: 30, cacheRead: 400, cacheWrite: 0 });
+
+  branch = [first, modelSwitch, next, compaction];
+  leaf = "compaction";
+  assert.equal(cache.get(provider).lastRequestCache, undefined);
+});
+
+test("lastRequestCache follows the latest usable request and resets on compaction or model switch", () => {
+  const first = assistantEvent(makeUsage(90, 5, 5000, 27009));
+  const failed = assistantEvent(makeUsage(10, 1, 0, 0), "error");
+  assert.deepEqual(computeSessionTokenStats([first, failed]).lastRequestCache, { input: 90, cacheRead: 5000, cacheWrite: 27009 });
+
+  const afterCompaction = [first, { type: "compaction", usage: makeUsage(4, 1) }];
+  assert.equal(computeSessionTokenStats(afterCompaction).lastRequestCache, undefined);
+
+  const afterSwitch = [first, { type: "model_change", provider: "other", modelId: "other-model" }];
+  assert.equal(computeSessionTokenStats(afterSwitch).lastRequestCache, undefined);
+
+  const next = assistantEvent(makeUsage(30, 2, 100, 0));
+  assert.deepEqual(computeSessionTokenStats([...afterSwitch, next]).lastRequestCache, { input: 30, cacheRead: 100, cacheWrite: 0 });
+});
+
 function nativeToolEvent(usage = makeUsage(20, 7, 3, 2)) {
   return { type: "message", message: { role: "toolResult", toolName: "any-tool", isError: true, usage } };
 }

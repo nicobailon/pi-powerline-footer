@@ -2915,6 +2915,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     const tokenStats = tokenStatsCache.get(ctx.sessionManager);
     const { input, output, cacheRead, cacheWrite, cost, subagentCost } = tokenStats;
     const lastAssistant = tokenStats.lastAssistant;
+    const lastRequestCache = tokenStats.lastRequestCache;
     const thinkingLevelFromSession = tokenStats.thinkingLevelFromSession;
 
     // Calculate context percentage.
@@ -2972,6 +2973,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       sessionName: ctx.sessionManager?.getSessionName?.(),
       cwd: ctx.cwd,
       usageStats: { input, output, cacheRead, cacheWrite, cost, subagentCost },
+      lastRequestCache,
       contextTokens,
       contextPercent,
       contextWindow,
