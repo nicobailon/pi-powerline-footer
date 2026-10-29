@@ -159,6 +159,12 @@ You can promote any extension status key into its own dedicated powerline item. 
 - `hideWhenMissing` (optional): hide item when no status is present (default `true`)
 - `excludeFromExtensionStatuses` (optional): omit this key from the aggregate `extension_statuses` segment (default `true`)
 
+To hide an extension's status without giving it its own item, list its key in `hiddenExtensionStatusKeys`:
+
+```json
+{ "powerline": { "hiddenExtensionStatusKeys": ["mcp", "pi-lens-lsp"] } }
+```
+
 If you still prefer the older string preset config shape, `"powerline": "default"` continues to work. String preset shorthand keeps `welcome` enabled and uses the default shortcut/cost/model display settings.
 
 ### Disabling segments

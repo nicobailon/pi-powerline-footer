@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- **Hide extension statuses by key** — List status keys in `hiddenExtensionStatusKeys` (for example `["mcp"]`) to drop those extensions' statuses from the footer and status notifications, without defining a custom item for each. Thanks to [@jimmy487](https://github.com/jimmy487) for #259.
+
 ### Fixed
 - **Session replacement cleanup** — Avoid stale extension context errors during session shutdown and welcome dismissal, and always reset session state when the outgoing context is stale. Thanks to [@wu546526](https://github.com/wu546526) for reporting #260, fixed in #261 by [@Nyarlathoteppppp](https://github.com/Nyarlathoteppppp).
 - **Cache hit rate counts cache writes** — The `cache_read` segment's `"percent"` and `"both"` formats now divide by all prompt tokens, `cacheRead / (input + cacheRead + cacheWrite)`. Previously, prompt content written to the cache counted as neither a hit nor a miss, so the rate read much higher than it was: one request with 90 uncached, 5,000 read, and 27,009 written tokens reported 98% instead of 16%.
