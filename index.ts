@@ -97,6 +97,7 @@ let config: PowerlineConfig = {
   sendDelayMs: 0,
   autoFollowUp: false,
   workingVibes: {},
+  hiddenExtensionStatusKeys: [],
 };
 
 const CUSTOM_COMPACTION_STATUS_KEY = "compact-policy";
@@ -1860,7 +1861,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
   // Track session start
   pi.on("session_start", async (event, ctx) => {
-    dismissWelcome(currentCtx ?? ctx);
+    dismissWelcome(ctx);
     shellSession?.dispose();
     shellSession = null;
     sessionGeneration++;
@@ -1923,14 +1924,22 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", async (event, ctx) => {
-    if (event.reason === "reload") {
-      transferActiveStashReload(ctx, stashedEditorText);
-    } else {
-      clearActiveStashReload(ctx);
+    try {
+      if (event.reason === "reload") {
+        transferActiveStashReload(ctx, stashedEditorText);
+      } else {
+        clearActiveStashReload(ctx);
+      }
+    } catch (error) {
+      if (!isStaleExtensionContextError(error)) throw error;
     }
     stashedEditorText = null;
     sessionGeneration++;
-    dismissWelcome(ctx);
+    try {
+      dismissWelcome(ctx);
+    } catch (error) {
+      if (!isStaleExtensionContextError(error)) throw error;
+    }
     restorePendingSend();
     statusRenderScheduler.cancel();
     restoreFooterStatusRepaintHook?.();
@@ -2940,7 +2949,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       : { branch: null, staged: 0, unstaged: 0, untracked: 0 };
     const extensionStatuses = footerDataRef?.getExtensionStatuses() ?? new Map();
     const customItemsById = new Map(config.customItems.map((item) => [item.id, item]));
-    const hiddenExtensionStatusKeys = collectHiddenExtensionStatusKeys(config.customItems);
+    const hiddenExtensionStatusKeys = collectHiddenExtensionStatusKeys(config.customItems, config.hiddenExtensionStatusKeys);
 
     // Check if using OAuth subscription
     const usingSubscription = ctx.model
@@ -3049,7 +3058,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
     const statuses = footerDataRef.getExtensionStatuses();
     if (!statuses || statuses.size === 0) return [];
-    const hiddenExtensionStatusKeys = collectHiddenExtensionStatusKeys(config.customItems);
+    const hiddenExtensionStatusKeys = collectHiddenExtensionStatusKeys(config.customItems, config.hiddenExtensionStatusKeys);
 
     const notifications: string[] = [];
     for (const value of getNotificationExtensionStatuses(statuses, hiddenExtensionStatusKeys)) {

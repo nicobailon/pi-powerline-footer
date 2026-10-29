@@ -162,6 +162,25 @@ test("cache_read both format renders raw token count and cache hit rate", () => 
   assert.equal(stripAnsi(rendered.content), "cache in: 8.0k (80%)");
 });
 
+test("cache_read hit rate counts cache writes as prompt tokens", () => {
+  // One request: 90 uncached, 5000 read, 27009 written. The written tokens are not hits.
+  const usage = { input: 90, output: 0, cacheRead: 5000, cacheWrite: 27009, cost: 0, subagentCost: 0 };
+
+  const percent = createSegmentContext({ cache_read: { format: "percent" } }, { usageStats: usage });
+  assert.equal(stripAnsi(renderSegment("cache_read", percent).content), "cache 16%");
+
+  const both = createSegmentContext({ cache_read: { format: "both" } }, { usageStats: usage });
+  assert.equal(stripAnsi(renderSegment("cache_read", both).content), "cache in: 5.0k (16%)");
+});
+
+test("cache_read hit rate is zero when the prompt was only written to the cache", () => {
+  const percent = createSegmentContext({ cache_read: { format: "percent" } }, {
+    usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 27009, cost: 0, subagentCost: 0 },
+  });
+  // No cache reads to show, so the segment stays hidden as before.
+  assert.deepEqual(renderSegment("cache_read", percent), { content: "", visible: false });
+});
+
 test("cache_read percent and both formats handle zero input without NaN", () => {
   const percentCtx = createSegmentContext({ cache_read: { format: "percent" } }, {
     usageStats: { input: 0, output: 0, cacheRead: 5, cacheWrite: 0, cost: 0, subagentCost: 0 },

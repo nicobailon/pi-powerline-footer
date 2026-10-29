@@ -290,9 +290,10 @@ async function welcomeHarness(t: test.TestContext, home: string, quietStartup: b
     ctx,
     get view() { return view; },
     get installations() { return installations; },
+    get pendingTimers() { return timeouts.size; },
     get getCommandsCalls() { return getCommandsCalls; },
     type: (text: string) => editor.handleInput(text),
-    event: async (name: string, reason?: string) => { await handlers.get(name)?.({ reason }, ctx); },
+    event: async (name: string, reason?: string, context = ctx) => { await handlers.get(name)?.({ reason }, context); },
     runStartupWork: () => {
       const callbacks = [...timeouts.values()];
       timeouts.clear();
@@ -377,6 +378,131 @@ test("eligible welcome installs and dismisses without losing input", async (t) =
       });
     });
   }
+});
+
+test("shutdown ignores only stale session manager errors during replacement or reload", async (t) => {
+  for (const reason of [undefined, "reload"]) {
+    for (const stale of [true, false]) {
+      await t.test(`${reason ?? "replacement"}: ${stale ? "stale" : "unexpected"} error`, async (t) => {
+        await withTemporaryHome(async (home) => {
+          const harness = await welcomeHarness(t, home, true);
+          const unsubscribe = t.mock.fn();
+          t.mock.method(harness.ctx.ui, "onTerminalInput", () => unsubscribe);
+          const nextCtx = {
+            ...harness.ctx,
+            sessionManager: { ...harness.ctx.sessionManager, getSessionId: () => "next-session" },
+            ui: { ...harness.ctx.ui },
+          };
+          try {
+            await harness.event("session_start", "startup");
+            await harness.runStartupWork();
+            assert.ok(harness.view);
+            const error = new Error(stale ? "This extension ctx is stale" : "Session manager failed");
+            t.mock.method(harness.ctx.sessionManager, "getSessionId", () => { throw error; });
+            const oldHeader = t.mock.method(harness.ctx.ui, "setHeader");
+
+            if (stale) {
+              await assert.doesNotReject(harness.event("session_shutdown", reason));
+            } else {
+              await assert.rejects(harness.event("session_shutdown", reason), (caught) => caught === error);
+            }
+            assert.equal(unsubscribe.mock.callCount(), stale ? 1 : 0);
+            assert.equal(oldHeader.mock.callCount(), stale ? 1 : 0);
+            if (stale) assert.equal(harness.view, undefined);
+            await harness.event("session_start", "switch", nextCtx);
+            assert.equal(oldHeader.mock.callCount(), stale ? 1 : 0);
+            assert.equal(harness.view, undefined);
+          } finally {
+            await harness.event("session_shutdown", undefined, nextCtx);
+            t.mock.restoreAll();
+          }
+        });
+      });
+    }
+  }
+});
+
+test("stale stash lookup does not skip welcome timer or overlay cleanup", async (t) => {
+  for (const active of [false, true]) {
+    await t.test(active ? "active overlay" : "pending timer", async (t) => {
+      await withTemporaryHome(async (home) => {
+        const harness = await welcomeHarness(t, home, false);
+        const cleanupCtx = { ...harness.ctx, sessionManager: { ...harness.ctx.sessionManager } };
+        try {
+          await harness.event("session_start", "startup");
+          if (active) {
+            await harness.runStartupWork();
+            assert.ok(harness.view);
+          } else {
+            assert.ok(harness.pendingTimers > 0);
+          }
+          t.mock.method(harness.ctx.sessionManager, "getSessionId", () => {
+            throw new Error("This extension ctx is stale");
+          });
+
+          await harness.event("session_shutdown");
+          assert.equal(harness.view, undefined);
+          assert.equal(harness.pendingTimers, 0);
+        } finally {
+          await harness.event("session_shutdown", undefined, cleanupCtx);
+          t.mock.restoreAll();
+        }
+      });
+    });
+  }
+});
+
+test("shutdown cleans up when clearing the welcome header uses a stale context", async (t) => {
+  await withTemporaryHome(async (home) => {
+    const harness = await welcomeHarness(t, home, true);
+    const unsubscribe = t.mock.fn();
+    t.mock.method(harness.ctx.ui, "onTerminalInput", () => unsubscribe);
+    try {
+      await harness.event("session_start", "startup");
+      await harness.runStartupWork();
+      assert.ok(harness.view);
+      t.mock.method(harness.ctx.ui, "setHeader", () => {
+        throw new Error("This extension ctx is stale");
+      });
+      await assert.doesNotReject(harness.event("session_shutdown"));
+      assert.equal(unsubscribe.mock.callCount(), 1);
+    } finally {
+      await harness.event("session_shutdown");
+      t.mock.restoreAll();
+    }
+  });
+});
+
+test("session start dismisses the welcome using the incoming context", async (t) => {
+  await withTemporaryHome(async (home) => {
+    const harness = await welcomeHarness(t, home, true);
+    const nextCtx = {
+      ...harness.ctx,
+      sessionManager: { ...harness.ctx.sessionManager, getSessionId: () => "next-session" },
+      ui: { ...harness.ctx.ui },
+    };
+    try {
+      await harness.event("session_start", "startup");
+      await harness.runStartupWork();
+      assert.ok(harness.view);
+      let oldUiAccesses = 0;
+      harness.ctx.ui = new Proxy(harness.ctx.ui, {
+        get() {
+          oldUiAccesses++;
+          throw new Error("This extension ctx is stale");
+        },
+      });
+      const nextHeader = t.mock.method(nextCtx.ui, "setHeader");
+
+      await harness.event("session_start", "switch", nextCtx);
+      assert.equal(oldUiAccesses, 0);
+      assert.deepEqual(nextHeader.mock.calls.map((call) => call.arguments), [[undefined]]);
+      assert.equal(harness.view, undefined);
+    } finally {
+      await harness.event("session_shutdown", undefined, nextCtx);
+      t.mock.restoreAll();
+    }
+  });
 });
 
 test("RPC clients never receive the startup welcome", async (t) => {

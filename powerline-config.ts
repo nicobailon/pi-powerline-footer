@@ -29,6 +29,7 @@ export interface PowerlineConfig {
   sendDelayMs: number;
   autoFollowUp: boolean;
   workingVibes: { color?: ColorValue | "rainbow" };
+  hiddenExtensionStatusKeys: string[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -368,6 +369,7 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     sendDelayMs: 0,
     autoFollowUp: false,
     workingVibes: {},
+    hiddenExtensionStatusKeys: [],
   };
 
   const directPreset = normalizePreset(value, presets);
@@ -410,6 +412,7 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     workingVibes: isRecord(value.workingVibes) && typeof value.workingVibes.color === "string" && value.workingVibes.color.trim()
       ? { color: value.workingVibes.color.trim() as ColorValue | "rainbow" }
       : {},
+    hiddenExtensionStatusKeys: normalizeHiddenExtensionStatusKeys(value.hiddenExtensionStatusKeys),
   };
 }
 
@@ -479,8 +482,22 @@ export function nextPowerlineSettingWithOptions(
   return { ...existingPowerlineSetting, ...updates };
 }
 
-export function collectHiddenExtensionStatusKeys(customItems: readonly CustomStatusItem[]): Set<string> {
-  const hidden = new Set<string>();
+function normalizeHiddenExtensionStatusKeys(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const keys: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string") continue;
+    const key = entry.trim();
+    if (key && !keys.includes(key)) keys.push(key);
+  }
+  return keys;
+}
+
+export function collectHiddenExtensionStatusKeys(
+  customItems: readonly CustomStatusItem[],
+  extraHiddenKeys: readonly string[] = [],
+): Set<string> {
+  const hidden = new Set<string>(extraHiddenKeys);
   for (const item of customItems) {
     if (item.excludeFromExtensionStatuses) hidden.add(item.statusKey);
   }

@@ -159,6 +159,12 @@ You can promote any extension status key into its own dedicated powerline item. 
 - `hideWhenMissing` (optional): hide item when no status is present (default `true`)
 - `excludeFromExtensionStatuses` (optional): omit this key from the aggregate `extension_statuses` segment (default `true`)
 
+To hide an extension's status without giving it its own item, list its key in `hiddenExtensionStatusKeys`:
+
+```json
+{ "powerline": { "hiddenExtensionStatusKeys": ["mcp", "pi-lens-lsp"] } }
+```
+
 If you still prefer the older string preset config shape, `"powerline": "default"` continues to work. String preset shorthand keeps `welcome` enabled and uses the default shortcut/cost/model display settings.
 
 ### Disabling segments
@@ -257,7 +263,7 @@ Segment display formats (opt-in; defaults match the historical rendering):
 | Segment option | Values | Default | Effect |
 |---|---|---|---|
 | `"context": { "format" }` | `"full"` / `"percent"` | `"full"` | `"percent"` shows a bare rounded `83%` (threshold-colored, no icon) instead of `12k/200k (6.2%)` |
-| `"cache_read": { "format" }` | `"tokens"` / `"percent"` / `"both"` / `"request"` / `"session-request"` | `"tokens"` | `"percent"` shows the cache hit rate `cacheRead / (input + cacheRead)` instead of the raw token count; `"both"` shows raw tokens plus the hit rate, e.g. `cache in: 12k (80%)`; `"request"` shows the latest request's hit rate, `cacheRead / (input + cacheRead + cacheWrite)`, counting cache writes, colored by the `cacheHit*` semantic colors (below 30% error, below 70% warning, otherwise success), and shows `--` until a request completes after a compaction or model switch; `"session-request"` shows the whole-session rate, then the latest request's rate after `·`, e.g. `cache 24% · last 16%`, with each rate colored by its own band |
+| `"cache_read": { "format" }` | `"tokens"` / `"percent"` / `"both"` / `"request"` / `"session-request"` | `"tokens"` | `"percent"` shows the cache hit rate `cacheRead / (input + cacheRead + cacheWrite)` instead of the raw token count; `"both"` shows raw tokens plus the hit rate, e.g. `cache in: 12k (80%)`; `"request"` shows the latest request's hit rate, `cacheRead / (input + cacheRead + cacheWrite)`, counting cache writes, colored by the `cacheHit*` semantic colors (below 30% error, below 70% warning, otherwise success), and shows `--` until a request completes after a compaction or model switch; `"session-request"` shows the whole-session rate, then the latest request's rate after `·`, e.g. `cache 24% · last 16%`, with each rate colored by its own band |
 
 ```json
 {
