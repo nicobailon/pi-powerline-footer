@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Cache hit rate counts cache writes** — The `cache_read` segment's `"percent"` and `"both"` formats now divide by all prompt tokens, `cacheRead / (input + cacheRead + cacheWrite)`. Previously, prompt content written to the cache counted as neither a hit nor a miss, so the rate read much higher than it was: one request with 90 uncached, 5,000 read, and 27,009 written tokens reported 98% instead of 16%.
+
 ## [0.21.0] - 2026-10-23
 
 ### Highlights

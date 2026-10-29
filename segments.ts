@@ -451,12 +451,14 @@ const cacheReadSegment: StatusLineSegment = {
   id: "cache_read",
   render(ctx) {
     const icons = getIcons();
-    const { cacheRead, input } = ctx.usageStats;
+    const { cacheRead, cacheWrite, input } = ctx.usageStats;
     if (!cacheRead) return { content: "", visible: false };
 
     const format = ctx.options.cache_read?.format ?? "tokens";
-    const hitRate = input + cacheRead > 0
-      ? ((cacheRead / (input + cacheRead)) * 100).toFixed(0)
+    // Every prompt token is either read from the cache, written to it, or sent uncached.
+    const promptTokens = input + cacheRead + cacheWrite;
+    const hitRate = promptTokens > 0
+      ? ((cacheRead / promptTokens) * 100).toFixed(0)
       : "0";
 
     let content: string;
