@@ -2,13 +2,21 @@
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-10-29
+
+### Highlights
+- You can see how well the prompt cache worked for your latest request, so a miss after a compaction or model switch shows up right away instead of being averaged into the session.
+- The cache hit rate is now accurate. Newly cached tokens count as misses, so the number no longer reads far higher than it really is.
+- You can hide noisy extension statuses from the footer with one setting.
+- Starting a new session, switching sessions, or reloading no longer logs stale context errors.
+
 ### Added
-- **Per-request cache hit rate** — Set `cache_read.format` to `"request"` to show how much of your latest request was served from the prompt cache, instead of a whole-session average. A cache miss after a compaction or model switch shows up on the very next request rather than being averaged away. The rate uses the theme's success, warning or error color (70% and up, 30–69%, below 30%) through the new `cacheHit`, `cacheHitWarn` and `cacheHitError` colors, which themes and `colors` can override, and shows `--` until a request completes after a compaction or model switch. Set it to `"session-request"` to see the session rate next to it, e.g. `cache 24% · last 16%`. Thanks to [@zzacong](https://github.com/zzacong) for #262.
-- **Hide extension statuses by key** — List status keys in `hiddenExtensionStatusKeys` (for example `["mcp"]`) to drop those extensions' statuses from the footer and status notifications, without defining a custom item for each. Thanks to [@jimmy487](https://github.com/jimmy487) for #259.
+- **Cache hit rate for your latest request** — Set `cache_read.format` to `"request"` to see how much of your latest request came from the prompt cache, instead of a whole-session average. A miss after a compaction or model switch shows up on the next request. The number is green at 70% and up, yellow from 30% to 69%, and red below 30%. Themes and `colors` can change those colors through `cacheHit`, `cacheHitWarn` and `cacheHitError`. It shows `--` until the first request after a compaction or model switch finishes. Set it to `"session-request"` to see the session rate next to it, for example `cache 24% · last 16%`. Thanks to [@zzacong](https://github.com/zzacong) for #262.
+- **Hide extension statuses** — List status keys in `hiddenExtensionStatusKeys` (for example `["mcp"]`) to remove those extensions' statuses from the footer and status notifications, without setting up a custom item for each one. Thanks to [@jimmy487](https://github.com/jimmy487) for #259.
 
 ### Fixed
-- **Session replacement cleanup** — Avoid stale extension context errors during session shutdown and welcome dismissal, and always reset session state when the outgoing context is stale. Thanks to [@wu546526](https://github.com/wu546526) for reporting #260, fixed in #261 by [@Nyarlathoteppppp](https://github.com/Nyarlathoteppppp).
-- **Cache hit rate counts cache writes** — The `cache_read` segment's `"percent"` and `"both"` formats now divide by all prompt tokens, `cacheRead / (input + cacheRead + cacheWrite)`. Previously, prompt content written to the cache counted as neither a hit nor a miss, so the rate read much higher than it was: one request with 90 uncached, 5,000 read, and 27,009 written tokens reported 98% instead of 16%. Thanks to [@zzacong](https://github.com/zzacong) for #263.
+- **Accurate cache hit rate** — The `"percent"` and `"both"` cache formats now count newly cached tokens as misses. Before, those tokens counted as neither a hit nor a miss, so the rate read much higher than it was. One request that reported 98% now correctly shows 16%. If you use either format, expect lower numbers after upgrading. Thanks to [@zzacong](https://github.com/zzacong) for #263.
+- **No more errors when switching sessions** — Starting a new session, switching sessions, or reloading no longer logs "extension ctx is stale" errors, and the previous session's state is always cleared. Thanks to [@wu546526](https://github.com/wu546526) for reporting #260, fixed in #261 by [@Nyarlathoteppppp](https://github.com/Nyarlathoteppppp).
 
 ## [0.21.0] - 2026-10-23
 
