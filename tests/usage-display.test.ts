@@ -36,7 +36,6 @@ function createSegmentContext(options: StatusLineSegmentOptions = {}, overrides:
     thinkingLevel: "off",
     sessionId: undefined,
     usageStats: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, subagentCost: 0 },
-    lastRequestCache: undefined,
     contextTokens: 0,
     contextPercent: 0,
     contextWindow: 0,

@@ -210,7 +210,7 @@ export interface SegmentContext {
   // Computed
   usageStats: UsageStats;
   // Latest request on the active branch since the last compaction or model switch; undefined until one completes.
-  lastRequestCache: RequestCacheUsage | undefined;
+  lastRequestCache?: RequestCacheUsage;
   contextTokens: number | null;
   contextPercent: number | null;
   contextWindow: number;

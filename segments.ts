@@ -454,11 +454,6 @@ function hitRatePercent(tokens: RequestCacheUsage): number | undefined {
   return prompt > 0 ? Math.round((tokens.cacheRead / prompt) * 100) : undefined;
 }
 
-// Hit rate of the latest request; undefined when no request has completed since the last reset.
-function requestCacheHitRate(ctx: SegmentContext): number | undefined {
-  return ctx.lastRequestCache ? hitRatePercent(ctx.lastRequestCache) : undefined;
-}
-
 // Rate text for the segment, with "--" standing in for an unknown rate.
 function percentText(rate: number | undefined): string {
   return rate === undefined ? "--" : `${rate}%`;
@@ -479,19 +474,19 @@ function renderRequestCacheRead(ctx: SegmentContext): RenderedSegment {
   if (!cacheRead && !cacheWrite) return { content: "", visible: false };
 
   const icons = getIcons();
-  const rate = requestCacheHitRate(ctx);
+  const rate = ctx.lastRequestCache ? hitRatePercent(ctx.lastRequestCache) : undefined;
   const text = [icons.cache, percentText(rate)].filter(Boolean).join(" ");
   return { content: colorHitRate(ctx, rate, text), visible: true };
 }
 
 // "session-request" format: whole-session hit rate, then the latest request's, each colored by its own band.
 function renderSessionRequestCacheRead(ctx: SegmentContext): RenderedSegment {
-  const { input, cacheRead, cacheWrite } = ctx.usageStats;
+  const { cacheRead, cacheWrite } = ctx.usageStats;
   if (!cacheRead && !cacheWrite) return { content: "", visible: false };
 
   const icons = getIcons();
-  const sessionRate = hitRatePercent({ input, cacheRead, cacheWrite });
-  const requestRate = requestCacheHitRate(ctx);
+  const sessionRate = hitRatePercent(ctx.usageStats);
+  const requestRate = ctx.lastRequestCache ? hitRatePercent(ctx.lastRequestCache) : undefined;
   const sessionText = colorHitRate(ctx, sessionRate, [icons.cache, percentText(sessionRate)].filter(Boolean).join(" "));
   const requestText = colorHitRate(ctx, requestRate, `last ${percentText(requestRate)}`);
   return { content: `${sessionText}${SEP_DOT}${requestText}`, visible: true };
@@ -505,14 +500,10 @@ const cacheReadSegment: StatusLineSegment = {
     if (format === "session-request") return renderSessionRequestCacheRead(ctx);
 
     const icons = getIcons();
-    const { cacheRead, cacheWrite, input } = ctx.usageStats;
+    const { cacheRead } = ctx.usageStats;
     if (!cacheRead) return { content: "", visible: false };
 
-    // Every prompt token is either read from the cache, written to it, or sent uncached.
-    const promptTokens = input + cacheRead + cacheWrite;
-    const hitRate = promptTokens > 0
-      ? ((cacheRead / promptTokens) * 100).toFixed(0)
-      : "0";
+    const hitRate = hitRatePercent(ctx.usageStats) ?? 0;
 
     let content: string;
     if (format === "percent") {
