@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Converted costs survive a CDN outage** — Exchange rates for `cost.currency` came from a single jsDelivr URL, so when it failed the cost segment showed `-- EUR` until the next day. It now tries the `currency-api.pages.dev` mirror and then a third source with the same format before giving up. Thanks to [@cahthuranag](https://github.com/cahthuranag).
+
 ## [0.22.0] - 2026-10-29
 
 ### Highlights
