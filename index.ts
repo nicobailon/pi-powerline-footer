@@ -80,6 +80,7 @@ let config: PowerlineConfig = {
   customItems: [],
   disabledSegments: [],
   invalidDisabledSegments: [],
+  alignRight: [],
   layout: null,
   invalidLayoutSegments: [],
   separator: null,
@@ -1101,8 +1102,8 @@ function renderSegmentWithWidth(
   return { content: rendered.content, width: visibleWidth(rendered.content), visible: true };
 }
 
-/** Build content string from pre-rendered parts */
-function buildContentFromParts(
+/** Join pre-rendered parts with the separator (no outer padding). */
+function joinParts(
   parts: string[],
   separatorStyle: StatusLineSeparatorStyle,
 ): string {
@@ -1110,11 +1111,97 @@ function buildContentFromParts(
   const separatorDef = getSeparator(separatorStyle);
   const sepAnsi = getFgAnsiCode("sep");
   const sep = separatorDef.left;
-  const padding = " ".repeat(config.padding);
-  return padding + parts.join(` ${sepAnsi}${sep}${ansi.reset} `) + ansi.reset + padding;
+  return parts.join(` ${sepAnsi}${sep}${ansi.reset} `);
+}
+
+/** Build content string from pre-rendered parts */
+function buildContentFromParts(
+  parts: string[],
+  separatorStyle: StatusLineSeparatorStyle,
+  padding: number = config.padding,
+): string {
+  const joined = joinParts(parts, separatorStyle);
+  if (!joined) return "";
+  const pad = " ".repeat(padding);
+  return pad + joined + ansi.reset + pad;
 }
 
 type ResponsiveLayout = { topContent: string; secondaryLines: string[] };
+
+/**
+ * Pin selected segments to the right edge of the top bar.
+ * `powerline.alignRight` lists segment ids (e.g. ["time"]). When they fit, the
+ * remaining segments flow left and the pinned ones are pushed flush right.
+ * Returns null to fall back to the normal responsive layout.
+ */
+export function computeRightAlignedLayout(
+  renderedSegments: { id: StatusLineSegmentId; content: string; width: number }[],
+  separatorStyle: StatusLineSeparatorStyle,
+  availableWidth: number,
+  options: Pick<PowerlineConfig, "alignRight" | "padding" | "secondaryOverflow">,
+): ResponsiveLayout | null {
+  if (options.alignRight.length === 0) return null;
+
+  const pinnedIds = new Set(options.alignRight);
+  const pinned = renderedSegments.filter((seg) => pinnedIds.has(seg.id));
+  if (pinned.length === 0) return null;
+  const flow = renderedSegments.filter((seg) => !pinnedIds.has(seg.id));
+
+  const separatorDef = getSeparator(separatorStyle);
+  const sepWidth = visibleWidth(separatorDef.left) + 2;
+  const baseOverhead = 2 * options.padding;
+  const pinnedContent = joinParts(pinned.map((seg) => seg.content), separatorStyle);
+  const pinnedWidth = visibleWidth(pinnedContent);
+
+  // Reserve the right edge, one gap space, and the outer padding.
+  const availableForFlow = availableWidth - baseOverhead - pinnedWidth - 1;
+  if (availableForFlow < 0) return null;
+
+  const flowTop: string[] = [];
+  let flowWidth = 0;
+  const overflow: { content: string; width: number }[] = [];
+  let overflowed = false;
+  for (const seg of flow) {
+    const neededWidth = seg.width + (flowTop.length > 0 ? sepWidth : 0);
+    if (!overflowed && flowWidth + neededWidth <= availableForFlow) {
+      flowTop.push(seg.content);
+      flowWidth += neededWidth;
+    } else {
+      overflowed = true;
+      overflow.push(seg);
+    }
+  }
+
+  const wrap = options.secondaryOverflow === "wrap";
+  const secondaryRows: string[][] = [[]];
+  let secondaryWidth = baseOverhead;
+  for (const seg of overflow) {
+    let row = secondaryRows[secondaryRows.length - 1]!;
+    let neededWidth = seg.width + (row.length > 0 ? sepWidth : 0);
+    if (secondaryWidth + neededWidth > availableWidth) {
+      if (!wrap) break;
+      if (baseOverhead + seg.width > availableWidth) continue;
+      row = [];
+      secondaryRows.push(row);
+      secondaryWidth = baseOverhead;
+      neededWidth = seg.width;
+    }
+    row.push(seg.content);
+    secondaryWidth += neededWidth;
+  }
+
+  const flowContent = joinParts(flowTop, separatorStyle);
+  const gap = availableWidth - baseOverhead - visibleWidth(flowContent) - pinnedWidth;
+  if (gap < 1) return null;
+
+  const padding = " ".repeat(options.padding);
+  return {
+    topContent: `${padding}${flowContent}${" ".repeat(gap)}${pinnedContent}${ansi.reset}${padding}`,
+    secondaryLines: secondaryRows
+      .filter((row) => row.length > 0)
+      .map((row) => buildContentFromParts(row, separatorStyle, options.padding)),
+  };
+}
 
 /**
  * Responsive segment layout - fits segments into top bar, overflows to secondary row.
@@ -1133,17 +1220,20 @@ function computeResponsiveLayout(
   const sepWidth = visibleWidth(separatorDef.left) + 2; // separator + spaces around it
 
   // Render all segments and get their widths
-  const renderedSegments: { content: string; width: number }[] = [];
+  const renderedSegments: { id: StatusLineSegmentId; content: string; width: number }[] = [];
   for (const segId of allSegmentIds) {
     const { content, width, visible } = renderSegmentWithWidth(segId, ctx);
     if (visible) {
-      renderedSegments.push({ content, width });
+      renderedSegments.push({ id: segId, content, width });
     }
   }
 
   if (renderedSegments.length === 0) {
     return { topContent: "", secondaryLines: [] };
   }
+
+  const rightAligned = computeRightAlignedLayout(renderedSegments, separatorStyle, availableWidth, config);
+  if (rightAligned) return rightAligned;
 
   // Calculate how many segments fit in top bar
   // Reserve the configured outer padding on both edges of every row.

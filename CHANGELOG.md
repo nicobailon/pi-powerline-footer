@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- **Right-edge segment pinning** — Set `powerline.alignRight` to a list of built-in segment ids, for example `["time"]`, to pin those segments to the right edge of the bar. The remaining segments keep their order on the left, and overflow behavior is unchanged; if the pinned segments do not fit, the bar keeps its normal layout. The default `[]` preserves the existing behavior. Thanks to [@thipori](https://github.com/thipori) for the PR.
+
 ## [0.22.0] - 2026-10-29
 
 ### Highlights

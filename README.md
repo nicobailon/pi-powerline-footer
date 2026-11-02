@@ -207,6 +207,18 @@ A present `left`, `right`, or `secondary` array replaces that preset group exact
 
 Responsive behavior is unchanged: these groups control ordering and overflow priority, not permanently pinned terminal rows. `right` means “later primary segments,” not right-edge alignment. On wide terminals secondary entries can fit in the top bar; on narrow terminals primary overflow moves into the secondary line. Some segments are hidden when they have no value, so `thinking` appears only when the active session/model reports a non-`off` thinking level. Unknown entries are ignored with a startup warning. The old fixed `custom` preset has been removed; combine any preset with `layout` instead.
 
+Set `powerline.alignRight` to pin built-in segments to the right edge of the bar. The remaining segments keep their order on the left, and the pinned segments are pushed flush right:
+
+```json
+{
+  "powerline": {
+    "alignRight": ["time"]
+  }
+}
+```
+
+Only built-in segment names are accepted; unknown or custom names are ignored. Overflow keeps the existing behavior: segments that no longer fit on the top bar move to the secondary line (or wrap, with `secondaryOverflow`). If the pinned segments do not fit on the bar, the normal layout is used instead. The default is `[]`, which keeps the bar exactly as before.
+
 Set `powerline.padding` to an integer from `0` to `8` to control the outer spaces on each edge of every primary and secondary bar row (including wrapped rows). The default is `1`, preserving the existing layout; malformed or out-of-range values fall back to `1`. Use `0` for a flush-left bar:
 
 ```json
