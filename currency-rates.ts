@@ -19,7 +19,13 @@ const CURRENCY_SYMBOLS: Record<CostCurrencyCode, string> = {
 };
 
 const RATE_TTL_MS = 24 * 60 * 60 * 1000;
-const RATE_URL = "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.min.json";
+// Tried in order. jsDelivr and pages.dev are the two hosts the currency-api README lists;
+// the last one serves the same JSON shape (ECB rates, allratestoday.com).
+const RATE_URLS = [
+  "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.min.json",
+  "https://latest.currency-api.pages.dev/v1/currencies/usd.min.json",
+  "https://allratestoday.com/api/compat/currency-api/latest/v1/currencies/usd.min.json",
+];
 const RATE_CACHE_PATH = getAgentPath("powerline-footer", "currency-rates.json");
 
 type RateTable = Partial<Record<CostCurrencyCode, number>>;
@@ -73,8 +79,8 @@ async function writeCachedRatesToDisk(rates: CachedRates): Promise<void> {
   }
 }
 
-async function fetchLatestRates(): Promise<CachedRates> {
-  const response = await fetch(RATE_URL);
+async function fetchRatesFrom(url: string): Promise<CachedRates> {
+  const response = await fetch(url);
   if (!response.ok) throw new Error(`currency rate fetch failed with HTTP ${response.status}`);
 
   const body = await response.json();
@@ -90,6 +96,18 @@ async function fetchLatestRates(): Promise<CachedRates> {
   }
 
   return { timestamp: Date.now(), rates };
+}
+
+async function fetchLatestRates(): Promise<CachedRates> {
+  let lastError: unknown;
+  for (const url of RATE_URLS) {
+    try {
+      return await fetchRatesFrom(url);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
 }
 
 function ensureRatesRefreshing(now: number): void {
