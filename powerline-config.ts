@@ -12,6 +12,7 @@ export interface PowerlineConfig {
   customItems: CustomStatusItem[];
   disabledSegments: StatusLineSegmentId[];
   invalidDisabledSegments: string[];
+  alignRight: StatusLineSegmentId[];
   layout: StatusLineLayout | null;
   invalidLayoutSegments: string[];
   separator: StatusLineSeparatorStyle | null;
@@ -352,6 +353,7 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     customItems: [],
     disabledSegments: [],
     invalidDisabledSegments: [],
+    alignRight: [],
     layout: null,
     invalidLayoutSegments: [],
     separator: null,
@@ -389,6 +391,9 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     customItems,
     disabledSegments,
     invalidDisabledSegments,
+    alignRight: Array.isArray(value.alignRight)
+      ? value.alignRight.filter((id): id is StatusLineSegmentId => typeof id === "string" && (BUILTIN_STATUS_LINE_SEGMENT_IDS as readonly string[]).includes(id))
+      : [],
     layout,
     invalidLayoutSegments,
     separator: normalizeSeparator(value.separator),
