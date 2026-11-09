@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Up on a wrapped prompt** — Pressing Up at the end of a prompt that wraps now moves the cursor up a row instead of jumping to the previous prompt. Up recalls prompt history only from the top row of the editor. Thanks to [@thurstonsand](https://github.com/thurstonsand).
+
 ## [0.22.0] - 2026-10-29
 
 ### Highlights

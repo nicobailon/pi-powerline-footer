@@ -632,18 +632,12 @@ export class BashModeEditor extends CustomEditor {
     const history = Reflect.get(this, "history");
     if (!Array.isArray(history) || history.length === 0) return false;
 
-    const lines = this.getLines();
-    const cursor = this.getCursor();
-    if (lines.length === 1) {
-      return cursor.line === 0 && cursor.col === (lines[0]?.length ?? 0);
-    }
-
     const isOnFirstVisualLine = Reflect.get(this, "isOnFirstVisualLine");
-    if (typeof isOnFirstVisualLine === "function" && !isOnFirstVisualLine.call(this)) {
-      return false;
-    }
+    if (typeof isOnFirstVisualLine !== "function" || !isOnFirstVisualLine.call(this)) return false;
 
-    return cursor.line === 0;
+    const lines = this.getLines();
+    if (lines.length > 1) return true;
+    return this.getCursor().col === (lines[0]?.length ?? 0);
   }
 
   private navigateShellHistory(direction: -1 | 1): void {
