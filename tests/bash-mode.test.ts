@@ -1576,6 +1576,17 @@ test("bash editor recalls prompt history from single-line end without losing the
 
     assert.equal(midLineEditor.getText(), "draft");
 
+    const wrappedLine = "the quick brown fox jumps over the lazy dog";
+    const wrappedEditor = createEditor();
+    Reflect.set(wrappedEditor, "borderColor", (text: string) => text);
+    wrappedEditor.render(20);
+    wrappedEditor.addToHistory("previous prompt");
+    wrappedEditor.setText(wrappedLine);
+    wrappedEditor.handleInput("\x1b[A");
+
+    assert.equal(wrappedEditor.getText(), wrappedLine);
+    assert.equal(Reflect.get(wrappedEditor, "historyIndex"), -1);
+
     const multilineEditor = createEditor();
     multilineEditor.addToHistory("previous prompt");
     multilineEditor.setText("first line\nsecond line");
