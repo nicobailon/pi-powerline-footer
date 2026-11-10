@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { collectHiddenExtensionStatusKeys, getNotificationExtensionStatuses, normalizeExtensionStatusValue, parsePowerlineConfig, mergeSegmentOptions, mergeSegmentsWithCustomItems, nextPowerlineSettingWithOptions, nextPowerlineSettingWithPreset, normalizeCompactExtensionStatus } from "../powerline-config.ts";
 import { getSeparator } from "../separators.ts";
+import { SEP_DOT } from "../icons.ts";
 import { PRESETS } from "../presets.ts";
 
 test("fixed custom preset is removed in favor of powerline.layout", () => {
@@ -49,9 +50,23 @@ test("parsePowerlineConfig accepts self-colored custom items", () => {
     color: "warning",
     selfColorize: true,
     prefix: undefined,
+    separator: SEP_DOT,
     hideWhenMissing: true,
     excludeFromExtensionStatuses: true,
   }]);
+});
+
+test("parsePowerlineConfig preserves per-item separator text", () => {
+  const config = parsePowerlineConfig({
+    customItems: [
+      { id: "ci", prefix: "CI", separator: ": " },
+      { id: "review", prefix: "review", separator: " | " },
+      { id: "joined", prefix: "value=", separator: "" },
+      { id: "invalid", separator: 123 },
+    ],
+  }, ["default"]);
+
+  assert.deepEqual(config.customItems.map((item) => item.separator), [": ", " | ", "", SEP_DOT]);
 });
 
 test("parsePowerlineConfig supports disabled segments", () => {
@@ -322,9 +337,9 @@ test("mergeSegmentsWithCustomItems appends custom segment ids by position", () =
       separator: "powerline",
     },
     [
-      { id: "ci", statusKey: "ci", position: "left", hideWhenMissing: true, excludeFromExtensionStatuses: true },
-      { id: "timer", statusKey: "timer", position: "right", hideWhenMissing: true, excludeFromExtensionStatuses: true },
-      { id: "review", statusKey: "review", position: "secondary", hideWhenMissing: true, excludeFromExtensionStatuses: true },
+      { id: "ci", statusKey: "ci", position: "left", selfColorize: false, separator: SEP_DOT, hideWhenMissing: true, excludeFromExtensionStatuses: true },
+      { id: "timer", statusKey: "timer", position: "right", selfColorize: false, separator: SEP_DOT, hideWhenMissing: true, excludeFromExtensionStatuses: true },
+      { id: "review", statusKey: "review", position: "secondary", selfColorize: false, separator: SEP_DOT, hideWhenMissing: true, excludeFromExtensionStatuses: true },
     ],
   );
 
@@ -342,9 +357,9 @@ test("mergeSegmentsWithCustomItems filters disabled segment ids", () => {
       separator: "powerline",
     },
     [
-      { id: "ci", statusKey: "ci", position: "left", hideWhenMissing: true, excludeFromExtensionStatuses: true },
-      { id: "timer", statusKey: "timer", position: "right", hideWhenMissing: true, excludeFromExtensionStatuses: true },
-      { id: "review", statusKey: "review", position: "secondary", hideWhenMissing: true, excludeFromExtensionStatuses: true },
+      { id: "ci", statusKey: "ci", position: "left", selfColorize: false, separator: SEP_DOT, hideWhenMissing: true, excludeFromExtensionStatuses: true },
+      { id: "timer", statusKey: "timer", position: "right", selfColorize: false, separator: SEP_DOT, hideWhenMissing: true, excludeFromExtensionStatuses: true },
+      { id: "review", statusKey: "review", position: "secondary", selfColorize: false, separator: SEP_DOT, hideWhenMissing: true, excludeFromExtensionStatuses: true },
     ],
     { disabledSegments: ["model", "cost", "custom:ci", "custom:review"] },
   );
@@ -363,8 +378,8 @@ test("mergeSegmentsWithCustomItems applies partial layout rows before disabled f
       separator: "powerline",
     },
     [
-      { id: "ci", statusKey: "ci", position: "right", hideWhenMissing: true, excludeFromExtensionStatuses: true },
-      { id: "review", statusKey: "review", position: "secondary", hideWhenMissing: true, excludeFromExtensionStatuses: true },
+      { id: "ci", statusKey: "ci", position: "right", selfColorize: false, separator: SEP_DOT, hideWhenMissing: true, excludeFromExtensionStatuses: true },
+      { id: "review", statusKey: "review", position: "secondary", selfColorize: false, separator: SEP_DOT, hideWhenMissing: true, excludeFromExtensionStatuses: true },
     ],
     {
       layout: {
@@ -415,8 +430,8 @@ test("nextPowerlineSettingWithOptions converts string presets to object settings
 
 test("collectHiddenExtensionStatusKeys includes default custom status keys", () => {
   const hidden = collectHiddenExtensionStatusKeys([
-    { id: "ci", statusKey: "ci-status", position: "right", hideWhenMissing: true, excludeFromExtensionStatuses: true },
-    { id: "review", statusKey: "review", position: "secondary", hideWhenMissing: true, excludeFromExtensionStatuses: false },
+    { id: "ci", statusKey: "ci-status", position: "right", selfColorize: false, separator: SEP_DOT, hideWhenMissing: true, excludeFromExtensionStatuses: true },
+    { id: "review", statusKey: "review", position: "secondary", selfColorize: false, separator: SEP_DOT, hideWhenMissing: true, excludeFromExtensionStatuses: false },
   ]);
 
   assert.equal(hidden.has("ci-status"), true);

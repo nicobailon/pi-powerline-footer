@@ -135,13 +135,15 @@ You can promote any extension status key into its own dedicated powerline item. 
         "statusKey": "ci-status",
         "position": "right",
         "prefix": "CI",
+        "separator": ": ",
         "color": "warning"
       },
       {
         "id": "review",
         "position": "secondary",
         "hideWhenMissing": false,
-        "prefix": "review"
+        "prefix": "review",
+        "separator": " | "
       }
     ]
   }
@@ -154,6 +156,8 @@ You can promote any extension status key into its own dedicated powerline item. 
 - `statusKey` (optional): extension status key to read, defaults to `id`
 - `position` (optional): `left`, `right`, or `secondary` (default `right`)
 - `prefix` (optional): text shown before the live status value
+- `separator` (optional): exact text between `prefix` and the live status
+  value, including whitespace (default `" · "`; use `""` for no separator)
 - `color` (optional): any Pi theme color (`warning`, `accent`, etc.) or hex (`#RRGGBB`)
 - `selfColorize` (optional): trust ANSI colors already embedded in the status value and do not apply `color` (default `false`)
 - `hideWhenMissing` (optional): hide item when no status is present (default `true`)

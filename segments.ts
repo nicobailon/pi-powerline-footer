@@ -596,7 +596,7 @@ function renderCustomSegment(id: `custom:${string}`, ctx: SegmentContext): Rende
 
   let content = normalizedStatus;
   if (custom.prefix) {
-    content = `${custom.prefix}${SEP_DOT}${content}`;
+    content = `${custom.prefix}${custom.separator}${content}`;
   }
   if (custom.color && !custom.selfColorize) {
     content = applyColor(ctx.theme, custom.color, content);
