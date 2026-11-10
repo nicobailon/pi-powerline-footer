@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { NERD_ICONS } from "../icons.ts";
+import { NERD_ICONS, SEP_DOT } from "../icons.ts";
 import { isStaleExtensionContextError, shouldShowStartupWelcome } from "../lifecycle.ts";
 import { __resetCurrencyRatesForTest, __setCurrencyRatesForTest } from "../currency-rates.ts";
 import { renderSegment } from "../segments.ts";
@@ -113,6 +113,7 @@ test("self-colored custom items preserve ANSI resets and skip configured color",
         position: "right",
         color: "warning",
         selfColorize: true,
+        separator: SEP_DOT,
         hideWhenMissing: true,
         excludeFromExtensionStatuses: true,
       },
@@ -122,6 +123,33 @@ test("self-colored custom items preserve ANSI resets and skip configured color",
 
   assert.equal(rendered.content, status);
   assert.equal(rendered.visible, true);
+});
+
+test("custom items use their configured separator between prefix and status", () => {
+  const cases = [
+    { id: "ci", prefix: "CI", separator: ": ", status: "green", expected: "CI: green" },
+    { id: "review", prefix: "review", separator: " | ", status: "ready", expected: "review | ready" },
+    { id: "joined", prefix: "value=", separator: "", status: "42", expected: "value=42" },
+    { id: "default", prefix: "status", separator: SEP_DOT, status: "ok", expected: "status · ok" },
+  ];
+
+  for (const item of cases) {
+    const rendered = renderSegment(`custom:${item.id}`, createSegmentContext({
+      extensionStatuses: new Map([[item.id, item.status]]),
+      customItemsById: new Map([[item.id, {
+        id: item.id,
+        statusKey: item.id,
+        position: "right",
+        selfColorize: false,
+        prefix: item.prefix,
+        separator: item.separator,
+        hideWhenMissing: true,
+        excludeFromExtensionStatuses: true,
+      }]]),
+    }));
+
+    assert.equal(stripAnsi(rendered.content), item.expected);
+  }
 });
 
 test("extension statuses use one padded dot separator", () => {

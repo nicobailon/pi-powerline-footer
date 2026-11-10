@@ -1,5 +1,6 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { normalizeCostCurrency } from "./currency-rates.ts";
+import { SEP_DOT } from "./icons.ts";
 import { BUILTIN_STATUS_LINE_SEGMENT_IDS } from "./types.ts";
 import type { ColorValue, CustomItemPosition, CustomStatusItem, PowerlinePlacement, PresetDef, StatusLineLayout, StatusLinePreset, StatusLineSegmentId, StatusLineSegmentOptions, StatusLineSeparatorStyle } from "./types.ts";
 
@@ -144,6 +145,7 @@ function normalizeCustomStatusItem(raw: unknown, idOverride?: string): CustomSta
     color: normalizeCustomColor(raw.color),
     selfColorize: raw.selfColorize === true,
     prefix: normalizeCustomPrefix(raw.prefix),
+    separator: typeof raw.separator === "string" ? raw.separator : SEP_DOT,
     hideWhenMissing: raw.hideWhenMissing !== false,
     excludeFromExtensionStatuses: raw.excludeFromExtensionStatuses !== false,
   };

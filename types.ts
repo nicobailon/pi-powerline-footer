@@ -128,6 +128,8 @@ export interface CustomStatusItem {
   color?: ColorValue;
   selfColorize: boolean;
   prefix?: string;
+  /** Exact text inserted between prefix and the live status value. */
+  separator: string;
   hideWhenMissing: boolean;
   excludeFromExtensionStatuses: boolean;
 }
