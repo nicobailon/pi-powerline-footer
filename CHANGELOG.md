@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- Set `powerline.cdCommand` to `false` to disable the bundled `/cd` command while keeping the footer and its other commands. The setting defaults to `true`. Thanks to [@MattKotsenas](https://github.com/MattKotsenas) for #271.
+
 ## [0.22.0] - 2026-10-29
 
 ### Highlights
