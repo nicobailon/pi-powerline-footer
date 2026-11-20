@@ -53,6 +53,8 @@ Activates automatically. Toggle with `/powerline`, switch presets with `/powerli
 
 Use `/cd <path>` to continue the current conversation from another working directory. It supports relative paths, absolute paths, `~`, `~/...`, and directory completions. With no argument, `/cd` prints the current Pi session directory. The command switches into a cwd-updated session file so Pi tools and the footer path segment agree after the change.
 
+Set `powerline.cdCommand` to `false` in your settings to disable the bundled `/cd` command while keeping the footer and its other commands. It defaults to `true`. Restart Pi or run `/reload` after changing it. This lets another extension own `/cd` without a command-name collision.
+
 Powerline Queue commands:
 
 - `/compact <text>` — compact now and queue `<text>` as the next prompt after successful compaction by default

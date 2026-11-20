@@ -24,6 +24,7 @@ export interface PowerlineConfig {
   workingIndicatorPlacement: WorkingIndicatorPlacement;
   invalidWorkingIndicatorPlacement: string | null;
   welcome: boolean;
+  cdCommand: boolean;
   stashSharpSShortcut: boolean;
   queue: { compactPromptMode: CompactPromptMode };
   sendDelayMs: number;
@@ -364,6 +365,7 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     workingIndicatorPlacement: "editor-border",
     invalidWorkingIndicatorPlacement: null,
     welcome: true,
+    cdCommand: true,
     stashSharpSShortcut: false,
     queue: { compactPromptMode: "queue" },
     sendDelayMs: 0,
@@ -403,6 +405,7 @@ export function parsePowerlineConfig(value: unknown, presets: readonly StatusLin
     workingIndicatorPlacement,
     invalidWorkingIndicatorPlacement,
     welcome: value.welcome !== false,
+    cdCommand: value.cdCommand !== false,
     stashSharpSShortcut: value.stashSharpSShortcut === true,
     queue: normalizeQueueOptions(value.queue),
     sendDelayMs: typeof value.sendDelayMs === "number" && Number.isFinite(value.sendDelayMs) && value.sendDelayMs > 0

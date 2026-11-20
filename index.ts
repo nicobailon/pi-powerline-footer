@@ -92,6 +92,7 @@ let config: PowerlineConfig = {
   workingIndicatorPlacement: "editor-border",
   invalidWorkingIndicatorPlacement: null,
   welcome: true,
+  cdCommand: true,
   stashSharpSShortcut: false,
   queue: { compactPromptMode: "queue" },
   sendDelayMs: 0,
@@ -2515,7 +2516,9 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     schedulePostCompactionDelivery();
   });
 
-  registerCdCommand(pi, () => currentCtx?.cwd ?? process.cwd());
+  if (config.cdCommand) {
+    registerCdCommand(pi, () => currentCtx?.cwd ?? process.cwd());
+  }
 
   pi.registerCommand("reply", {
     description: "Quote a previous user or assistant message into the editor",
