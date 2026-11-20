@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Rex terminal support** — Recognize Rex (`TERM_PROGRAM=rex`) as a Nerd Font-capable terminal, so the footer shows Nerd Font icons and powerline separators there instead of falling back to ASCII.
+
 ## [0.22.0] - 2026-10-29
 
 ### Highlights
