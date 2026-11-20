@@ -29,6 +29,9 @@ test("hasNerdFonts uses TERM only when TERM_PROGRAM is unset and preserves overr
     process.env.TERM_PROGRAM = "Kaku";
     assert.equal(hasNerdFonts(), true, "Kaku TERM_PROGRAM should be detected");
 
+    process.env.TERM_PROGRAM = "rex";
+    assert.equal(hasNerdFonts(), true, "Rex TERM_PROGRAM should be detected");
+
     process.env.TERM_PROGRAM = "vscode";
     process.env.POWERLINE_NERD_FONTS = "1";
     assert.equal(hasNerdFonts(), true, "explicit enable overrides the terminal heuristic");
