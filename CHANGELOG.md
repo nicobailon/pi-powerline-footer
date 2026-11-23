@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- Set `powerline.placement` to `"above-all"` to keep the primary and overflow rows together above the editor in the terminal UI. Thanks to [@charzhou](https://github.com/charzhou).
+
 ## [0.22.0] - 2026-10-29
 
 ### Highlights

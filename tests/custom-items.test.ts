@@ -165,7 +165,11 @@ for (const [style, glyph] of [["pipe", "|"], ["slash", "/"]] as const) {
   });
 }
 
-test("parsePowerlineConfig validates primary powerline placement", () => {
+test("parsePowerlineConfig validates powerline placement", () => {
+  const aboveAll = parsePowerlineConfig({ placement: " ABOVE-ALL " }, ["default"]);
+  assert.equal(aboveAll.placement, "above-all");
+  assert.equal(aboveAll.invalidPlacement, null);
+
   const below = parsePowerlineConfig(
     { preset: "compact", placement: "below" },
     ["default", "compact"],

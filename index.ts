@@ -2669,12 +2669,12 @@ export default function powerlineFooter(pi: ExtensionAPI) {
       }
 
       const normalizedArgs = args.trim().toLowerCase();
-      const placementMatch = /^placement(?:\s+(above|below|toggle))?$/.exec(normalizedArgs);
+      const placementMatch = /^placement(?:\s+(above-all|above|below|toggle))?$/.exec(normalizedArgs);
       if (placementMatch) {
         const requestedPlacement = placementMatch[1];
-        config.placement = requestedPlacement === "above" || requestedPlacement === "below"
+        config.placement = requestedPlacement === "above" || requestedPlacement === "below" || requestedPlacement === "above-all"
           ? requestedPlacement
-          : config.placement === "above" ? "below" : "above";
+          : config.placement === "below" ? "above" : "below";
         config.invalidPlacement = null;
         if (enabled && ctx.hasUI) setupCustomEditor(ctx);
 
@@ -3071,11 +3071,13 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     return notifications;
   }
 
-  function renderPowerlinePrimaryLines(width: number, theme: Theme): string[] {
+  function renderPowerlinePrimaryLines(width: number, theme: Theme, includeSecondary: boolean): string[] {
     if (!currentCtx) return [];
 
     const layout = getResponsiveLayout(width, theme);
-    return layout.topContent ? [layout.topContent] : [];
+    const lines = layout.topContent ? [layout.topContent] : [];
+    if (includeSecondary) lines.push(...layout.secondaryLines);
+    return lines;
   }
 
   function renderPowerlineSecondaryLines(width: number, theme: Theme): string[] {
@@ -3164,7 +3166,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     return lines;
   }
 
-  function installPowerlineWidgets(ctx: any) {
+  function installPowerlineWidgets(ctx: any, showSecondaryAbove: boolean) {
     if (!editorPerf.options.widgets) return;
 
     // Web frontends such as pi-web bind extensions in "rpc" mode, render widget
@@ -3194,7 +3196,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
         resetLayoutCache();
       },
       render(width: number): string[] {
-        return measureWidget("primary", () => renderPowerlinePrimaryLines(width, theme));
+        return measureWidget("primary", () => renderPowerlinePrimaryLines(width, theme, showSecondaryAbove));
       },
     }), { placement: config.placement === "below" ? "belowEditor" : "aboveEditor" });
 
@@ -3557,6 +3559,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
     ctx.ui.setEditorComponent(editorFactory);
 
+    const showSecondaryAbove = ctx.mode === "tui" && config.placement === "above-all" && editorPerf.options.widgets;
     ctx.ui.setFooter((tui: any, theme: Theme, footerData: ReadonlyFooterDataProvider) => {
       footerDataRef = footerData;
       // Pi sets the provider cwd from sessionManager before binding session_start.
@@ -3584,12 +3587,12 @@ export default function powerlineFooter(pi: ExtensionAPI) {
           requestStatusRender();
         },
         render(width: number): string[] {
-          return renderPowerlineSecondaryLines(width, theme);
+          return showSecondaryAbove ? [] : renderPowerlineSecondaryLines(width, theme);
         },
       };
     });
 
-    installPowerlineWidgets(ctx);
+    installPowerlineWidgets(ctx, showSecondaryAbove);
   }
 
   function beginWelcomeRequest(ctx: any): AbortController {

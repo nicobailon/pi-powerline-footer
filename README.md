@@ -21,7 +21,7 @@ Customizes the default [pi](https://github.com/badlogic/pi-mono) editor with a p
 
 **Welcome overlay** — Branded splash screen shown as centered overlay on startup. Shows gradient logo, model info, keyboard tips, detected AGENTS.md files, effective loaded skills and prompt templates, an approximate initial system-prompt token count, and recent sessions. Auto-dismisses after 30 seconds or on any key press. Set `powerline.welcome` to `false` to disable it while keeping the footer enabled.
 
-**Powerline placement** — The primary Powerline row can be shown above or below the editor.
+**Powerline placement** — Keep all rows above the editor, keep all rows below it, or show the primary row above and overflow rows below.
 
 **Native Pi layout** — Pi owns fixed input, feed scrolling, selection, and terminal behavior; this extension supplies powerline widgets and the custom bash/stash/editor integrations.
 
@@ -49,7 +49,7 @@ Restart pi to activate.
 
 ## Usage
 
-Activates automatically. Toggle with `/powerline`, switch presets with `/powerline <name>`, and move the primary row with `/powerline placement above|below|toggle`.
+Activates automatically. Toggle with `/powerline`, switch presets with `/powerline <name>`, and set the status bar placement with `/powerline placement above|below|above-all|toggle`.
 
 Use `/cd <path>` to continue the current conversation from another working directory. It supports relative paths, absolute paths, `~`, `~/...`, and directory completions. With no argument, `/cd` prints the current Pi session directory. The command switches into a cwd-updated session file so Pi tools and the footer path segment agree after the change.
 
@@ -78,9 +78,10 @@ Set `powerline.queue.compactPromptMode` to `"native"` if you want `/compact <tex
 
 In `"native"` mode, messages you send while a compaction is running also go to Pi's own queue, which sends them when compaction ends, including when it fails. The default mode is `"queue"`, which holds them in Powerline's post-compaction queue as before.
 
-- `/powerline placement below` — move the primary powerline row below the editor
-- `/powerline placement above` — restore the default placement
-- `/powerline placement toggle` — switch between above and below
+- `/powerline placement above` — show the primary row above the editor and overflow rows below it (default)
+- `/powerline placement below` — show the primary and overflow rows below the editor
+- `/powerline placement above-all` — keep the primary and overflow rows together above the editor in the terminal UI
+- `/powerline placement toggle` — switch between `above` and `below` (from `above-all`, switch to `below`)
 
 You can also set it in the agent settings file (`~/.pi/agent/settings.json` by default, or under `PI_CODING_AGENT_DIR`) or project-local `.pi/settings.json`:
 
@@ -89,7 +90,7 @@ You can also set it in the agent settings file (`~/.pi/agent/settings.json` by d
   "showLastPrompt": true,
   "powerline": {
     "preset": "default",
-    "placement": "below",
+    "placement": "above-all",
     "welcome": true
   }
 }
@@ -219,7 +220,7 @@ Set `powerline.padding` to an integer from `0` to `8` to control the outer space
 
 Padding does not change segment-internal spacing, separators, or editor, transcript, and queue-preview spacing. String preset shorthand keeps the default padding of `1`.
 
-By default, segments that don't fit on the secondary line are dropped. Set `"secondaryOverflow": "wrap"` in `powerline` to continue them on extra lines below instead. A single segment wider than the terminal is still hidden. The default is `"drop"`.
+By default, segments that don't fit on the secondary line are dropped. Set `"secondaryOverflow": "wrap"` in `powerline` to continue them on extra lines after the first overflow row. A single segment wider than the terminal is still hidden. The default is `"drop"`.
 
 Pi's working, compaction, summarization, and retry indicators appear in the editor's top border by default. Set `"workingIndicatorPlacement": "above-powerline"` to show them on Pi's separate status row above the Powerline bar and editor instead. Working Vibes messages follow the same placement. The default is `"editor-border"`.
 
