@@ -77,7 +77,7 @@ export type StatusLineSeparatorStyle =
   | "star";
 
 // Preset names
-export type PowerlinePlacement = "above" | "below";
+export type PowerlinePlacement = "above" | "below" | "above-all";
 
 export type StatusLinePreset =
   | "default"

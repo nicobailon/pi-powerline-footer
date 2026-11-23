@@ -46,7 +46,7 @@ function normalizePlacement(value: unknown): { placement: PowerlinePlacement; in
   if (value === undefined) return { placement: "above", invalidPlacement: null };
 
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
-  if (normalized === "above" || normalized === "below") {
+  if (normalized === "above" || normalized === "below" || normalized === "above-all") {
     return { placement: normalized, invalidPlacement: null };
   }
 

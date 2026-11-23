@@ -217,7 +217,7 @@ function createCtx(options: { cwd: string; mode?: "tui" | "rpc"; sessionId?: str
   };
 }
 
-test("responsive secondary content is owned exclusively by the footer", async () => {
+test("powerline placement controls where responsive secondary rows are rendered", async () => {
   const root = mkdtempSync(join(tmpdir(), "powerline-secondary-footer-"));
   writeFileSync(join(root, "settings.json"), JSON.stringify({
     powerline: {
@@ -256,6 +256,23 @@ test("responsive secondary content is owned exclusively by the footer", async ()
     assert.equal(runtime.footer!.render(200).length, 0, "footer returns no fabricated blank line without overflow");
     assert.equal(widePrimary.match(/review.*ready/g)?.length, 1);
 
+    await fake.commands.get("powerline")!.handler("placement above-all", runtime.ctx);
+    assert.equal(runtime.widgetPlacements.get("powerline-top"), "aboveEditor");
+    assert.equal(JSON.parse(readFileSync(join(root, "settings.json"), "utf8")).powerline.placement, "above-all");
+    const stacked = runtime.widgets.get("powerline-top")!.render(16);
+    assert.equal(stacked.length, 2);
+    assert.match(stacked[0]!, /test/);
+    assert.match(stacked[1]!, /review.*ready/);
+    assert.deepEqual(runtime.footer!.render(16), []);
+    const stackedWide = runtime.widgets.get("powerline-top")!.render(200);
+    assert.equal(stackedWide.length, 1);
+    assert.match(stackedWide[0]!, /test.*review.*ready/);
+    assert.deepEqual(runtime.footer!.render(200), []);
+
+    await fake.commands.get("powerline")!.handler("placement toggle", runtime.ctx);
+    assert.equal(runtime.widgetPlacements.get("powerline-top"), "belowEditor");
+    assert.match(runtime.footer!.render(16).join("\n"), /review.*ready/);
+
     await fake.commands.get("powerline")!.handler("placement above", runtime.ctx);
     assert.equal(runtime.widgetPlacements.get("powerline-top"), "aboveEditor");
     assert.equal(runtime.widgets.has("powerline-secondary"), false);
@@ -275,13 +292,14 @@ test("responsive secondary content is owned exclusively by the footer", async ()
   }
 });
 
-async function renderSecondaryOverflowFooter(secondaryOverflow: string | undefined, width: number): Promise<string[]> {
+async function renderSecondaryOverflowRows(secondaryOverflow: string | undefined, width: number, placement?: "above-all"): Promise<string[]> {
   const root = mkdtempSync(join(tmpdir(), "powerline-secondary-overflow-"));
   const statuses = new Map([["alpha", "alpha-one"], ["wide", "this-status-is-far-too-wide"], ["bravo", "bravo-two"], ["charlie", "charlie-3"]]);
   writeFileSync(join(root, "settings.json"), JSON.stringify({
     powerline: {
       welcome: false,
       ...(secondaryOverflow === undefined ? {} : { secondaryOverflow }),
+      placement,
       layout: { left: ["model"], right: [], secondary: [...statuses.keys()].map((id) => `custom:${id}`) },
       customItems: [...statuses.keys()].map((id) => ({ id, position: "secondary" })),
     },
@@ -299,6 +317,11 @@ async function renderSecondaryOverflowFooter(secondaryOverflow: string | undefin
   try {
     extension(fake.pi);
     await fake.handlers.get("session_start")?.({ reason: "resume" }, runtime.ctx);
+    if (placement === "above-all") {
+      assert.equal(runtime.widgetPlacements.get("powerline-top"), "aboveEditor");
+      assert.deepEqual(runtime.footer!.render(width), []);
+      return runtime.widgets.get("powerline-top")!.render(width).slice(1);
+    }
     return runtime.footer!.render(width);
   } finally {
     await fake.handlers.get("session_shutdown")?.({}, runtime.ctx);
@@ -310,14 +333,16 @@ async function renderSecondaryOverflowFooter(secondaryOverflow: string | undefin
 test("secondary overflow drops the row tail by default and wraps it onto extra rows when opted in", async () => {
   const visibleRows = (rows: string[]) => rows.map((row) => row.replace(/\x1b\[[0-9;]*m/g, "").trim());
 
-  assert.deepEqual(visibleRows(await renderSecondaryOverflowFooter(undefined, 16)), ["alpha-one"]);
-  assert.deepEqual(visibleRows(await renderSecondaryOverflowFooter("drop", 16)), ["alpha-one"]);
+  assert.deepEqual(visibleRows(await renderSecondaryOverflowRows(undefined, 16)), ["alpha-one"]);
+  assert.deepEqual(visibleRows(await renderSecondaryOverflowRows("drop", 16)), ["alpha-one"]);
+  const wrapped = ["alpha-one", "bravo-two", "charlie-3"];
   assert.deepEqual(
-    visibleRows(await renderSecondaryOverflowFooter("wrap", 16)),
-    ["alpha-one", "bravo-two", "charlie-3"],
+    visibleRows(await renderSecondaryOverflowRows("wrap", 16)),
+    wrapped,
     "wrap keeps order, continues on new rows, and skips a segment too wide for any row",
   );
-  assert.deepEqual(await renderSecondaryOverflowFooter("wrap", 200), [], "no overflow renders no footer rows");
+  assert.deepEqual(visibleRows(await renderSecondaryOverflowRows("wrap", 16, "above-all")), wrapped);
+  assert.deepEqual(await renderSecondaryOverflowRows("wrap", 200), [], "no overflow renders no footer rows");
 });
 
 test("outer padding applies to responsive primary and wrapped rows with ANSI and Unicode widths", async () => {
