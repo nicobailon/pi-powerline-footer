@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+- **No wasted vibe calls in RPC clients** — Clients that run Pi with `--mode rpc`, such as T3 Code, don't show Pi's working message, so working vibes are no longer generated there. Before, each prompt still called the vibe model and the client threw the result away.
+- **`/bash-mode` no longer claims to work outside the terminal** — In RPC clients, `/bash-mode on` said bash mode was enabled and started a shell that nothing could type into. It now warns that bash mode needs Pi's terminal editor.
+
 ## [0.22.0] - 2026-10-29
 
 ### Highlights
