@@ -2034,7 +2034,8 @@ export default function powerlineFooter(pi: ExtensionAPI) {
     if ("messageType" in event && event.messageType === "custom") return;
     finishPendingQueueDelivery(event.prompt, ctx);
     lastUserPrompt = event.prompt;
-    if (ctx.hasUI) {
+    // Only the TUI has a working loader; elsewhere setWorkingMessage is a no-op and a generated vibe is a wasted model call.
+    if (ctx.mode === "tui") {
       onVibeBeforeAgentStart(event.prompt, ctx.ui.setWorkingMessage);
     }
   });
@@ -2189,7 +2190,7 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   // Also dismiss on tool calls (agent is working) + refresh vibe if rate limit allows
   pi.on("tool_call", async (event, ctx) => {
     dismissWelcome(ctx);
-    if (ctx.hasUI) {
+    if (ctx.mode === "tui") {
       // Extract recent agent context from session for richer vibe generation
       const agentContext = getRecentAgentContext(ctx);
       onVibeToolCall(event.toolName, event.input, ctx.ui.setWorkingMessage, agentContext);
@@ -2724,6 +2725,10 @@ export default function powerlineFooter(pi: ExtensionAPI) {
   pi.registerCommand("bash-mode", {
     description: "Toggle sticky bash mode (on, off, toggle)",
     handler: async (args, ctx) => {
+      if (ctx.mode !== "tui") {
+        ctx.ui.notify("Bash mode runs in Pi's terminal editor, which this client does not show", "warning");
+        return;
+      }
       const mode = args?.trim().toLowerCase() || "toggle";
       if (mode === "on") {
         await setBashModeActive(true, ctx);

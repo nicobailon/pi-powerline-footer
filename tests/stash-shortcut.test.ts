@@ -399,6 +399,38 @@ test("web frontends outside the TUI receive only the primary bar widget", async 
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("working vibes and bash mode start only in the TUI, which owns the working loader and editor", async () => {
+  const root = mkdtempSync(join(tmpdir(), "powerline-rpc-vibes-"));
+  writeFileSync(join(root, "settings.json"), JSON.stringify({
+    workingVibe: "YoRHa",
+    workingVibeMode: "file",
+    powerline: { welcome: false },
+  }));
+  const { extension, restoreEnv } = await loadPowerline(root);
+
+  try {
+    for (const mode of ["rpc", "tui"] as const) {
+      const fake = createFakePi();
+      const runtime = createCtx({ cwd: root, mode });
+      const workingMessages: Array<string | undefined> = [];
+      runtime.ctx.ui.setWorkingMessage = (message?: string) => { workingMessages.push(message); };
+      extension(fake.pi);
+      await fake.handlers.get("session_start")?.({ reason: "new" }, runtime.ctx);
+      await fake.handlers.get("before_agent_start")?.({ prompt: "Fix the build" }, runtime.ctx);
+      await fake.commands.get("bash-mode")!.handler("on", runtime.ctx);
+      await fake.handlers.get("session_shutdown")?.({}, runtime.ctx);
+
+      assert.equal(workingMessages.length > 0, mode === "tui", `${mode} working messages: ${JSON.stringify(workingMessages)}`);
+      const refused = runtime.notifications.some(({ message }) => message.includes("terminal editor"));
+      assert.equal(refused, mode === "rpc", `${mode}: ${JSON.stringify(runtime.notifications)}`);
+    }
+  } finally {
+    restoreEnv();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 async function createStashGeneration(agentDir: string, cwd: string, sessionId: string, text = "") {
   const loaded = await loadPowerline(agentDir);
   const fake = createFakePi();
