@@ -422,7 +422,8 @@ test("working vibes and bash mode start only in the TUI, which owns the working 
       await fake.handlers.get("session_shutdown")?.({}, runtime.ctx);
 
       assert.equal(workingMessages.length > 0, mode === "tui", `${mode} working messages: ${JSON.stringify(workingMessages)}`);
-      assert.equal(runtime.notifications.at(-1)?.level, mode === "tui" ? "info" : "warning", `${mode}: ${JSON.stringify(runtime.notifications)}`);
+      const refused = runtime.notifications.some(({ message }) => message.includes("terminal editor"));
+      assert.equal(refused, mode === "rpc", `${mode}: ${JSON.stringify(runtime.notifications)}`);
     }
   } finally {
     restoreEnv();
